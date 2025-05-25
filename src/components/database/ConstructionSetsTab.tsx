@@ -14,10 +14,21 @@ import {
   Chip,
   Avatar,
   Divider,
-  Stack
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert
 } from '@mui/material';
 import { Search, Plus, Edit, Trash2, X, Copy } from 'lucide-react';
-import { mockConstructionSets } from '../../data/mockData';
+import { useDatabase } from '../../context/DatabaseContext';
+import { useAuth } from '../../context/AuthContext';
+import type { ConstructionSetInsert } from '../../lib/database.types';
 
 type ConstructionSet = {
   id: number;
@@ -47,20 +58,70 @@ type ConstructionSet = {
   date_created: string;
 };
 
+const defaultConstructionSet: ConstructionSetInsert = {
+  name: '',
+  description: '',
+  wall_construction_id: null,
+  roof_construction_id: null,
+  floor_construction_id: null,
+  window_construction_id: null,
+  author_id: '00000000-0000-0000-0000-000000000000'
+};
+
 const ConstructionSetsTab = () => {
+  const { isAuthenticated } = useAuth();
+  const { constructions, constructionSets, addConstructionSet, error: dbError } = useDatabase();
   const [searchTerm, setSearchTerm] = useState('');
-  const [constructionSets] = useState<ConstructionSet[]>(mockConstructionSets);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState<ConstructionSetInsert>(defaultConstructionSet);
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
   };
 
+  const handleInputChange = (field: keyof ConstructionSetInsert, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setFormError(null);
+
+      if (!formData.name) {
+        throw new Error('Please provide a name for the construction set');
+      }
+
+      if (!isAuthenticated) {
+        throw new Error('You must be logged in to add construction sets');
+      }
+
+      await addConstructionSet(formData);
+      setOpenDialog(false);
+      setFormData(defaultConstructionSet);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter construction sets
   const filteredSets = constructionSets.filter(set => 
     set.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (set.description && set.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    set.author.toLowerCase().includes(searchTerm.toLowerCase())
+    (set.description && set.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // Filter constructions by type
+  const wallConstructions = constructions.filter(c => c.element_type === 'wall');
+  const roofConstructions = constructions.filter(c => c.element_type === 'roof');
+  const floorConstructions = constructions.filter(c => c.element_type === 'floor');
+  const windowConstructions = constructions.filter(c => c.element_type === 'window');
 
   return (
     <Box>
@@ -89,6 +150,12 @@ const ConstructionSetsTab = () => {
           sx={{ width: '300px' }}
         />
       </Box>
+
+      {dbError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {dbError}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {filteredSets.map((set) => (
@@ -226,6 +293,7 @@ const ConstructionSetsTab = () => {
                 variant="outlined" 
                 startIcon={<Plus size={16} />}
                 sx={{ mt: 2 }}
+                onClick={() => setOpenDialog(true)}
               >
                 Create New Set
               </Button>
@@ -237,10 +305,141 @@ const ConstructionSetsTab = () => {
       <Fab 
         color="primary" 
         aria-label="add" 
+        onClick={() => setOpenDialog(true)}
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
       >
         <Plus />
       </Fab>
+
+      <Dialog
+        open={openDialog}
+        onClose={() => setOpenDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Add New Construction Set
+        </DialogTitle>
+        <DialogContent>
+          {formError && (
+            <Alert severity="error" sx={{ mb: 2, mt: 2 }}>
+              {formError}
+            </Alert>
+          )}
+
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Set Name"
+                required
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                rows={2}
+                value={formData.description || ''}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Wall Construction</InputLabel>
+                <Select
+                  value={formData.wall_construction_id || ''}
+                  label="Wall Construction"
+                  onChange={(e) => handleInputChange('wall_construction_id', e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {wallConstructions.map((construction) => (
+                    <MenuItem key={construction.id} value={construction.id}>
+                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Roof Construction</InputLabel>
+                <Select
+                  value={formData.roof_construction_id || ''}
+                  label="Roof Construction"
+                  onChange={(e) => handleInputChange('roof_construction_id', e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {roofConstructions.map((construction) => (
+                    <MenuItem key={construction.id} value={construction.id}>
+                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Floor Construction</InputLabel>
+                <Select
+                  value={formData.floor_construction_id || ''}
+                  label="Floor Construction"
+                  onChange={(e) => handleInputChange('floor_construction_id', e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {floorConstructions.map((construction) => (
+                    <MenuItem key={construction.id} value={construction.id}>
+                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Window Construction</InputLabel>
+                <Select
+                  value={formData.window_construction_id || ''}
+                  label="Window Construction"
+                  onChange={(e) => handleInputChange('window_construction_id', e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {windowConstructions.map((construction) => (
+                    <MenuItem key={construction.id} value={construction.id}>
+                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            Add Construction Set
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
