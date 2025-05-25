@@ -39,13 +39,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for demo mode in session storage
-    const isDemoMode = sessionStorage.getItem('demoMode') === 'true';
-    if (isDemoMode) {
-      setIsAuthenticated(true);
-      return;
-    }
-
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -66,14 +59,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signIn = async (email: string, password: string) => {
     try {
       clearError();
-      
-      // For demo account, use demo mode
-      if (email === 'demo@chalmers.se' && password === 'demo123') {
-        sessionStorage.setItem('demoMode', 'true');
-        setIsAuthenticated(true);
-        navigate('/');
-        return;
-      }
 
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -104,12 +89,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signOut = async () => {
     try {
-      // Clear demo mode
-      sessionStorage.removeItem('demoMode');
-      setIsAuthenticated(false);
-
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      setIsAuthenticated(false);
+      setUser(null);
+      setSession(null);
       navigate('/login');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign out');
