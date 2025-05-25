@@ -11,8 +11,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
-console.log('Initializing Supabase client...');
-
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
@@ -22,32 +20,41 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 });
 
 // Test the connection and verify data access
-console.log('Testing Supabase connection...');
+const testConnection = async () => {
+  try {
+    const results = await Promise.all([
+      supabase.from('materials').select('count').single(),
+      supabase.from('window_glazing').select('count').single(),
+      supabase.from('constructions').select('count').single(),
+      supabase.from('construction_sets').select('count').single()
+    ]);
 
-Promise.all([
-  supabase.from('materials').select('count').single(),
-  supabase.from('window_glazing').select('count').single(),
-  supabase.from('constructions').select('count').single(),
-  supabase.from('construction_sets').select('count').single()
-])
-.then(([materials, glazing, constructions, sets]) => {
-  console.log('Connection test results:');
-  console.log('Materials:', materials.data?.count ?? 'Error:', materials.error?.message);
-  console.log('Window Glazing:', glazing.data?.count ?? 'Error:', glazing.error?.message);
-  console.log('Constructions:', constructions.data?.count ?? 'Error:', constructions.error?.message);
-  console.log('Construction Sets:', sets.data?.count ?? 'Error:', sets.error?.message);
-  
-  if (materials.error || glazing.error || constructions.error || sets.error) {
-    console.error('Some tables had errors:');
-    if (materials.error) console.error('Materials error:', materials.error);
-    if (glazing.error) console.error('Glazing error:', glazing.error);
-    if (constructions.error) console.error('Constructions error:', constructions.error);
-    if (sets.error) console.error('Sets error:', sets.error);
-  } else {
-    console.log('✅ All tables accessible');
+    const [materials, glazing, constructions, sets] = results;
+    const errors = results.filter(r => r.error);
+
+    if (errors.length > 0) {
+      console.error('❌ Some tables are inaccessible:');
+      errors.forEach(result => {
+        console.error('Error:', result.error?.message);
+      });
+      return false;
+    }
+
+    console.log('✅ Connected to Supabase');
+    console.log('Database status:', {
+      materials: materials.data?.count ?? 0,
+      glazing: glazing.data?.count ?? 0,
+      constructions: constructions.data?.count ?? 0,
+      sets: sets.data?.count ?? 0
+    });
+    return true;
+  } catch (err) {
+    console.error('❌ Failed to connect to Supabase:', err);
+    return false;
   }
-})
-.catch(err => {
-  console.error('❌ Supabase connection failed:', err);
-  console.error('Error details:', err);
+};
+
+// Run connection test
+testConnection().catch(err => {
+  console.error('❌ Unexpected error during connection test:', err);
 });
