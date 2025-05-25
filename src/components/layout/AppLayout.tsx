@@ -84,7 +84,7 @@ const AppLayout = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar 
         position="fixed" 
         sx={{ 
@@ -136,7 +136,6 @@ const AppLayout = () => {
 
       <Drawer
         variant="persistent"
-        anchor="left"
         open={open}
         sx={{
           width: drawerWidth,
@@ -147,8 +146,6 @@ const AppLayout = () => {
             bgcolor: 'background.default',
             borderRight: '1px solid',
             borderColor: 'divider',
-            height: '100%',
-            top: 0,
             pt: 8
           },
         }}
@@ -185,20 +182,17 @@ const AppLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          height: '100vh',
-          overflow: 'auto',
-          pt: 8,
+          p: 3,
           width: `calc(100% - ${open ? drawerWidth : 0}px)`,
           ml: open ? `${drawerWidth}px` : 0,
           transition: theme => theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
+          pt: 8
         }}
       >
-        <Box sx={{ p: 3 }}>
-          <Outlet />
-        </Box>
+        <Outlet />
       </Box>
     </Box>
   );
