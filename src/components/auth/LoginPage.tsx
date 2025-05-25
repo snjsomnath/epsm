@@ -14,7 +14,8 @@ import {
   Link,
   Divider,
   Container,
-  Fab
+  Fab,
+  Stack
 } from '@mui/material';
 import { Building2, BarChart2, Database, FlaskConical, Mail, Lock, Eye, EyeOff, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -59,92 +60,95 @@ const LoginPage = () => {
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
-      {/* Hero Section */}
       <Box sx={{ py: 8 }}>
         <Container maxWidth="lg">
-          <Grid container spacing={4} alignItems="center">
+          <Grid container spacing={4} alignItems="flex-start">
             <Grid item xs={12} md={7}>
-              <Typography variant="h3" gutterBottom sx={{ fontWeight: 'bold' }}>
-                EPSM
-              </Typography>
-              <Typography variant="h4" gutterBottom>
-                EnergyPlus Simulation Manager
-              </Typography>
-              <Typography variant="h6" sx={{ mb: 4, color: 'text.secondary' }}>
-                Developed by Chalmers University of Technology
-                <br />
-                Department of Architecture and Civil Engineering
-                <br />
-                Sustainable Built Environment Research Group
-              </Typography>
+              <Stack spacing={4}>
+                <Box>
+                  <Typography variant="h3" gutterBottom sx={{ fontWeight: 'bold' }}>
+                    EPSM
+                  </Typography>
+                  <Typography variant="h4" gutterBottom>
+                    EnergyPlus Simulation Manager
+                  </Typography>
+                  <Typography variant="h6" sx={{ mb: 4, color: 'text.secondary' }}>
+                    Developed by Chalmers University of Technology
+                    <br />
+                    Department of Architecture and Civil Engineering
+                    <br />
+                    Sustainable Built Environment Research Group
+                  </Typography>
 
-              <Typography variant="body1" paragraph sx={{ color: 'text.secondary' }}>
-                EPSM is a comprehensive platform for building energy modeling and analysis, 
-                designed to streamline the process of running EnergyPlus simulations for 
-                building performance optimization.
-              </Typography>
+                  <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+                    EPSM is a comprehensive platform for building energy modeling and analysis, 
+                    designed to streamline the process of running EnergyPlus simulations for 
+                    building performance optimization.
+                  </Typography>
+                </Box>
 
-              <Grid container spacing={3} sx={{ mt: 4 }}>
-                <Grid item xs={12} sm={6}>
-                  <Card>
-                    <CardContent>
-                      <Building2 size={24} style={{ marginBottom: '8px' }} />
-                      <Typography variant="h6" gutterBottom>
-                        Building Components
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Manage materials, constructions, and building templates with 
-                        environmental impact data.
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6}>
+                    <Card sx={{ height: '100%', minHeight: '200px' }}>
+                      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Building2 size={24} style={{ marginBottom: '16px' }} />
+                        <Typography variant="h6" gutterBottom>
+                          Building Components
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Manage materials, constructions, and building templates with 
+                          environmental impact data.
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Card sx={{ height: '100%', minHeight: '200px' }}>
+                      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <BarChart2 size={24} style={{ marginBottom: '16px' }} />
+                        <Typography variant="h6" gutterBottom>
+                          Energy Analysis
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Run simulations, analyze results, and optimize building 
+                          performance through various scenarios.
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Card sx={{ height: '100%', minHeight: '200px' }}>
+                      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <Database size={24} style={{ marginBottom: '16px' }} />
+                        <Typography variant="h6" gutterBottom>
+                          Data Management
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Centralized database for materials, constructions, and 
+                          simulation results with version control.
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Card sx={{ height: '100%', minHeight: '200px' }}>
+                      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                        <FlaskConical size={24} style={{ marginBottom: '16px' }} />
+                        <Typography variant="h6" gutterBottom>
+                          Scenario Analysis
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Create and compare different retrofit scenarios to optimize 
+                          building performance.
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Card>
-                    <CardContent>
-                      <BarChart2 size={24} style={{ marginBottom: '8px' }} />
-                      <Typography variant="h6" gutterBottom>
-                        Energy Analysis
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Run simulations, analyze results, and optimize building 
-                        performance through various scenarios.
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Card>
-                    <CardContent>
-                      <Database size={24} style={{ marginBottom: '8px' }} />
-                      <Typography variant="h6" gutterBottom>
-                        Data Management
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Centralized database for materials, constructions, and 
-                        simulation results with version control.
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Card>
-                    <CardContent>
-                      <FlaskConical size={24} style={{ marginBottom: '8px' }} />
-                      <Typography variant="h6" gutterBottom>
-                        Scenario Analysis
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Create and compare different retrofit scenarios to optimize 
-                        building performance.
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
+              </Stack>
             </Grid>
 
-            <Grid item xs={12} md={5}>
+            <Grid item xs={12} md={5} sx={{ position: 'sticky', top: 32 }}>
               <Card elevation={4}>
                 <CardContent sx={{ p: 4 }}>
                   <Typography variant="h5" align="center" gutterBottom>
@@ -245,7 +249,6 @@ const LoginPage = () => {
         </Container>
       </Box>
 
-      {/* Back to Top Button */}
       <Fab
         color="primary"
         size="small"
