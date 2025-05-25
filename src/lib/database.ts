@@ -59,22 +59,31 @@ export const createMaterial = async (material: MaterialInsert) => {
 
 export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
   try {
+    // First verify the material exists
+    const { data: existingMaterial, error: checkError } = await supabase
+      .from('materials')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (checkError || !existingMaterial) {
+      throw new Error(`Material with id ${id} not found`);
+    }
+
     // Check if new name already exists (if name is being changed)
     if (material.name) {
-      const { data: existing, error: checkError } = await supabase
+      const { data: existingName, error: nameError } = await supabase
         .from('materials')
         .select('id')
         .eq('name', material.name)
         .neq('id', id)
-        .maybeSingle(); // Use maybeSingle() instead of single()
+        .maybeSingle();
 
-      // Only throw error if it's not a "no rows returned" error
-      if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
+      if (nameError && nameError.code !== 'PGRST116') {
+        throw nameError;
       }
 
-      // If we found an existing material with the same name
-      if (existing) {
+      if (existingName) {
         throw new Error(`Material "${material.name}" already exists`);
       }
     }
@@ -90,19 +99,19 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
       .from('materials')
       .update(updateData)
       .eq('id', id)
-      .select();
+      .select()
+      .single();
     
     if (error) {
       console.error('Error updating material:', error);
       throw error;
     }
 
-    // Check if any rows were updated
-    if (!data || data.length === 0) {
-      throw new Error(`Material with id ${id} not found`);
+    if (!data) {
+      throw new Error('Failed to update material');
     }
 
-    return data[0]; // Return the first (and should be only) updated record
+    return data;
   } catch (err) {
     console.error('Failed to update material:', err);
     throw err;
