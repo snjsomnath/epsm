@@ -14,15 +14,22 @@ import type {
 } from './database.types';
 
 // Materials
+// In src/lib/database.ts
 export const getMaterials = async () => {
+  console.log('Fetching materials...');
   const { data, error } = await supabase
     .from('materials')
     .select('*')
     .order('name');
   
-  if (error) throw error;
+  if (error) {
+    console.error('Error fetching materials:', error);
+    throw error;
+  }
+  console.log('Fetched materials:', data);
   return data;
 };
+
 
 export const createMaterial = async (material: MaterialInsert) => {
   const { data, error } = await supabase
