@@ -64,9 +64,13 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
       .from('materials')
       .select('id')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (checkError || !existingMaterial) {
+    if (checkError) {
+      throw new Error(`Error checking material existence: ${checkError.message}`);
+    }
+
+    if (!existingMaterial) {
       throw new Error(`Material with id ${id} not found`);
     }
 
