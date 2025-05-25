@@ -25,33 +25,14 @@ import {
   Select,
   MenuItem,
   Grid,
-  Chip
+  Chip,
+  Alert,
+  Stack
 } from '@mui/material';
 import { Search, Plus, Edit, Info, X } from 'lucide-react';
-import { mockMaterials } from '../../data/mockData';
-
-type Material = {
-  id: number;
-  name: string;
-  roughness: string;
-  thickness_m: number;
-  conductivity_w_mk: number;
-  density_kg_m3: number;
-  specific_heat_j_kgk: number;
-  thermal_absorptance: number;
-  solar_absorptance: number;
-  visible_absorptance: number;
-  gwp_kgco2e_per_m2: number;
-  cost_sek_per_m2: number;
-  wall_allowed: boolean;
-  roof_allowed: boolean;
-  floor_allowed: boolean;
-  window_layer_allowed: boolean;
-  author: string;
-  date_created: string;
-  date_modified: string;
-  source: string;
-};
+import { useDatabase } from '../../context/DatabaseContext';
+import { useAuth } from '../../context/AuthContext';
+import type { Material, MaterialInsert } from '../../lib/database.types';
 
 interface HeadCell {
   id: keyof Material;
@@ -70,7 +51,7 @@ const headCells: HeadCell[] = [
   { id: 'density_kg_m3', label: 'Density (kg/m³)', numeric: true, disablePadding: false },
   { id: 'gwp_kgco2e_per_m2', label: 'GWP (kg CO₂e/m²)', numeric: true, disablePadding: false },
   { id: 'cost_sek_per_m2', label: 'Cost (SEK/m²)', numeric: true, disablePadding: false },
-  { id: 'author', label: 'Author', numeric: false, disablePadding: false },
+  { id: 'author_id', label: 'Author', numeric: false, disablePadding: false },
 ];
 
 const roughnessOptions = [
@@ -82,16 +63,38 @@ const roughnessOptions = [
   'VerySmooth'
 ];
 
+const defaultMaterial: MaterialInsert = {
+  name: '',
+  roughness: 'MediumRough',
+  thickness_m: 0.1,
+  conductivity_w_mk: 1.0,
+  density_kg_m3: 1000,
+  specific_heat_j_kgk: 1000,
+  thermal_absorptance: 0.9,
+  solar_absorptance: 0.7,
+  visible_absorptance: 0.7,
+  gwp_kgco2e_per_m2: 0,
+  cost_sek_per_m2: 0,
+  wall_allowed: false,
+  roof_allowed: false,
+  floor_allowed: false,
+  window_layer_allowed: false,
+  source: ''
+};
+
 const MaterialsTab = () => {
+  const { user } = useAuth();
+  const { materials, addMaterial, error: dbError } = useDatabase();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Material>('name');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [searchTerm, setSearchTerm] = useState('');
   const [openModal, setOpenModal] = useState(false);
-  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
-  const [materials] = useState<Material[]>(mockMaterials);
-  
+  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState<MaterialInsert>(defaultMaterial);
+
   const handleRequestSort = (property: keyof Material) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
@@ -112,29 +115,52 @@ const MaterialsTab = () => {
     setPage(0);
   };
 
-  const openEditModal = (material: Material) => {
-    setSelectedMaterial(material);
-    setOpenModal(true);
+  const handleInputChange = (field: keyof MaterialInsert, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setFormError(null);
+
+      // Validate required fields
+      if (!formData.name || !formData.thickness_m || !formData.conductivity_w_mk) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      // Add author_id from current user
+      const materialWithAuthor = {
+        ...formData,
+        author_id: user?.id
+      };
+
+      await addMaterial(materialWithAuthor);
+      setOpenModal(false);
+      setFormData(defaultMaterial);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCloseModal = () => {
     setOpenModal(false);
-    setSelectedMaterial(null);
-  };
-
-  const handleAddNew = () => {
-    setSelectedMaterial(null);
-    setOpenModal(true);
+    setFormData(defaultMaterial);
+    setFormError(null);
   };
 
   // Filter and sort materials
   const filteredMaterials = materials.filter(material => 
     material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    material.roughness.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    material.author.toLowerCase().includes(searchTerm.toLowerCase())
+    material.roughness.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const sortedMaterials = filteredMaterials.sort((a, b) => {
+  const sortedMaterials = [...filteredMaterials].sort((a, b) => {
     const aValue = a[orderBy];
     const bValue = b[orderBy];
     
@@ -185,6 +211,12 @@ const MaterialsTab = () => {
         />
       </Box>
 
+      {dbError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {dbError}
+        </Alert>
+      )}
+
       <Paper sx={{ width: '100%', mb: 2 }}>
         <TableContainer>
           <Table sx={{ minWidth: 750 }} size="medium">
@@ -225,9 +257,9 @@ const MaterialsTab = () => {
                   <TableCell align="right">{material.density_kg_m3.toFixed(1)}</TableCell>
                   <TableCell align="right">{material.gwp_kgco2e_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="right">{material.cost_sek_per_m2.toFixed(2)}</TableCell>
-                  <TableCell>{material.author}</TableCell>
+                  <TableCell>{material.author_id}</TableCell>
                   <TableCell align="center">
-                    <IconButton size="small" onClick={() => openEditModal(material)}>
+                    <IconButton size="small">
                       <Edit size={18} />
                     </IconButton>
                     <IconButton size="small">
@@ -261,34 +293,46 @@ const MaterialsTab = () => {
         color="primary" 
         aria-label="add" 
         sx={{ position: 'fixed', bottom: 16, right: 16 }}
-        onClick={handleAddNew}
+        onClick={() => setOpenModal(true)}
       >
         <Plus />
       </Fab>
 
       {/* Material Form Modal */}
-      <Dialog open={openModal} onClose={handleCloseModal} maxWidth="md" fullWidth>
+      <Dialog 
+        open={openModal} 
+        onClose={handleCloseModal} 
+        maxWidth="md" 
+        fullWidth
+      >
         <DialogTitle>
-          {selectedMaterial ? 'Edit Material' : 'Add New Material'}
+          Add New Material
         </DialogTitle>
         <DialogContent>
+          {formError && (
+            <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
+              {formError}
+            </Alert>
+          )}
+
           <Box component="form" sx={{ mt: 2 }}>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Material Name"
-                  variant="outlined"
-                  value={selectedMaterial?.name || ''}
+                  required
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel id="roughness-label">Roughness</InputLabel>
+                <FormControl fullWidth required>
+                  <InputLabel>Roughness</InputLabel>
                   <Select
-                    labelId="roughness-label"
-                    value={selectedMaterial?.roughness || ''}
+                    value={formData.roughness}
                     label="Roughness"
+                    onChange={(e) => handleInputChange('roughness', e.target.value)}
                   >
                     {roughnessOptions.map(option => (
                       <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -300,95 +344,109 @@ const MaterialsTab = () => {
                 <TextField
                   fullWidth
                   label="Thickness (m)"
-                  variant="outlined"
                   type="number"
-                  inputProps={{ step: 0.001 }}
-                  value={selectedMaterial?.thickness_m || ''}
+                  required
+                  inputProps={{ step: 0.001, min: 0 }}
+                  value={formData.thickness_m}
+                  onChange={(e) => handleInputChange('thickness_m', parseFloat(e.target.value))}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Conductivity (W/m·K)"
-                  variant="outlined"
                   type="number"
-                  inputProps={{ step: 0.01 }}
-                  value={selectedMaterial?.conductivity_w_mk || ''}
+                  required
+                  inputProps={{ step: 0.001, min: 0 }}
+                  value={formData.conductivity_w_mk}
+                  onChange={(e) => handleInputChange('conductivity_w_mk', parseFloat(e.target.value))}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Density (kg/m³)"
-                  variant="outlined"
                   type="number"
-                  value={selectedMaterial?.density_kg_m3 || ''}
+                  required
+                  inputProps={{ step: 0.1, min: 0 }}
+                  value={formData.density_kg_m3}
+                  onChange={(e) => handleInputChange('density_kg_m3', parseFloat(e.target.value))}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Specific Heat (J/kg·K)"
-                  variant="outlined"
                   type="number"
-                  value={selectedMaterial?.specific_heat_j_kgk || ''}
+                  required
+                  inputProps={{ step: 0.1, min: 0 }}
+                  value={formData.specific_heat_j_kgk}
+                  onChange={(e) => handleInputChange('specific_heat_j_kgk', parseFloat(e.target.value))}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="GWP (kg CO₂e/m²)"
-                  variant="outlined"
                   type="number"
-                  inputProps={{ step: 0.01 }}
-                  value={selectedMaterial?.gwp_kgco2e_per_m2 || ''}
+                  required
+                  inputProps={{ step: 0.01, min: 0 }}
+                  value={formData.gwp_kgco2e_per_m2}
+                  onChange={(e) => handleInputChange('gwp_kgco2e_per_m2', parseFloat(e.target.value))}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Cost (SEK/m²)"
-                  variant="outlined"
                   type="number"
-                  inputProps={{ step: 0.01 }}
-                  value={selectedMaterial?.cost_sek_per_m2 || ''}
+                  required
+                  inputProps={{ step: 0.01, min: 0 }}
+                  value={formData.cost_sek_per_m2}
+                  onChange={(e) => handleInputChange('cost_sek_per_m2', parseFloat(e.target.value))}
                 />
               </Grid>
+
               <Grid item xs={12}>
                 <Typography variant="subtitle1" gutterBottom>
                   Application
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
+                <Stack direction="row" spacing={1}>
                   <Chip 
                     label="Wall" 
-                    color={selectedMaterial?.wall_allowed ? "primary" : "default"} 
-                    variant={selectedMaterial?.wall_allowed ? "filled" : "outlined"} 
+                    color={formData.wall_allowed ? "primary" : "default"} 
+                    variant={formData.wall_allowed ? "filled" : "outlined"}
+                    onClick={() => handleInputChange('wall_allowed', !formData.wall_allowed)}
                   />
                   <Chip 
                     label="Roof" 
-                    color={selectedMaterial?.roof_allowed ? "primary" : "default"} 
-                    variant={selectedMaterial?.roof_allowed ? "filled" : "outlined"} 
+                    color={formData.roof_allowed ? "primary" : "default"} 
+                    variant={formData.roof_allowed ? "filled" : "outlined"}
+                    onClick={() => handleInputChange('roof_allowed', !formData.roof_allowed)}
                   />
                   <Chip 
                     label="Floor" 
-                    color={selectedMaterial?.floor_allowed ? "primary" : "default"} 
-                    variant={selectedMaterial?.floor_allowed ? "filled" : "outlined"} 
+                    color={formData.floor_allowed ? "primary" : "default"} 
+                    variant={formData.floor_allowed ? "filled" : "outlined"}
+                    onClick={() => handleInputChange('floor_allowed', !formData.floor_allowed)}
                   />
                   <Chip 
                     label="Window" 
-                    color={selectedMaterial?.window_layer_allowed ? "primary" : "default"} 
-                    variant={selectedMaterial?.window_layer_allowed ? "filled" : "outlined"} 
+                    color={formData.window_layer_allowed ? "primary" : "default"} 
+                    variant={formData.window_layer_allowed ? "filled" : "outlined"}
+                    onClick={() => handleInputChange('window_layer_allowed', !formData.window_layer_allowed)}
                   />
-                </Box>
+                </Stack>
               </Grid>
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
                   label="Source"
-                  variant="outlined"
                   multiline
                   rows={2}
-                  value={selectedMaterial?.source || ''}
+                  value={formData.source || ''}
+                  onChange={(e) => handleInputChange('source', e.target.value)}
                 />
               </Grid>
             </Grid>
@@ -396,8 +454,13 @@ const MaterialsTab = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseModal}>Cancel</Button>
-          <Button variant="contained" color="primary">
-            {selectedMaterial ? 'Save Changes' : 'Add Material'}
+          <Button 
+            variant="contained" 
+            color="primary"
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            Add Material
           </Button>
         </DialogActions>
       </Dialog>
