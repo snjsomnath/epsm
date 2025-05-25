@@ -1,0 +1,9 @@
+Django==5.0.2
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+python-dotenv==1.0.1
+gunicorn==21.2.0
+whitenoise==6.6.0
+numpy==1.26.4
+pandas==2.2.1
+eppy==0.5.63
