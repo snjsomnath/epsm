@@ -15,7 +15,8 @@ import {
   Avatar,
   Menu,
   MenuItem,
-  Divider
+  Divider,
+  Container
 } from '@mui/material';
 import { 
   Database,
@@ -32,7 +33,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
-const drawerWidth = 240;
+const drawerWidth = 280;
 
 const navItems = [
   { text: 'Home', icon: <Home size={24} />, path: '/' },
@@ -86,7 +87,7 @@ const AppLayout = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar 
         position="fixed" 
         sx={{ 
@@ -125,6 +126,20 @@ const AppLayout = () => {
             onClick={handleProfileMenuClose}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            PaperProps={{
+              elevation: 0,
+              sx: {
+                overflow: 'visible',
+                filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                mt: 1.5,
+                '& .MuiAvatar-root': {
+                  width: 32,
+                  height: 32,
+                  ml: -0.5,
+                  mr: 1,
+                },
+              },
+            }}
           >
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
@@ -138,69 +153,83 @@ const AppLayout = () => {
 
       <Drawer
         variant="permanent"
-        open={open}
         sx={{
-          width: open ? drawerWidth : 0,
+          width: drawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: open ? drawerWidth : 0,
-            position: 'relative',
-            height: '100%',
-            bgcolor: 'background.default',
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            border: 'none',
             borderRight: '1px solid',
             borderColor: 'divider',
-            transition: theme => theme.transitions.create('width', {
+            bgcolor: 'background.default',
+            transition: theme => theme.transitions.create(['width', 'margin'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
-            overflowX: 'hidden',
+            ...(!open && {
+              width: theme => theme.spacing(7),
+              overflowX: 'hidden',
+            }),
           },
         }}
+        open={open}
       >
         <Toolbar />
-        <List>
-          {navItems.map((item) => (
-            <ListItem key={item.text} disablePadding>
-              <ListItemButton
-                selected={location.pathname === item.path}
-                onClick={() => handleNavigation(item.path, item.disabled)}
-                disabled={item.disabled}
-                sx={{
-                  minHeight: 48,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
+        <Box sx={{ overflow: 'hidden', height: '100%' }}>
+          <List>
+            {navItems.map((item) => (
+              <ListItem key={item.text} disablePadding>
+                <ListItemButton
+                  selected={location.pathname === item.path}
+                  onClick={() => handleNavigation(item.path, item.disabled)}
+                  disabled={item.disabled}
+                  sx={{
+                    minHeight: 48,
+                    px: 2.5,
+                    '&.Mui-selected': {
+                      bgcolor: 'primary.main',
                       color: 'primary.contrastText',
+                      '&:hover': {
+                        bgcolor: 'primary.dark',
+                      },
+                      '& .MuiListItemIcon-root': {
+                        color: 'inherit',
+                      }
                     }
-                  }
-                }}
-              >
-                <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
-                  {item.icon}
-                </ListItemIcon>
-                <ListItemText primary={item.text} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
+                  }}
+                >
+                  <ListItemIcon 
+                    sx={{ 
+                      minWidth: 0, 
+                      mr: open ? 3 : 'auto', 
+                      justifyContent: 'center',
+                      color: 'inherit'
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  {open && <ListItemText primary={item.text} />}
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
       </Drawer>
 
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          height: '100vh',
-          overflow: 'auto',
+          minHeight: '100vh',
           bgcolor: 'background.default',
-          pt: 8,
-          px: 3,
+          p: 3,
+          mt: 8,
         }}
       >
-        <Outlet />
+        <Container maxWidth="xl" sx={{ height: '100%' }}>
+          <Outlet />
+        </Container>
       </Box>
     </Box>
   );
