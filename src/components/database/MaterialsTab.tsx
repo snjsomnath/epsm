@@ -60,7 +60,7 @@ const defaultMaterial: MaterialInsert = {
   roof_allowed: false,
   floor_allowed: false,
   window_layer_allowed: false,
-  author_id: null,
+  author_id: '00000000-0000-0000-0000-000000000000', // Default demo user ID
   source: null
 };
 
@@ -83,7 +83,7 @@ const headCells: HeadCell[] = [
 ];
 
 const MaterialsTab = () => {
-  const { user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { materials, addMaterial, error: dbError } = useDatabase();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -132,14 +132,17 @@ const MaterialsTab = () => {
         throw new Error('Please fill in all required fields');
       }
 
-      if (!user?.id) {
+      if (!isAuthenticated) {
         throw new Error('You must be logged in to add materials');
       }
 
-      // Add author_id from current user
+      // Check for demo mode
+      const isDemoMode = sessionStorage.getItem('demoMode') === 'true';
+      
+      // Add author_id based on mode
       const materialWithAuthor = {
         ...formData,
-        author_id: user.id
+        author_id: isDemoMode ? '00000000-0000-0000-0000-000000000000' : formData.author_id
       };
 
       await addMaterial(materialWithAuthor);
