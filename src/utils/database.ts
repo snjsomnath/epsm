@@ -1,33 +1,15 @@
-// Mock database interface for frontend
-interface UserPreference {
-  userId: number;
-  key: string;
-  value: any;
-}
+// This file is deprecated and should not be used.
+// All database operations should use the Supabase client in src/lib/database.ts
+console.warn('Warning: utils/database.ts is deprecated. Use lib/database.ts instead.');
 
-// In-memory storage for development/demo purposes
-const preferenceStore = new Map<string, any>();
-
-export const getUserPreference = async (userId: number, key: string): Promise<any> => {
-  const storageKey = `${userId}:${key}`;
-  return preferenceStore.get(storageKey) || null;
+export const getUserPreference = async () => {
+  throw new Error('Deprecated: Use Supabase client instead');
 };
 
-export const setUserPreference = async (userId: number, key: string, value: any): Promise<void> => {
-  const storageKey = `${userId}:${key}`;
-  preferenceStore.set(storageKey, value);
+export const setUserPreference = async () => {
+  throw new Error('Deprecated: Use Supabase client instead');
 };
 
-// Initialize any required frontend storage
-const initDatabase = () => {
-  console.log('Frontend storage initialized');
-  return true;
-};
-
-// Clean up any resources if needed
 export const closeDatabase = () => {
-  preferenceStore.clear();
+  throw new Error('Deprecated: Use Supabase client instead');
 };
-
-// Initialize when module is loaded
-initDatabase();
