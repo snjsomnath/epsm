@@ -135,7 +135,7 @@ const AppLayout = () => {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            EnergyPlus Simulation Platform
+            EnergyPlus Simulation Manager
           </Typography>
           
           <IconButton color="inherit" onClick={toggleTheme} sx={{ mr: 2 }}>
