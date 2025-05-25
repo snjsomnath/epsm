@@ -20,7 +20,18 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Test the connection
+// Test the connection and check data access
 supabase.from('materials').select('count').single()
-  .then(() => console.log('✅ Supabase connection successful'))
-  .catch(err => console.error('❌ Supabase connection failed:', err));
+  .then(({ data, error }) => {
+    if (error) {
+      console.error('❌ Supabase connection error:', error.message);
+      console.error('Error details:', error);
+    } else {
+      console.log('✅ Supabase connection successful');
+      console.log('Materials count:', data?.count);
+    }
+  })
+  .catch(err => {
+    console.error('❌ Supabase connection failed:', err);
+    console.error('Error details:', err);
+  });
