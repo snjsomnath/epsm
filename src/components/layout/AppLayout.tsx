@@ -79,12 +79,14 @@ const AppLayout = () => {
     await signOut();
   };
 
-  const handleNavigation = (path: string) => {
-    navigate(path);
+  const handleNavigation = (path: string, disabled?: boolean) => {
+    if (!disabled) {
+      navigate(path);
+    }
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', height: '100vh' }}>
       <AppBar 
         position="fixed" 
         sx={{ 
@@ -135,29 +137,36 @@ const AppLayout = () => {
       </AppBar>
 
       <Drawer
-        variant="persistent"
+        variant="permanent"
         open={open}
         sx={{
-          width: drawerWidth,
+          width: open ? drawerWidth : 0,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
-            boxSizing: 'border-box',
+            width: open ? drawerWidth : 0,
+            position: 'relative',
+            height: '100%',
             bgcolor: 'background.default',
             borderRight: '1px solid',
             borderColor: 'divider',
-            pt: 8
+            transition: theme => theme.transitions.create('width', {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
+            overflowX: 'hidden',
           },
         }}
       >
+        <Toolbar />
         <List>
           {navItems.map((item) => (
             <ListItem key={item.text} disablePadding>
               <ListItemButton
                 selected={location.pathname === item.path}
-                onClick={() => handleNavigation(item.path)}
+                onClick={() => handleNavigation(item.path, item.disabled)}
                 disabled={item.disabled}
                 sx={{
+                  minHeight: 48,
                   '&.Mui-selected': {
                     bgcolor: 'primary.main',
                     color: 'primary.contrastText',
@@ -170,7 +179,9 @@ const AppLayout = () => {
                   }
                 }}
               >
-                <ListItemIcon sx={{ color: 'inherit' }}>{item.icon}</ListItemIcon>
+                <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+                  {item.icon}
+                </ListItemIcon>
                 <ListItemText primary={item.text} />
               </ListItemButton>
             </ListItem>
@@ -182,14 +193,11 @@ const AppLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: `calc(100% - ${open ? drawerWidth : 0}px)`,
-          ml: open ? `${drawerWidth}px` : 0,
-          transition: theme => theme.transitions.create(['margin', 'width'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          pt: 8
+          height: '100vh',
+          overflow: 'auto',
+          bgcolor: 'background.default',
+          pt: 8,
+          px: 3,
         }}
       >
         <Outlet />
