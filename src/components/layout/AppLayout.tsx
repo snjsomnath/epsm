@@ -16,7 +16,8 @@ import {
   Menu,
   MenuItem,
   Divider,
-  Container
+  Container,
+  CircularProgress
 } from '@mui/material';
 import { 
   Database,
@@ -48,16 +49,36 @@ const navItems = [
 const AppLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, user, signOut } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login', { replace: true });
-    }
+    // Add a small delay to prevent flash of content
+    const timer = setTimeout(() => {
+      if (!isAuthenticated) {
+        navigate('/login', { replace: true });
+      }
+      setIsLoading(false);
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [isAuthenticated, navigate]);
+
+  if (isLoading) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh' 
+      }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (!isAuthenticated) {
     return null;
@@ -84,6 +105,12 @@ const AppLayout = () => {
     if (!disabled) {
       navigate(path);
     }
+  };
+
+  // Get user initials for avatar
+  const getInitials = () => {
+    if (!user?.email) return '?';
+    return user.email.charAt(0).toUpperCase();
   };
 
   return (
@@ -116,7 +143,9 @@ const AppLayout = () => {
           </IconButton>
 
           <IconButton onClick={handleProfileMenuOpen} sx={{ p: 0 }}>
-            <Avatar sx={{ bgcolor: 'primary.main' }}>U</Avatar>
+            <Avatar sx={{ bgcolor: 'primary.main' }}>
+              {getInitials()}
+            </Avatar>
           </IconButton>
           
           <Menu
@@ -141,6 +170,17 @@ const AppLayout = () => {
               },
             }}
           >
+            <MenuItem>
+              <Typography variant="body2" color="text.secondary">
+                Signed in as
+              </Typography>
+            </MenuItem>
+            <MenuItem>
+              <Typography variant="body2">
+                {user?.email}
+              </Typography>
+            </MenuItem>
+            <Divider />
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
                 <LogOut size={20} />
