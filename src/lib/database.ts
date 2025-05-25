@@ -83,23 +83,24 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
       date_modified: new Date().toISOString()
     };
 
+    // Remove .single() as it's not needed for update operations
     const { data, error } = await supabase
       .from('materials')
       .update(updateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
     
     if (error) {
       console.error('Error updating material:', error);
       throw error;
     }
 
-    if (!data) {
+    // Check if any rows were updated
+    if (!data || data.length === 0) {
       throw new Error('Material not found');
     }
 
-    return data;
+    return data[0]; // Return the first updated record
   } catch (err) {
     console.error('Failed to update material:', err);
     throw err;
