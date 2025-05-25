@@ -84,7 +84,7 @@ const AppLayout = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <AppBar 
         position="fixed" 
         sx={{ 
@@ -146,11 +146,13 @@ const AppLayout = () => {
             boxSizing: 'border-box',
             bgcolor: 'background.default',
             borderRight: '1px solid',
-            borderColor: 'divider'
+            borderColor: 'divider',
+            height: '100%',
+            top: 0,
+            pt: 8
           },
         }}
       >
-        <Toolbar />
         <List>
           {navItems.map((item) => (
             <ListItem key={item.text} disablePadding>
@@ -183,6 +185,9 @@ const AppLayout = () => {
         component="main"
         sx={{
           flexGrow: 1,
+          height: '100vh',
+          overflow: 'auto',
+          pt: 8,
           width: `calc(100% - ${open ? drawerWidth : 0}px)`,
           ml: open ? `${drawerWidth}px` : 0,
           transition: theme => theme.transitions.create(['margin', 'width'], {
@@ -191,8 +196,7 @@ const AppLayout = () => {
           }),
         }}
       >
-        <Toolbar />
-        <Box sx={{ p: 2 }}>
+        <Box sx={{ p: 3 }}>
           <Outlet />
         </Box>
       </Box>
