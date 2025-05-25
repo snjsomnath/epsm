@@ -58,68 +58,40 @@ export const createMaterial = async (material: MaterialInsert) => {
 };
 
 export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
-  try {
-    // First verify the material exists
-    const { data: existingMaterial, error: checkError } = await supabase
+  // First check if material exists
+  const { data: existing } = await supabase
+    .from('materials')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (!existing) {
+    throw new Error(`Material with id ${id} not found`);
+  }
+
+  // If name is being updated, check if new name already exists
+  if (material.name) {
+    const { data: nameExists } = await supabase
       .from('materials')
       .select('id')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (checkError) {
-      throw new Error(`Error checking material existence: ${checkError.message}`);
-    }
-
-    if (!existingMaterial) {
-      throw new Error(`Material with id ${id} not found`);
-    }
-
-    // Check if new name already exists (if name is being changed)
-    if (material.name) {
-      const { data: existingName, error: nameError } = await supabase
-        .from('materials')
-        .select('id')
-        .eq('name', material.name)
-        .neq('id', id)
-        .maybeSingle();
-
-      if (nameError && nameError.code !== 'PGRST116') {
-        throw nameError;
-      }
-
-      if (existingName) {
-        throw new Error(`Material "${material.name}" already exists`);
-      }
-    }
-
-    // Add updated_at timestamp
-    const updateData = {
-      ...material,
-      date_modified: new Date().toISOString()
-    };
-
-    // Perform the update
-    const { data, error } = await supabase
-      .from('materials')
-      .update(updateData)
-      .eq('id', id)
-      .select()
+      .eq('name', material.name)
+      .neq('id', id)
       .single();
-    
-    if (error) {
-      console.error('Error updating material:', error);
-      throw error;
-    }
 
-    if (!data) {
-      throw new Error('Failed to update material');
+    if (nameExists) {
+      throw new Error(`Material "${material.name}" already exists`);
     }
-
-    return data;
-  } catch (err) {
-    console.error('Failed to update material:', err);
-    throw err;
   }
+
+  const { data, error } = await supabase
+    .from('materials')
+    .update({ ...material, date_modified: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
 };
 
 // Window Glazing
