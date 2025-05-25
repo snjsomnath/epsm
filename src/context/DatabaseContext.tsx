@@ -126,8 +126,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
       await createWindowGlazing(glazing);
       await fetchData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add window glaz
-ing');
+      setError(err instanceof Error ? err.message : 'Failed to add window glazing');
       throw err;
     }
   };
