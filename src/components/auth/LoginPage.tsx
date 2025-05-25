@@ -332,26 +332,6 @@ const LoginPage = () => {
                   >
                     {isSignUp ? 'Create Account' : 'Sign In'}
                   </Button>
-
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    size="large"
-                    onClick={handleDemoLogin}
-                    disabled={loading}
-                    sx={{ 
-                      mt: 2,
-                      py: 1.5,
-                      borderColor: muiTheme.palette.primary.main,
-                      color: muiTheme.palette.primary.main,
-                      '&:hover': {
-                        borderColor: muiTheme.palette.primary.dark,
-                        bgcolor: 'rgba(25, 118, 210, 0.04)',
-                      }
-                    }}
-                  >
-                    Try Demo Account
-                  </Button>
                 </form>
 
                 <Divider sx={{ my: 3 }} />
