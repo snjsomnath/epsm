@@ -36,6 +36,17 @@ export const getMaterials = async () => {
 };
 
 export const createMaterial = async (material: MaterialInsert) => {
+  // First check if material already exists
+  const { data: existing } = await supabase
+    .from('materials')
+    .select('id')
+    .eq('name', material.name)
+    .single();
+
+  if (existing) {
+    throw new Error(`Material "${material.name}" already exists`);
+  }
+
   const { data, error } = await supabase
     .from('materials')
     .insert([material])
@@ -66,6 +77,17 @@ export const getWindowGlazing = async () => {
 };
 
 export const createWindowGlazing = async (glazing: WindowGlazingInsert) => {
+  // Check if glazing already exists
+  const { data: existing } = await supabase
+    .from('window_glazing')
+    .select('id')
+    .eq('name', glazing.name)
+    .single();
+
+  if (existing) {
+    throw new Error(`Window glazing "${glazing.name}" already exists`);
+  }
+
   const { data, error } = await supabase
     .from('window_glazing')
     .insert([glazing])
@@ -107,6 +129,17 @@ export const createConstruction = async (
   layers: Omit<LayerInsert, 'construction_id'>[]
 ) => {
   try {
+    // Check if construction already exists
+    const { data: existing } = await supabase
+      .from('constructions')
+      .select('id')
+      .eq('name', construction.name)
+      .single();
+
+    if (existing) {
+      throw new Error(`Construction "${construction.name}" already exists`);
+    }
+
     const { data: constructionData, error: constructionError } = await supabase
       .from('constructions')
       .insert([construction])
@@ -159,6 +192,17 @@ export const getConstructionSets = async () => {
 };
 
 export const createConstructionSet = async (constructionSet: ConstructionSetInsert) => {
+  // Check if set already exists
+  const { data: existing } = await supabase
+    .from('construction_sets')
+    .select('id')
+    .eq('name', constructionSet.name)
+    .single();
+
+  if (existing) {
+    throw new Error(`Construction set "${constructionSet.name}" already exists`);
+  }
+
   const { data, error } = await supabase
     .from('construction_sets')
     .insert([constructionSet])
