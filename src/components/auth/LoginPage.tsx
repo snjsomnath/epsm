@@ -14,11 +14,9 @@ import {
   Link,
   Divider,
   Container,
-  Stack,
-  Paper,
-  Tooltip
+  Stack
 } from '@mui/material';
-import { Building2, BarChart2, Database, FlaskConical, Mail, Lock, Eye, EyeOff, Sun, Moon } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -41,7 +39,6 @@ const LoginPage = () => {
       setLoading(true);
       setError(null);
       await signIn(formData.email, formData.password);
-      navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {
@@ -70,31 +67,37 @@ const LoginPage = () => {
       minHeight: '100vh',
       display: 'flex',
       bgcolor: 'background.default',
-      py: { xs: 4, md: 8 }
+      color: 'text.primary'
     }}>
-      <Container maxWidth="lg">
-        <Grid container spacing={4} alignItems="center">
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        {/* Header */}
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          mb: 4 
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <img 
+              src={isDarkMode ? '/src/media/chalmers_logo_dark_theme.png' : '/src/media/chalmers_logo_light_theme.png'} 
+              alt="Chalmers Logo" 
+              style={{ height: 40 }}
+            />
+            <Typography variant="h4" color="primary" sx={{ fontWeight: 'bold' }}>
+              EPSM
+            </Typography>
+          </Box>
+          <IconButton onClick={toggleTheme} sx={{ ml: 2 }}>
+            {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
+          </IconButton>
+        </Box>
+
+        <Grid container spacing={6} alignItems="center">
+          {/* Left Content */}
           <Grid item xs={12} md={7}>
             <Stack spacing={4}>
-              {/* Header Section */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <img 
-                  src={isDarkMode ? '/src/media/chalmers_logo_dark_theme.png' : '/src/media/chalmers_logo_light_theme.png'} 
-                  alt="Chalmers Logo" 
-                  style={{ height: 40 }}
-                />
-                <Tooltip title="Toggle theme">
-                  <IconButton onClick={toggleTheme} sx={{ ml: 'auto' }}>
-                    {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
-                  </IconButton>
-                </Tooltip>
-              </Box>
-
               <Box>
-                <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 'bold' }}>
-                  EPSM
-                </Typography>
-                <Typography variant="h4" gutterBottom color="text.primary">
+                <Typography variant="h3" gutterBottom>
                   EnergyPlus Simulation Manager
                 </Typography>
                 <Typography variant="h6" sx={{ mb: 4, color: 'text.secondary' }}>
@@ -103,83 +106,59 @@ const LoginPage = () => {
                   Sustainable Built Environment Research Group
                 </Typography>
 
-                <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+                <Typography variant="body1" sx={{ color: 'text.secondary', mb: 4 }}>
                   EPSM is a comprehensive platform for building energy modeling and analysis, 
                   designed to streamline the process of running EnergyPlus simulations for 
                   building performance optimization.
                 </Typography>
               </Box>
 
-              {/* Features Grid */}
+              {/* Feature Cards */}
               <Grid container spacing={3}>
                 {[
                   {
-                    icon: <Building2 size={24} />,
                     title: 'Building Components',
                     description: 'Manage materials, constructions, and building templates with environmental impact data.'
                   },
                   {
-                    icon: <BarChart2 size={24} />,
                     title: 'Energy Analysis',
                     description: 'Run simulations, analyze results, and optimize building performance through various scenarios.'
                   },
                   {
-                    icon: <Database size={24} />,
                     title: 'Data Management',
                     description: 'Centralized database for materials, constructions, and simulation results with version control.'
-                  },
-                  {
-                    icon: <FlaskConical size={24} />,
-                    title: 'Scenario Analysis',
-                    description: 'Create and compare different retrofit scenarios to optimize building performance.'
                   }
                 ].map((feature, index) => (
-                  <Grid item xs={12} sm={6} key={index}>
-                    <Paper 
-                      elevation={0} 
-                      sx={{ 
-                        p: 3,
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        bgcolor: 'background.paper',
-                        borderRadius: 2,
-                        border: 1,
-                        borderColor: 'divider'
-                      }}
-                    >
-                      <Box sx={{ color: 'primary.main', mb: 2 }}>
-                        {feature.icon}
-                      </Box>
-                      <Typography variant="h6" gutterBottom color="text.primary">
-                        {feature.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {feature.description}
-                      </Typography>
-                    </Paper>
+                  <Grid item xs={12} sm={6} md={4} key={index}>
+                    <Card sx={{ height: '100%', bgcolor: 'background.paper' }}>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          {feature.title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {feature.description}
+                        </Typography>
+                      </CardContent>
+                    </Card>
                   </Grid>
                 ))}
               </Grid>
             </Stack>
           </Grid>
 
-          {/* Login Card */}
+          {/* Sign In Card */}
           <Grid item xs={12} md={5}>
-            <Card 
-              elevation={4}
-              sx={{ 
-                borderRadius: 2,
-                bgcolor: 'background.paper',
-                position: 'sticky',
-                top: 32
-              }}
-            >
+            <Card sx={{ 
+              maxWidth: 480,
+              mx: 'auto',
+              mt: { xs: 4, md: 0 },
+              bgcolor: 'background.paper'
+            }}>
               <CardContent sx={{ p: 4 }}>
-                <Typography variant="h5" align="center" gutterBottom color="text.primary">
+                <Typography variant="h5" align="center" gutterBottom>
                   {isSignUp ? 'Create Account' : 'Sign In'}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 4 }}>
                   Access restricted to Chalmers University staff and researchers
                 </Typography>
 
@@ -256,7 +235,7 @@ const LoginPage = () => {
 
                 <Divider sx={{ my: 3 }} />
 
-                <Typography variant="body2" align="center" color="text.secondary">
+                <Typography variant="body2" align="center">
                   {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
                   <Link
                     component="button"
