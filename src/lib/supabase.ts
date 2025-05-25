@@ -15,13 +15,20 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    storageKey: 'supabase.auth.token',
+    storage: window.localStorage
   }
 });
 
 // Test the connection and verify data access
 const testConnection = async () => {
   try {
+    // First check auth state
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('Auth state:', session ? 'Authenticated' : 'Not authenticated');
+
+    // Test database access
     const results = await Promise.all([
       supabase.from('materials').select('count').single(),
       supabase.from('window_glazing').select('count').single(),
@@ -58,3 +65,11 @@ const testConnection = async () => {
 testConnection().catch(err => {
   console.error('❌ Unexpected error during connection test:', err);
 });
+
+export const getAuthHeaders = () => {
+  const session = supabase.auth.getSession();
+  return {
+    'Authorization': `Bearer ${session?.access_token}`,
+    'Content-Type': 'application/json',
+  };
+};
