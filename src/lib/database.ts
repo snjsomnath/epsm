@@ -1,4 +1,17 @@
 import { supabase } from './supabase';
+import type { Database } from './database.types';
+import type { 
+  Material, 
+  MaterialInsert,
+  WindowGlazing,
+  WindowGlazingInsert,
+  Construction,
+  ConstructionInsert,
+  Layer,
+  LayerInsert,
+  ConstructionSet,
+  ConstructionSetInsert
+} from './database.types';
 
 // Materials
 export const getMaterials = async () => {
@@ -11,10 +24,10 @@ export const getMaterials = async () => {
   return data;
 };
 
-export const createMaterial = async (material: any) => {
+export const createMaterial = async (material: MaterialInsert) => {
   const { data, error } = await supabase
     .from('materials')
-    .insert([{ ...material, author_id: (await supabase.auth.getUser()).data.user?.id }])
+    .insert([material])
     .select()
     .single();
   
@@ -33,10 +46,10 @@ export const getWindowGlazing = async () => {
   return data;
 };
 
-export const createWindowGlazing = async (glazing: any) => {
+export const createWindowGlazing = async (glazing: WindowGlazingInsert) => {
   const { data, error } = await supabase
     .from('window_glazing')
-    .insert([{ ...glazing, author_id: (await supabase.auth.getUser()).data.user?.id }])
+    .insert([glazing])
     .select()
     .single();
   
@@ -62,15 +75,20 @@ export const getConstructions = async () => {
   return data;
 };
 
-export const createConstruction = async (construction: any, layers: any[]) => {
+export const createConstruction = async (
+  construction: ConstructionInsert, 
+  layers: Omit<LayerInsert, 'construction_id'>[]
+) => {
+  // Start a transaction
   const { data: constructionData, error: constructionError } = await supabase
     .from('constructions')
-    .insert([{ ...construction, author_id: (await supabase.auth.getUser()).data.user?.id }])
+    .insert([construction])
     .select()
     .single();
   
   if (constructionError) throw constructionError;
 
+  // Add layers with the new construction ID
   const layersWithConstructionId = layers.map(layer => ({
     ...layer,
     construction_id: constructionData.id
@@ -102,13 +120,56 @@ export const getConstructionSets = async () => {
   return data;
 };
 
-export const createConstructionSet = async (constructionSet: any) => {
+export const createConstructionSet = async (constructionSet: ConstructionSetInsert) => {
   const { data, error } = await supabase
     .from('construction_sets')
-    .insert([{ ...constructionSet, author_id: (await supabase.auth.getUser()).data.user?.id }])
+    .insert([constructionSet])
     .select()
     .single();
   
   if (error) throw error;
   return data;
+};
+
+// Realtime subscriptions
+export const subscribeToMaterials = (callback: (materials: Material[]) => void) => {
+  return supabase
+    .channel('materials_changes')
+    .on('postgres_changes', { 
+      event: '*', 
+      schema: 'public', 
+      table: 'materials' 
+    }, async () => {
+      const { data } = await getMaterials();
+      if (data) callback(data);
+    })
+    .subscribe();
+};
+
+export const subscribeToConstructions = (callback: (constructions: Construction[]) => void) => {
+  return supabase
+    .channel('constructions_changes')
+    .on('postgres_changes', { 
+      event: '*', 
+      schema: 'public', 
+      table: 'constructions' 
+    }, async () => {
+      const { data } = await getConstructions();
+      if (data) callback(data);
+    })
+    .subscribe();
+};
+
+export const subscribeToConstructionSets = (callback: (sets: ConstructionSet[]) => void) => {
+  return supabase
+    .channel('construction_sets_changes')
+    .on('postgres_changes', { 
+      event: '*', 
+      schema: 'public', 
+      table: 'construction_sets' 
+    }, async () => {
+      const { data } = await getConstructionSets();
+      if (data) callback(data);
+    })
+    .subscribe();
 };

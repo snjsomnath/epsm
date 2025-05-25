@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 import { 
   getMaterials, 
   getWindowGlazing, 
@@ -8,21 +8,35 @@ import {
   createMaterial,
   createWindowGlazing,
   createConstruction,
-  createConstructionSet
+  createConstructionSet,
+  subscribeToMaterials,
+  subscribeToConstructions,
+  subscribeToConstructionSets
 } from '../lib/database';
+import type { 
+  Material, 
+  WindowGlazing, 
+  Construction, 
+  ConstructionSet,
+  MaterialInsert,
+  WindowGlazingInsert,
+  ConstructionInsert,
+  LayerInsert,
+  ConstructionSetInsert
+} from '../lib/database.types';
 
 interface DatabaseContextType {
-  materials: any[];
-  windowGlazing: any[];
-  constructions: any[];
-  constructionSets: any[];
+  materials: Material[];
+  windowGlazing: WindowGlazing[];
+  constructions: Construction[];
+  constructionSets: ConstructionSet[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
-  addMaterial: (material: any) => Promise<void>;
-  addWindowGlazing: (glazing: any) => Promise<void>;
-  addConstruction: (construction: any, layers: any[]) => Promise<void>;
-  addConstructionSet: (constructionSet: any) => Promise<void>;
+  addMaterial: (material: MaterialInsert) => Promise<void>;
+  addWindowGlazing: (glazing: WindowGlazingInsert) => Promise<void>;
+  addConstruction: (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
+  addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType>({
@@ -46,14 +60,17 @@ interface DatabaseProviderProps {
 }
 
 export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
-  const [materials, setMaterials] = useState<any[]>([]);
-  const [windowGlazing, setWindowGlazing] = useState<any[]>([]);
-  const [constructions, setConstructions] = useState<any[]>([]);
-  const [constructionSets, setConstructionSets] = useState<any[]>([]);
+  const { isAuthenticated } = useAuth();
+  const [materials, setMaterials] = useState<Material[]>([]);
+  const [windowGlazing, setWindowGlazing] = useState<WindowGlazing[]>([]);
+  const [constructions, setConstructions] = useState<Construction[]>([]);
+  const [constructionSets, setConstructionSets] = useState<ConstructionSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
+    if (!isAuthenticated) return;
+
     try {
       setLoading(true);
       setError(null);
@@ -81,7 +98,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
-  const addMaterial = async (material: any) => {
+  const addMaterial = async (material: MaterialInsert) => {
     try {
       await createMaterial(material);
       await fetchData();
@@ -91,7 +108,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
-  const addWindowGlazing = async (glazing: any) => {
+  const addWindowGlazing = async (glazing: WindowGlazingInsert) => {
     try {
       await createWindowGlazing(glazing);
       await fetchData();
@@ -101,7 +118,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
-  const addConstruction = async (construction: any, layers: any[]) => {
+  const addConstruction = async (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => {
     try {
       await createConstruction(construction, layers);
       await fetchData();
@@ -111,7 +128,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
-  const addConstructionSet = async (constructionSet: any) => {
+  const addConstructionSet = async (constructionSet: ConstructionSetInsert) => {
     try {
       await createConstructionSet(constructionSet);
       await fetchData();
@@ -122,36 +139,21 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
   };
 
   useEffect(() => {
-    fetchData();
+    if (isAuthenticated) {
+      fetchData();
 
-    // Set up real-time subscriptions
-    const materialsSubscription = supabase
-      .channel('materials_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, fetchData)
-      .subscribe();
+      // Set up realtime subscriptions
+      const materialsSubscription = subscribeToMaterials(setMaterials);
+      const constructionsSubscription = subscribeToConstructions(setConstructions);
+      const setsSubscription = subscribeToConstructionSets(setConstructionSets);
 
-    const glazingSubscription = supabase
-      .channel('glazing_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'window_glazing' }, fetchData)
-      .subscribe();
-
-    const constructionsSubscription = supabase
-      .channel('constructions_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'constructions' }, fetchData)
-      .subscribe();
-
-    const setsSubscription = supabase
-      .channel('sets_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'construction_sets' }, fetchData)
-      .subscribe();
-
-    return () => {
-      materialsSubscription.unsubscribe();
-      glazingSubscription.unsubscribe();
-      constructionsSubscription.unsubscribe();
-      setsSubscription.unsubscribe();
-    };
-  }, []);
+      return () => {
+        materialsSubscription.unsubscribe();
+        constructionsSubscription.unsubscribe();
+        setsSubscription.unsubscribe();
+      };
+    }
+  }, [isAuthenticated]);
 
   const value = {
     materials,
