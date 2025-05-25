@@ -26,16 +26,16 @@ import {
   MenuItem,
   Grid,
   Alert,
-  Tooltip,
   Stack,
+  Tooltip,
+  Card,
+  CardContent,
   Chip,
+  Divider,
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  Divider,
-  Card,
-  CardContent
+  ListItemSecondaryAction
 } from '@mui/material';
 import { Search, Plus, Edit, Info, X, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
@@ -48,6 +48,9 @@ interface Layer {
   itemId: string;
   name: string;
   thickness: number;
+  conductivity: number;
+  gwp: number;
+  cost: number;
 }
 
 const defaultConstruction: ConstructionInsert = {
@@ -70,6 +73,7 @@ const ConstructionsTab = () => {
   const [formData, setFormData] = useState<ConstructionInsert>(defaultConstruction);
   const [layers, setLayers] = useState<Layer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [componentSearchTerm, setComponentSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Construction>('name');
@@ -84,19 +88,61 @@ const ConstructionsTab = () => {
     }));
   };
 
+  const calculateUValue = (layers: Layer[]): number => {
+    if (layers.length === 0) return 0;
+    
+    // Calculate thermal resistance (R = thickness / conductivity)
+    const totalR = layers.reduce((sum, layer) => {
+      return sum + (layer.thickness / layer.conductivity);
+    }, 0);
+
+    // U-value is 1/R
+    return totalR > 0 ? 1 / totalR : 0;
+  };
+
+  const calculateTotalGWP = (layers: Layer[]): number => {
+    return layers.reduce((sum, layer) => sum + layer.gwp, 0);
+  };
+
+  const calculateTotalCost = (layers: Layer[]): number => {
+    return layers.reduce((sum, layer) => sum + layer.cost, 0);
+  };
+
   const handleAddLayer = (type: 'material' | 'glazing', item: Material | WindowGlazing) => {
     const newLayer: Layer = {
       id: crypto.randomUUID(),
       type,
       itemId: item.id,
       name: item.name,
-      thickness: item.thickness_m
+      thickness: item.thickness_m,
+      conductivity: item.conductivity_w_mk,
+      gwp: item.gwp_kgco2e_per_m2,
+      cost: item.cost_sek_per_m2
     };
-    setLayers([...layers, newLayer]);
+    
+    const updatedLayers = [...layers, newLayer];
+    setLayers(updatedLayers);
+
+    // Update construction values
+    setFormData(prev => ({
+      ...prev,
+      u_value_w_m2k: calculateUValue(updatedLayers),
+      gwp_kgco2e_per_m2: calculateTotalGWP(updatedLayers),
+      cost_sek_per_m2: calculateTotalCost(updatedLayers)
+    }));
   };
 
   const handleRemoveLayer = (layerId: string) => {
-    setLayers(layers.filter(layer => layer.id !== layerId));
+    const updatedLayers = layers.filter(layer => layer.id !== layerId);
+    setLayers(updatedLayers);
+
+    // Update construction values
+    setFormData(prev => ({
+      ...prev,
+      u_value_w_m2k: calculateUValue(updatedLayers),
+      gwp_kgco2e_per_m2: calculateTotalGWP(updatedLayers),
+      cost_sek_per_m2: calculateTotalCost(updatedLayers)
+    }));
   };
 
   const handleMoveLayer = (index: number, direction: 'up' | 'down') => {
@@ -144,6 +190,24 @@ const ConstructionsTab = () => {
       setLoading(false);
     }
   };
+
+  // Filter available components based on search
+  const filteredMaterials = materials
+    .filter(material => {
+      const matchesSearch = material.name.toLowerCase().includes(componentSearchTerm.toLowerCase());
+      const matchesType = {
+        wall: material.wall_allowed,
+        roof: material.roof_allowed,
+        floor: material.floor_allowed,
+        window: material.window_layer_allowed
+      }[formData.element_type];
+      return matchesSearch && matchesType;
+    });
+
+  const filteredGlazing = windowGlazing
+    .filter(glazing => 
+      glazing.name.toLowerCase().includes(componentSearchTerm.toLowerCase())
+    );
 
   // Table handlers
   const handleChangePage = (event: unknown, newPage: number) => {
@@ -388,7 +452,7 @@ const ConstructionsTab = () => {
                       required
                       inputProps={{ step: 0.001, min: 0 }}
                       value={formData.u_value_w_m2k}
-                      onChange={(e) => handleInputChange('u_value_w_m2k', Number(e.target.value))}
+                      disabled
                     />
                     <TextField
                       fullWidth
@@ -397,7 +461,7 @@ const ConstructionsTab = () => {
                       required
                       inputProps={{ step: 0.1, min: 0 }}
                       value={formData.gwp_kgco2e_per_m2}
-                      onChange={(e) => handleInputChange('gwp_kgco2e_per_m2', Number(e.target.value))}
+                      disabled
                     />
                     <TextField
                       fullWidth
@@ -406,7 +470,7 @@ const ConstructionsTab = () => {
                       required
                       inputProps={{ step: 0.1, min: 0 }}
                       value={formData.cost_sek_per_m2}
-                      onChange={(e) => handleInputChange('cost_sek_per_m2', Number(e.target.value))}
+                      disabled
                     />
                   </Stack>
                 </CardContent>
@@ -424,12 +488,35 @@ const ConstructionsTab = () => {
                     Click to add components to the construction layers
                   </Typography>
 
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Search components..."
+                    value={componentSearchTerm}
+                    onChange={(e) => setComponentSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search size={16} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: componentSearchTerm && (
+                        <InputAdornment position="end">
+                          <IconButton size="small" onClick={() => setComponentSearchTerm('')}>
+                            <X size={14} />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ mb: 2 }}
+                  />
+
                   <Divider sx={{ my: 2 }} />
                   
                   {formData.is_window ? (
                     <Stack spacing={1}>
                       <Typography variant="subtitle2">Window Glazing</Typography>
-                      {windowGlazing.map((glazing) => (
+                      {filteredGlazing.map((glazing) => (
                         <Chip
                           key={glazing.id}
                           label={glazing.name}
@@ -443,25 +530,16 @@ const ConstructionsTab = () => {
                   ) : (
                     <Stack spacing={1}>
                       <Typography variant="subtitle2">Materials</Typography>
-                      {materials
-                        .filter(material => {
-                          switch (formData.element_type) {
-                            case 'wall': return material.wall_allowed;
-                            case 'roof': return material.roof_allowed;
-                            case 'floor': return material.floor_allowed;
-                            default: return false;
-                          }
-                        })
-                        .map((material) => (
-                          <Chip
-                            key={material.id}
-                            label={material.name}
-                            onClick={() => handleAddLayer('material', material)}
-                            color="primary"
-                            variant="outlined"
-                            sx={{ cursor: 'pointer' }}
-                          />
-                        ))}
+                      {filteredMaterials.map((material) => (
+                        <Chip
+                          key={material.id}
+                          label={material.name}
+                          onClick={() => handleAddLayer('material', material)}
+                          color="primary"
+                          variant="outlined"
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
                     </Stack>
                   )}
                 </CardContent>
