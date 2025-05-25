@@ -260,10 +260,10 @@ const ConstructionSetsTab = () => {
               <Box sx={{ mt: 'auto', p: 1.5, pt: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ width: 24, height: 24, mr: 1, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-                    {set.author.charAt(0)}
+                    {(set.author || '?').charAt(0)}
                   </Avatar>
                   <Typography variant="caption" color="text.secondary">
-                    {set.author}
+                    {set.author || 'Unknown Author'}
                   </Typography>
                 </Box>
                 
