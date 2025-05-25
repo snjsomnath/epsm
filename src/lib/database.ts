@@ -58,29 +58,52 @@ export const createMaterial = async (material: MaterialInsert) => {
 };
 
 export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
-  // Check if new name already exists (if name is being changed)
-  if (material.name) {
-    const { data: existing } = await supabase
-      .from('materials')
-      .select('id')
-      .eq('name', material.name)
-      .neq('id', id)
-      .single();
+  try {
+    // Check if new name already exists (if name is being changed)
+    if (material.name) {
+      const { data: existing, error: checkError } = await supabase
+        .from('materials')
+        .select('id')
+        .eq('name', material.name)
+        .neq('id', id)
+        .single();
 
-    if (existing) {
-      throw new Error(`Material "${material.name}" already exists`);
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
+        throw checkError;
+      }
+
+      if (existing) {
+        throw new Error(`Material "${material.name}" already exists`);
+      }
     }
-  }
 
-  const { data, error } = await supabase
-    .from('materials')
-    .update(material)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+    // Add updated_at timestamp
+    const updateData = {
+      ...material,
+      date_modified: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('materials')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error updating material:', error);
+      throw error;
+    }
+
+    if (!data) {
+      throw new Error('Material not found');
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Failed to update material:', err);
+    throw err;
+  }
 };
 
 // Window Glazing
