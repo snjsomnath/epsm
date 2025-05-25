@@ -34,7 +34,25 @@ import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { Material, MaterialInsert } from '../../lib/database.types';
 
-// ... (keep all the existing interfaces and constants)
+const defaultMaterial: MaterialInsert = {
+  name: '',
+  roughness: 'MediumRough',
+  thickness_m: 0,
+  conductivity_w_mk: 0,
+  density_kg_m3: 0,
+  specific_heat_j_kgk: 0,
+  thermal_absorptance: 0.9,
+  solar_absorptance: 0.7,
+  visible_absorptance: 0.7,
+  gwp_kgco2e_per_m2: 0,
+  cost_sek_per_m2: 0,
+  wall_allowed: false,
+  roof_allowed: false,
+  floor_allowed: false,
+  window_layer_allowed: false,
+  author_id: null,
+  source: null
+};
 
 const MaterialsTab = () => {
   const { user } = useAuth();
