@@ -60,7 +60,7 @@ const defaultMaterial: MaterialInsert = {
   roof_allowed: false,
   floor_allowed: false,
   window_layer_allowed: false,
-  author_id: '00000000-0000-0000-0000-000000000000', // Default demo user ID
+  author_id: '00000000-0000-0000-0000-000000000000',
   source: null
 };
 
@@ -84,7 +84,7 @@ const headCells: HeadCell[] = [
 
 const MaterialsTab = () => {
   const { isAuthenticated } = useAuth();
-  const { materials, addMaterial, error: dbError } = useDatabase();
+  const { materials, addMaterial, updateMaterial, error: dbError } = useDatabase();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Material>('name');
@@ -94,6 +94,7 @@ const MaterialsTab = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<MaterialInsert>(defaultMaterial);
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
 
   const handleRequestSort = (property: keyof Material) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -122,37 +123,49 @@ const MaterialsTab = () => {
     }));
   };
 
+  const handleEdit = (material: Material) => {
+    setEditingMaterial(material);
+    setFormData({
+      ...material,
+      author_id: material.author_id || '00000000-0000-0000-0000-000000000000'
+    });
+    setOpenModal(true);
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
       setFormError(null);
 
-      // Validate required fields
       if (!formData.name || !formData.thickness_m || !formData.conductivity_w_mk) {
         throw new Error('Please fill in all required fields');
       }
 
       if (!isAuthenticated) {
-        throw new Error('You must be logged in to add materials');
+        throw new Error('You must be logged in to manage materials');
       }
 
-      // Check for demo mode
-      const isDemoMode = sessionStorage.getItem('demoMode') === 'true';
-      
-      // Add author_id based on mode
-      const materialWithAuthor = {
-        ...formData,
-        author_id: isDemoMode ? '00000000-0000-0000-0000-000000000000' : formData.author_id
-      };
+      if (editingMaterial) {
+        await updateMaterial(editingMaterial.id, formData);
+      } else {
+        await addMaterial(formData);
+      }
 
-      await addMaterial(materialWithAuthor);
       setOpenModal(false);
       setFormData(defaultMaterial);
+      setEditingMaterial(null);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseModal = () => {
+    setOpenModal(false);
+    setFormData(defaultMaterial);
+    setEditingMaterial(null);
+    setFormError(null);
   };
 
   // Filter and sort materials
@@ -270,7 +283,7 @@ const MaterialsTab = () => {
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip title="Edit">
-                      <IconButton size="small">
+                      <IconButton size="small" onClick={() => handleEdit(material)}>
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
@@ -314,12 +327,12 @@ const MaterialsTab = () => {
 
       <Dialog 
         open={openModal} 
-        onClose={() => setOpenModal(false)}
+        onClose={handleCloseModal}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle>
-          Add New Material
+          {editingMaterial ? 'Edit Material' : 'Add New Material'}
         </DialogTitle>
         <DialogContent>
           {formError && (
@@ -462,13 +475,13 @@ const MaterialsTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenModal(false)}>Cancel</Button>
+          <Button onClick={handleCloseModal}>Cancel</Button>
           <Button 
             variant="contained" 
             onClick={handleSubmit}
             disabled={loading}
           >
-            Add Material
+            {editingMaterial ? 'Save Changes' : 'Add Material'}
           </Button>
         </DialogActions>
       </Dialog>

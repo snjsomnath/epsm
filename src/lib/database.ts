@@ -57,6 +57,32 @@ export const createMaterial = async (material: MaterialInsert) => {
   return data;
 };
 
+export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
+  // Check if new name already exists (if name is being changed)
+  if (material.name) {
+    const { data: existing } = await supabase
+      .from('materials')
+      .select('id')
+      .eq('name', material.name)
+      .neq('id', id)
+      .single();
+
+    if (existing) {
+      throw new Error(`Material "${material.name}" already exists`);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('materials')
+    .update(material)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
 // Window Glazing
 export const getWindowGlazing = async () => {
   try {
