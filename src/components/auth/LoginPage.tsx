@@ -14,16 +14,18 @@ import {
   Link,
   Divider,
   Container,
-  Fab,
   Stack,
-  Paper
+  Paper,
+  Tooltip
 } from '@mui/material';
-import { Building2, BarChart2, Database, FlaskConical, Mail, Lock, Eye, EyeOff, ChevronUp } from 'lucide-react';
+import { Building2, BarChart2, Database, FlaskConical, Mail, Lock, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
   const { signIn } = useAuth();
+  const { isDarkMode, toggleTheme } = useTheme();
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -51,50 +53,43 @@ const LoginPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleDemoLogin = () => {
-    navigate('/');
-  };
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const features = [
-    {
-      icon: <Building2 size={24} />,
-      title: 'Building Components',
-      description: 'Manage materials, constructions, and building templates with environmental impact data.'
-    },
-    {
-      icon: <BarChart2 size={24} />,
-      title: 'Energy Analysis',
-      description: 'Run simulations, analyze results, and optimize building performance through various scenarios.'
-    },
-    {
-      icon: <Database size={24} />,
-      title: 'Data Management',
-      description: 'Centralized database for materials, constructions, and simulation results with version control.'
-    },
-    {
-      icon: <FlaskConical size={24} />,
-      title: 'Scenario Analysis',
-      description: 'Create and compare different retrofit scenarios to optimize building performance.'
+  const handleDemoLogin = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      await signIn('demo@chalmers.se', 'demo123');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   return (
     <Box sx={{ 
       minHeight: '100vh',
       display: 'flex',
-      alignItems: 'center',
       bgcolor: 'background.default',
-      py: 4
+      py: { xs: 4, md: 8 }
     }}>
       <Container maxWidth="lg">
         <Grid container spacing={4} alignItems="center">
           <Grid item xs={12} md={7}>
             <Stack spacing={4}>
               {/* Header Section */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <img 
+                  src={isDarkMode ? '/src/media/chalmers_logo_dark_theme.png' : '/src/media/chalmers_logo_light_theme.png'} 
+                  alt="Chalmers Logo" 
+                  style={{ height: 40 }}
+                />
+                <Tooltip title="Toggle theme">
+                  <IconButton onClick={toggleTheme} sx={{ ml: 'auto' }}>
+                    {isDarkMode ? <Sun size={24} /> : <Moon size={24} />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
               <Box>
                 <Typography variant="h3" gutterBottom color="primary" sx={{ fontWeight: 'bold' }}>
                   EPSM
@@ -103,8 +98,6 @@ const LoginPage = () => {
                   EnergyPlus Simulation Manager
                 </Typography>
                 <Typography variant="h6" sx={{ mb: 4, color: 'text.secondary' }}>
-                  Developed by Chalmers University of Technology
-                  <br />
                   Department of Architecture and Civil Engineering
                   <br />
                   Sustainable Built Environment Research Group
@@ -119,7 +112,28 @@ const LoginPage = () => {
 
               {/* Features Grid */}
               <Grid container spacing={3}>
-                {features.map((feature, index) => (
+                {[
+                  {
+                    icon: <Building2 size={24} />,
+                    title: 'Building Components',
+                    description: 'Manage materials, constructions, and building templates with environmental impact data.'
+                  },
+                  {
+                    icon: <BarChart2 size={24} />,
+                    title: 'Energy Analysis',
+                    description: 'Run simulations, analyze results, and optimize building performance through various scenarios.'
+                  },
+                  {
+                    icon: <Database size={24} />,
+                    title: 'Data Management',
+                    description: 'Centralized database for materials, constructions, and simulation results with version control.'
+                  },
+                  {
+                    icon: <FlaskConical size={24} />,
+                    title: 'Scenario Analysis',
+                    description: 'Create and compare different retrofit scenarios to optimize building performance.'
+                  }
+                ].map((feature, index) => (
                   <Grid item xs={12} sm={6} key={index}>
                     <Paper 
                       elevation={0} 
@@ -156,7 +170,9 @@ const LoginPage = () => {
               elevation={4}
               sx={{ 
                 borderRadius: 2,
-                bgcolor: 'background.paper'
+                bgcolor: 'background.paper',
+                position: 'sticky',
+                top: 32
               }}
             >
               <CardContent sx={{ p: 4 }}>
@@ -256,20 +272,6 @@ const LoginPage = () => {
           </Grid>
         </Grid>
       </Container>
-
-      <Fab
-        color="primary"
-        size="small"
-        onClick={scrollToTop}
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-          opacity: 0.9,
-        }}
-      >
-        <ChevronUp />
-      </Fab>
     </Box>
   );
 };
