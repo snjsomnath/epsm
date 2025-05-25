@@ -20,6 +20,7 @@ import {
 import { Mail, Lock, Eye, EyeOff, Sun, Moon, Building2, BarChart2, Database } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import AuthTest from './AuthTest';
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -372,6 +373,8 @@ const LoginPage = () => {
                     {isSignUp ? 'Sign In' : 'Create Account'}
                   </Link>
                 </Typography>
+
+                <AuthTest />
               </CardContent>
             </Card>
           </Grid>
