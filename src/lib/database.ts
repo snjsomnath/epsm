@@ -66,12 +66,14 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
         .select('id')
         .eq('name', material.name)
         .neq('id', id)
-        .single();
+        .maybeSingle(); // Use maybeSingle() instead of single()
 
-      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 means no rows returned
+      // Only throw error if it's not a "no rows returned" error
+      if (checkError && checkError.code !== 'PGRST116') {
         throw checkError;
       }
 
+      // If we found an existing material with the same name
       if (existing) {
         throw new Error(`Material "${material.name}" already exists`);
       }
@@ -83,7 +85,7 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
       date_modified: new Date().toISOString()
     };
 
-    // Remove .single() as it's not needed for update operations
+    // Perform the update
     const { data, error } = await supabase
       .from('materials')
       .update(updateData)
@@ -97,10 +99,10 @@ export const updateMaterial = async (id: string, material: Partial<MaterialInser
 
     // Check if any rows were updated
     if (!data || data.length === 0) {
-      throw new Error('Material not found');
+      throw new Error(`Material with id ${id} not found`);
     }
 
-    return data[0]; // Return the first updated record
+    return data[0]; // Return the first (and should be only) updated record
   } catch (err) {
     console.error('Failed to update material:', err);
     throw err;
