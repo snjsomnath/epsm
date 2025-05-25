@@ -65,11 +65,11 @@ const defaultConstructionSet: ConstructionSetInsert = {
   roof_construction_id: null,
   floor_construction_id: null,
   window_construction_id: null,
-  author_id: '00000000-0000-0000-0000-000000000000'
+  author_id: null
 };
 
 const ConstructionSetsTab = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { constructions, constructionSets, addConstructionSet, error: dbError } = useDatabase();
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
@@ -97,11 +97,14 @@ const ConstructionSetsTab = () => {
         throw new Error('Please provide a name for the construction set');
       }
 
-      if (!isAuthenticated) {
+      if (!isAuthenticated || !user) {
         throw new Error('You must be logged in to add construction sets');
       }
 
-      await addConstructionSet(formData);
+      await addConstructionSet({
+        ...formData,
+        author_id: user.id
+      });
       setOpenDialog(false);
       setFormData(defaultConstructionSet);
     } catch (err) {
@@ -260,10 +263,10 @@ const ConstructionSetsTab = () => {
               <Box sx={{ mt: 'auto', p: 1.5, pt: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Avatar sx={{ width: 24, height: 24, mr: 1, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-                    {(set.author || '?').charAt(0)}
+                    {user?.email?.charAt(0).toUpperCase() || '?'}
                   </Avatar>
                   <Typography variant="caption" color="text.secondary">
-                    {set.author || 'Unknown Author'}
+                    {user?.email || 'Unknown Author'}
                   </Typography>
                 </Box>
                 
