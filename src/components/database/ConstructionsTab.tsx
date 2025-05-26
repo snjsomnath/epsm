@@ -333,10 +333,12 @@ const ConstructionsTab = () => {
   // Details Dialog
   const ConstructionDetailsDialog = ({ 
     construction, 
-    onClose 
+    onClose,
+    onEdit
   }: { 
     construction: Construction, 
-    onClose: () => void 
+    onClose: () => void,
+    onEdit: (construction: Construction) => void
   }) => {
     return (
       <Dialog
@@ -531,6 +533,15 @@ const ConstructionsTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
+          <Button 
+            onClick={() => {
+              onEdit(construction);
+              onClose();
+            }} 
+            color="primary"
+          >
+            Edit Construction
+          </Button>
           <Button onClick={onClose}>
             Close
           </Button>
@@ -936,6 +947,7 @@ const ConstructionsTab = () => {
             setSelectedConstruction(null);
             setDetailsDialogOpen(false);
           }}
+          onEdit={handleEdit}
         />
       )}
     </Box>
