@@ -93,21 +93,15 @@ const ConstructionsTab = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Construction>('name');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
+  const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [selectedConstruction, setSelectedConstruction] = useState<Construction | null>(null);
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [editingConstruction, setEditingConstruction] = useState<Construction | null>(null);
 
   const handleEdit = (construction: Construction) => {
     setEditingConstruction(construction);
     setFormData({
-      name: construction.name,
-      element_type: construction.element_type,
-      is_window: construction.is_window,
-      u_value_w_m2k: construction.u_value_w_m2k,
-      gwp_kgco2e_per_m2: construction.gwp_kgco2e_per_m2,
-      cost_sek_per_m2: construction.cost_sek_per_m2,
-      author_id: construction.author_id || '00000000-0000-0000-0000-000000000000',
-      source: construction.source
+      ...construction,
+      author_id: construction.author_id || '00000000-0000-0000-0000-000000000000'
     });
 
     // Convert existing layers to the Layer format
@@ -124,6 +118,11 @@ const ConstructionsTab = () => {
 
     setLayers(constructionLayers);
     setOpenModal(true);
+  };
+
+  const handleViewDetails = (construction: Construction) => {
+    setSelectedConstruction(construction);
+    setOpenDetailsDialog(true);
   };
 
   const handleSubmit = async () => {
@@ -333,18 +332,15 @@ const ConstructionsTab = () => {
   // Details Dialog
   const ConstructionDetailsDialog = ({ 
     construction, 
+    onEdit,
     onClose 
   }: { 
     construction: Construction, 
+    onEdit: () => void,
     onClose: () => void 
   }) => {
     return (
-      <Dialog
-        open={true}
-        onClose={onClose}
-        maxWidth="md"
-        fullWidth
-      >
+      <>
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">{construction.name}</Typography>
@@ -531,11 +527,14 @@ const ConstructionsTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
+          <Button onClick={onEdit} color="primary">
+            Edit Construction
+          </Button>
           <Button onClick={onClose}>
             Close
           </Button>
         </DialogActions>
-      </Dialog>
+      </>
     );
   };
 
@@ -663,10 +662,7 @@ const ConstructionsTab = () => {
                     <Tooltip title="Details">
                       <IconButton 
                         size="small"
-                        onClick={() => {
-                          setSelectedConstruction(construction);
-                          setDetailsDialogOpen(true);
-                        }}
+                        onClick={() => handleViewDetails(construction)}
                       >
                         <Info size={18} />
                       </IconButton>
@@ -704,9 +700,25 @@ const ConstructionsTab = () => {
         <Plus />
       </Fab>
 
+      {/* Details Dialog */}
+      <Dialog
+        open={openDetailsDialog}
+        onClose={() => setOpenDetailsDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedConstruction && (
+          <ConstructionDetailsDialog
+            construction={selectedConstruction}
+            onEdit={() => setOpenModal(true)}
+            onClose={() => setOpenDetailsDialog(false)}
+          />
+        )}
+      </Dialog>
+
       {/* Add/Edit Construction Dialog */}
-      <Dialog 
-        open={openModal} 
+      <Dialog
+        open={openModal}
         onClose={handleCloseModal}
         maxWidth="lg"
         fullWidth
@@ -927,17 +939,6 @@ const ConstructionsTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Details Dialog */}
-      {selectedConstruction && (
-        <ConstructionDetailsDialog
-          construction={selectedConstruction}
-          onClose={() => {
-            setSelectedConstruction(null);
-            setDetailsDialogOpen(false);
-          }}
-        />
-      )}
     </Box>
   );
 };
