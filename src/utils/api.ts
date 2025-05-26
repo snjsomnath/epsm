@@ -1,4 +1,3 @@
-// This file should be used for non-database API calls only
 const API_BASE_URL = 'http://localhost:8000/api';
 
 interface ApiResponse<T> {
@@ -14,6 +13,20 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   const data = await response.json();
   return { data };
 }
+
+// IDF parsing operations
+export const parseIdfFiles = async (files: File[]) => {
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('files', file);
+  });
+
+  const response = await fetch(`${API_BASE_URL}/parse/idf/`, {
+    method: 'POST',
+    body: formData,
+  });
+  return handleResponse(response);
+};
 
 // Simulation operations
 export const runBaselineSimulation = async (files: FormData) => {

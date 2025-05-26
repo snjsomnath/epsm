@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { 
   Box, 
-  Tabs, 
-  Tab, 
   Typography, 
   Paper,
-  Card,
+  Grid, 
+  Card, 
   CardContent,
-  Grid,
   Button,
+  Divider,
+  Alert,
   LinearProgress,
-  Chip
+  Stack
 } from '@mui/material';
-import { Upload, BarChart, Building, Wind } from 'lucide-react';
-import UploadArea from './UploadArea';
+import { Play, FileText, Wind } from 'lucide-react';
+import IdfUploadArea from './IdfUploadArea';
+import EpwUploadArea from './EpwUploadArea';
 import AssignmentsTab from './AssignmentsTab';
 import InfiltrationTab from './InfiltrationTab';
 import ResultsTab from './ResultsTab';
+import { parseIdfFiles } from '../../utils/api';
 
 const BaselinePage = () => {
   const [tabIndex, setTabIndex] = useState(0);
@@ -25,18 +27,34 @@ const BaselinePage = () => {
   const [simulating, setSimulating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [simulationComplete, setSimulationComplete] = useState(false);
+  const [parsedData, setParsedData] = useState<any>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [parsing, setParsing] = useState(false);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabIndex(newValue);
+  const handleIdfFilesUploaded = async (files: File[]) => {
+    setUploadedFiles(files);
+    if (files.length > 0) {
+      try {
+        setParsing(true);
+        setParseError(null);
+        const data = await parseIdfFiles(files);
+        setParsedData(data);
+      } catch (err) {
+        setParseError(err instanceof Error ? err.message : 'Failed to parse IDF files');
+      } finally {
+        setParsing(false);
+      }
+    } else {
+      setParsedData(null);
+    }
   };
 
-  const handleFilesUploaded = (files: File[], weatherFile: File | null) => {
-    setUploadedFiles(files);
-    setWeatherFile(weatherFile);
+  const handleWeatherFileUploaded = (file: File | null) => {
+    setWeatherFile(file);
   };
 
   const handleRunSimulation = () => {
-    if (uploadedFiles.length === 0 || !weatherFile) return;
+    if (!weatherFile || uploadedFiles.length === 0) return;
     
     setSimulating(true);
     setProgress(0);
@@ -59,69 +77,68 @@ const BaselinePage = () => {
   };
 
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box>
       <Typography variant="h4" gutterBottom>
         Baseline Modeling
       </Typography>
       <Typography variant="body1" paragraph>
-        Upload baseline IDF and weather files, run simulations, and extract components.
+        Upload baseline IDF files, analyze components, and run simulations.
       </Typography>
       
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%' }}>
+        {/* File Upload Section */}
+        <Grid item xs={12} md={6}>
+          <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                <Upload size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
-                Upload Files
+                <FileText size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
+                IDF Files
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Upload one or more IDF files to analyze their components
               </Typography>
               
-              <UploadArea onFilesUploaded={handleFilesUploaded} />
+              <IdfUploadArea onFilesUploaded={handleIdfFilesUploaded} />
               
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Uploaded Files:
-                </Typography>
-                {uploadedFiles.length > 0 ? (
-                  <Box sx={{ mb: 2 }}>
-                    {uploadedFiles.map((file, index) => (
-                      <Chip 
-                        key={index} 
-                        label={file.name} 
-                        variant="outlined" 
-                        size="small" 
-                        sx={{ mr: 1, mb: 1 }} 
-                      />
-                    ))}
-                  </Box>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No IDF files uploaded
+              {parsing && (
+                <Box sx={{ mt: 2 }}>
+                  <LinearProgress />
+                  <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
+                    Parsing IDF files...
                   </Typography>
-                )}
-                
-                <Typography variant="subtitle2" gutterBottom>
-                  Weather File:
-                </Typography>
-                {weatherFile ? (
-                  <Chip 
-                    label={weatherFile.name} 
-                    variant="outlined" 
-                    color="primary"
-                    size="small" 
-                  />
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No weather file uploaded
-                  </Typography>
-                )}
-              </Box>
+                </Box>
+              )}
+              
+              {parseError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {parseError}
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Simulation Setup Section */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <Wind size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
+                Weather Data
+              </Typography>
+              <Typography variant="body2" color="text.secondary" paragraph>
+                Upload an EPW file to define the simulation weather conditions
+              </Typography>
+              
+              <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} />
+              
+              <Divider sx={{ my: 3 }} />
               
               <Button 
                 variant="contained" 
                 color="primary" 
                 fullWidth 
-                sx={{ mt: 3 }}
+                startIcon={<Play size={18} />}
                 disabled={uploadedFiles.length === 0 || !weatherFile || simulating}
                 onClick={handleRunSimulation}
               >
@@ -139,57 +156,58 @@ const BaselinePage = () => {
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ width: '100%', mb: 2 }}>
-            <Tabs
-              value={tabIndex}
-              onChange={handleTabChange}
-              indicatorColor="primary"
-              textColor="primary"
-              variant="fullWidth"
-            >
-              <Tab 
-                icon={<Building size={18} />} 
-                iconPosition="start" 
-                label="Assignments" 
-                disabled={uploadedFiles.length === 0}
-              />
-              <Tab 
-                icon={<Wind size={18} />} 
-                iconPosition="start" 
-                label="Infiltration" 
-                disabled={uploadedFiles.length === 0}
-              />
-              <Tab 
-                icon={<BarChart size={18} />} 
-                iconPosition="start" 
-                label="Results" 
-                disabled={!simulationComplete}
-              />
-            </Tabs>
-          </Paper>
 
-          <Box sx={{ mt: 3 }}>
-            {tabIndex === 0 && (
-              <AssignmentsTab 
-                uploadedFiles={uploadedFiles}
-                simulationComplete={simulationComplete}
-              />
-            )}
-            {tabIndex === 1 && (
-              <InfiltrationTab 
-                uploadedFiles={uploadedFiles}
-                simulationComplete={simulationComplete}
-              />
-            )}
-            {tabIndex === 2 && (
-              <ResultsTab 
-                uploadedFiles={uploadedFiles}
-                simulationComplete={simulationComplete}
-              />
-            )}
-          </Box>
+        {/* Results Section */}
+        <Grid item xs={12}>
+          <Paper>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Stack direction="row" spacing={2} sx={{ p: 2 }}>
+                <Button 
+                  variant={tabIndex === 0 ? "contained" : "outlined"}
+                  onClick={() => setTabIndex(0)}
+                  disabled={uploadedFiles.length === 0}
+                >
+                  Component Analysis
+                </Button>
+                <Button 
+                  variant={tabIndex === 1 ? "contained" : "outlined"}
+                  onClick={() => setTabIndex(1)}
+                  disabled={!simulationComplete}
+                >
+                  Infiltration Settings
+                </Button>
+                <Button 
+                  variant={tabIndex === 2 ? "contained" : "outlined"}
+                  onClick={() => setTabIndex(2)}
+                  disabled={!simulationComplete}
+                >
+                  Simulation Results
+                </Button>
+              </Stack>
+            </Box>
+
+            <Box sx={{ p: 3 }}>
+              {tabIndex === 0 && (
+                <AssignmentsTab 
+                  uploadedFiles={uploadedFiles}
+                  simulationComplete={simulationComplete}
+                  parsedData={parsedData}
+                />
+              )}
+              {tabIndex === 1 && (
+                <InfiltrationTab 
+                  uploadedFiles={uploadedFiles}
+                  simulationComplete={simulationComplete}
+                />
+              )}
+              {tabIndex === 2 && (
+                <ResultsTab 
+                  uploadedFiles={uploadedFiles}
+                  simulationComplete={simulationComplete}
+                />
+              )}
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
     </Box>
