@@ -16,12 +16,10 @@ import { Play, FileText, Wind } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import EpwUploadArea from './EpwUploadArea';
 import AssignmentsTab from './AssignmentsTab';
-import InfiltrationTab from './InfiltrationTab';
 import ResultsTab from './ResultsTab';
 import { parseIdfFiles } from '../../utils/api';
 
 const BaselinePage = () => {
-  const [tabIndex, setTabIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [simulating, setSimulating] = useState(false);
@@ -76,7 +74,6 @@ const BaselinePage = () => {
           setTimeout(() => {
             setSimulationComplete(true);
             setSimulating(false);
-            setTabIndex(2); // Switch to Results tab
           }, 500);
         }
         return newProgress;
@@ -94,8 +91,8 @@ const BaselinePage = () => {
       </Typography>
       
       <Grid container spacing={3}>
-        {/* File Upload Section */}
-        <Grid item xs={12} md={6}>
+        {/* IDF Upload Section */}
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -126,96 +123,84 @@ const BaselinePage = () => {
           </Card>
         </Grid>
 
-        {/* Weather File Section */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardContent>
+        {/* Component Analysis Section */}
+        {uploadedFiles.length > 0 && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
-                <Wind size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
-                Weather Data
+                Component Analysis
               </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Upload an EPW file to define the simulation weather conditions
-              </Typography>
-              
-              <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} />
-              
-              <Divider sx={{ my: 3 }} />
-              
-              <Button 
-                variant="contained" 
-                color="primary" 
-                fullWidth 
-                startIcon={<Play size={18} />}
-                disabled={uploadedFiles.length === 0 || !weatherFile || simulating}
-                onClick={handleRunSimulation}
-              >
-                Run Baseline Simulation
-              </Button>
-              
-              {simulating && (
-                <Box sx={{ width: '100%', mt: 2 }}>
-                  <LinearProgress variant="determinate" value={progress} />
-                  <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
-                    Simulating... {Math.round(progress)}%
-                  </Typography>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+              <AssignmentsTab 
+                uploadedFiles={uploadedFiles}
+                parsedData={parsedData}
+              />
+            </Paper>
+          </Grid>
+        )}
+
+        {/* Simulation Setup Section */}
+        {uploadedFiles.length > 0 && parsedData && (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  <Wind size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
+                  Simulation Setup
+                </Typography>
+                
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Weather Data
+                    </Typography>
+                    <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} />
+                  </Grid>
+                  
+                  <Grid item xs={12} md={6}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Simulation Control
+                    </Typography>
+                    <Button 
+                      variant="contained" 
+                      color="primary" 
+                      fullWidth 
+                      startIcon={<Play size={18} />}
+                      disabled={!weatherFile || simulating}
+                      onClick={handleRunSimulation}
+                      sx={{ mt: 2 }}
+                    >
+                      Run Baseline Simulation
+                    </Button>
+                    
+                    {simulating && (
+                      <Box sx={{ width: '100%', mt: 2 }}>
+                        <LinearProgress variant="determinate" value={progress} />
+                        <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
+                          Simulating... {Math.round(progress)}%
+                        </Typography>
+                      </Box>
+                    )}
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
 
         {/* Results Section */}
-        <Grid item xs={12}>
-          <Paper>
-            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-              <Stack direction="row" spacing={2} sx={{ p: 2 }}>
-                <Button 
-                  variant={tabIndex === 0 ? "contained" : "outlined"}
-                  onClick={() => setTabIndex(0)}
-                  disabled={uploadedFiles.length === 0}
-                >
-                  Component Analysis
-                </Button>
-                <Button 
-                  variant={tabIndex === 1 ? "contained" : "outlined"}
-                  onClick={() => setTabIndex(1)}
-                  disabled={!simulationComplete}
-                >
-                  Infiltration Settings
-                </Button>
-                <Button 
-                  variant={tabIndex === 2 ? "contained" : "outlined"}
-                  onClick={() => setTabIndex(2)}
-                  disabled={!simulationComplete}
-                >
-                  Simulation Results
-                </Button>
-              </Stack>
-            </Box>
-
-            <Box sx={{ p: 3 }}>
-              {tabIndex === 0 && (
-                <AssignmentsTab 
-                  uploadedFiles={uploadedFiles}
-                  parsedData={parsedData}
-                />
-              )}
-              {tabIndex === 1 && (
-                <InfiltrationTab 
-                  uploadedFiles={uploadedFiles}
-                  simulationComplete={simulationComplete}
-                />
-              )}
-              {tabIndex === 2 && (
-                <ResultsTab 
-                  uploadedFiles={uploadedFiles}
-                  simulationComplete={simulationComplete}
-                />
-              )}
-            </Box>
-          </Paper>
-        </Grid>
+        {simulationComplete && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Simulation Results
+              </Typography>
+              <ResultsTab 
+                uploadedFiles={uploadedFiles}
+                simulationComplete={simulationComplete}
+              />
+            </Paper>
+          </Grid>
+        )}
       </Grid>
     </Box>
   );
