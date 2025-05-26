@@ -35,8 +35,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  LinearProgress
+  ListItemSecondaryAction
 } from '@mui/material';
 import { 
   Search, 
@@ -57,310 +56,604 @@ import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { Construction, ConstructionInsert, Material, WindowGlazing, LayerInsert } from '../../lib/database.types';
 
+interface Layer {
+  id: string;
+  type: 'material' | 'glazing';
+  itemId: string;
+  name: string;
+  thickness: number;
+  conductivity: number;
+  gwp: number;
+  cost: number;
+}
+
+const defaultConstruction: ConstructionInsert = {
+  name: '',
+  element_type: 'wall',
+  is_window: false,
+  u_value_w_m2k: 0,
+  gwp_kgco2e_per_m2: 0,
+  cost_sek_per_m2: 0,
+  author_id: '00000000-0000-0000-0000-000000000000',
+  source: null
+};
+
 const ConstructionsTab = () => {
+  const { isAuthenticated } = useAuth();
+  const { constructions, materials, windowGlazing, addConstruction, error: dbError } = useDatabase();
+  const [openModal, setOpenModal] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState<ConstructionInsert>(defaultConstruction);
+  const [layers, setLayers] = useState<Layer[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [componentSearchTerm, setComponentSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [orderBy, setOrderBy] = useState<keyof Construction>('name');
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedConstruction, setSelectedConstruction] = useState<Construction | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
-  const handleViewDetails = (construction: Construction) => {
-    setSelectedConstruction(construction);
-    setDetailsDialogOpen(true);
+  const handleInputChange = (field: keyof ConstructionInsert, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+      is_window: field === 'element_type' && value === 'window'
+    }));
   };
 
-  const calculateThermalProperties = (layers: any[]) => {
-    const Rsi = 0.13;
-    const Rse = 0.04;
+  const calculateUValue = (layers: Layer[]): number => {
+    if (layers.length === 0) return 0;
+    
+    const Rsi = 0.13; // Interior surface resistance
+    const Rse = 0.04; // Exterior surface resistance
+    
+    // Calculate thermal resistance of each layer (R = thickness / conductivity)
+    const layerResistances = layers.map(layer => layer.thickness / layer.conductivity);
+    
+    // Total thermal resistance including surface resistances
+    const totalR = layerResistances.reduce((sum, r) => sum + r, 0) + Rsi + Rse;
+    
+    // U-value is reciprocal of total thermal resistance
+    return 1 / totalR;
+  };
 
-    const layerResistances = layers.map(layer => {
-      const thickness = layer.material?.thickness_m || layer.glazing?.thickness_m || 0;
-      const conductivity = layer.material?.conductivity_w_mk || layer.glazing?.conductivity_w_mk || 1;
-      return thickness / conductivity;
+  const calculateTotalGWP = (layers: Layer[]): number => {
+    return layers.reduce((sum, layer) => sum + layer.gwp, 0);
+  };
+
+  const calculateTotalCost = (layers: Layer[]): number => {
+    return layers.reduce((sum, layer) => sum + layer.cost, 0);
+  };
+
+  const handleAddLayer = (type: 'material' | 'glazing', item: Material | WindowGlazing) => {
+    const newLayer: Layer = {
+      id: crypto.randomUUID(),
+      type,
+      itemId: item.id,
+      name: item.name,
+      thickness: item.thickness_m,
+      conductivity: item.conductivity_w_mk,
+      gwp: item.gwp_kgco2e_per_m2,
+      cost: item.cost_sek_per_m2
+    };
+    
+    const updatedLayers = [...layers, newLayer];
+    setLayers(updatedLayers);
+
+    // Update construction values
+    setFormData(prev => ({
+      ...prev,
+      u_value_w_m2k: calculateUValue(updatedLayers),
+      gwp_kgco2e_per_m2: calculateTotalGWP(updatedLayers),
+      cost_sek_per_m2: calculateTotalCost(updatedLayers)
+    }));
+  };
+
+  const handleRemoveLayer = (layerId: string) => {
+    const updatedLayers = layers.filter(layer => layer.id !== layerId);
+    setLayers(updatedLayers);
+
+    // Update construction values
+    setFormData(prev => ({
+      ...prev,
+      u_value_w_m2k: calculateUValue(updatedLayers),
+      gwp_kgco2e_per_m2: calculateTotalGWP(updatedLayers),
+      cost_sek_per_m2: calculateTotalCost(updatedLayers)
+    }));
+  };
+
+  const handleMoveLayer = (index: number, direction: 'up' | 'down') => {
+    const newLayers = [...layers];
+    if (direction === 'up' && index > 0) {
+      [newLayers[index], newLayers[index - 1]] = [newLayers[index - 1], newLayers[index]];
+    } else if (direction === 'down' && index < layers.length - 1) {
+      [newLayers[index], newLayers[index + 1]] = [newLayers[index + 1], newLayers[index]];
+    }
+    setLayers(newLayers);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setFormError(null);
+
+      if (!formData.name || !formData.element_type) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      if (layers.length === 0) {
+        throw new Error('Please add at least one layer');
+      }
+
+      if (!isAuthenticated) {
+        throw new Error('You must be logged in to add constructions');
+      }
+
+      // Convert layers to LayerInsert format
+      const layerInserts: Omit<LayerInsert, 'construction_id'>[] = layers.map((layer, index) => ({
+        material_id: layer.type === 'material' ? layer.itemId : null,
+        glazing_id: layer.type === 'glazing' ? layer.itemId : null,
+        layer_order: index + 1,
+        is_glazing_layer: layer.type === 'glazing'
+      }));
+
+      await addConstruction(formData, layerInserts);
+      setOpenModal(false);
+      setFormData(defaultConstruction);
+      setLayers([]);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter available components based on search
+  const filteredMaterials = materials
+    .filter(material => {
+      const matchesSearch = material.name.toLowerCase().includes(componentSearchTerm.toLowerCase());
+      const matchesType = {
+        wall: material.wall_allowed,
+        roof: material.roof_allowed,
+        floor: material.floor_allowed,
+        window: material.window_layer_allowed
+      }[formData.element_type];
+      return matchesSearch && matchesType;
     });
 
-    const totalR = layerResistances.reduce((sum, r) => sum + r, 0) + Rsi + Rse;
-
-    const uValue = 1 / totalR;
-
-    return {
-      uValue,
-      totalR,
-      layerResistances,
-      surfaceResistances: { Rsi, Rse }
-    };
-  };
-
-  const calculateEnvironmentalImpact = (layers: any[]) => {
-    return layers.reduce((total, layer) => {
-      const gwp = layer.material?.gwp_kgco2e_per_m2 || layer.glazing?.gwp_kgco2e_per_m2 || 0;
-      return total + gwp;
-    }, 0);
-  };
-
-  const calculateTotalCost = (layers: any[]) => {
-    return layers.reduce((total, layer) => {
-      const cost = layer.material?.cost_sek_per_m2 || layer.glazing?.cost_sek_per_m2 || 0;
-      return total + cost;
-    }, 0);
-  };
-
-  const LayerCard = ({ layer, index, totalLayers }: { layer: any, index: number, totalLayers: number }) => {
-    const isGlazing = layer.is_glazing_layer;
-    const item = isGlazing ? layer.glazing : layer.material;
-    const thickness = item?.thickness_m || 0;
-    const conductivity = item?.conductivity_w_mk || 0;
-    const resistance = thickness / conductivity;
-
-    return (
-      <Card variant="outlined" sx={{ mb: 1 }}>
-        <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="subtitle2">
-                Layer {index + 1}: {item?.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {thickness.toFixed(4)} m, {conductivity.toFixed(3)} W/m·K
-              </Typography>
-            </Box>
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="subtitle2">
-                R = {resistance.toFixed(3)} m²K/W
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {((1/totalLayers) * 100).toFixed(1)}% of total thickness
-              </Typography>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
+  const filteredGlazing = windowGlazing
+    .filter(glazing => 
+      glazing.name.toLowerCase().includes(componentSearchTerm.toLowerCase())
     );
+
+  // Table handlers
+  const handleChangePage = (event: unknown, newPage: number) => {
+    setPage(newPage);
   };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  const handleRequestSort = (property: keyof Construction) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
+
+  // Filter and sort constructions
+  const filteredConstructions = constructions.filter(construction => 
+    construction.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    construction.element_type.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const sortedConstructions = [...filteredConstructions].sort((a, b) => {
+    const aValue = a[orderBy];
+    const bValue = b[orderBy];
+    
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return order === 'asc' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+    
+    return order === 'asc' 
+      ? (aValue as number) - (bValue as number)
+      : (bValue as number) - (aValue as number);
+  });
+
+  const paginatedConstructions = sortedConstructions.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
 
   return (
     <Box>
-      <Dialog
-        open={detailsDialogOpen}
-        onClose={() => setDetailsDialogOpen(false)}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, alignItems: 'center' }}>
+        <Typography variant="h5">Constructions</Typography>
+        <TextField
+          placeholder="Search constructions..."
+          variant="outlined"
+          size="small"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search size={20} />
+              </InputAdornment>
+            ),
+            endAdornment: searchTerm && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchTerm('')}>
+                  <X size={16} />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+          sx={{ width: '300px' }}
+        />
+      </Box>
+
+      {dbError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {dbError}
+        </Alert>
+      )}
+
+      <Paper sx={{ width: '100%', mb: 2 }}>
+        <TableContainer>
+          <Table sx={{ minWidth: 750 }} size="medium">
+            <TableHead>
+              <TableRow>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'name'}
+                    direction={orderBy === 'name' ? order : 'asc'}
+                    onClick={() => handleRequestSort('name')}
+                  >
+                    Name
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={orderBy === 'element_type'}
+                    direction={orderBy === 'element_type' ? order : 'asc'}
+                    onClick={() => handleRequestSort('element_type')}
+                  >
+                    Type
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={orderBy === 'u_value_w_m2k'}
+                    direction={orderBy === 'u_value_w_m2k' ? order : 'asc'}
+                    onClick={() => handleRequestSort('u_value_w_m2k')}
+                  >
+                    U-Value (W/m²K)
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">Layers</TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={orderBy === 'gwp_kgco2e_per_m2'}
+                    direction={orderBy === 'gwp_kgco2e_per_m2' ? order : 'asc'}
+                    onClick={() => handleRequestSort('gwp_kgco2e_per_m2')}
+                  >
+                    GWP (kg CO₂e/m²)
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">
+                  <TableSortLabel
+                    active={orderBy === 'cost_sek_per_m2'}
+                    direction={orderBy === 'cost_sek_per_m2' ? order : 'asc'}
+                    onClick={() => handleRequestSort('cost_sek_per_m2')}
+                  >
+                    Cost (SEK/m²)
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="center">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {paginatedConstructions.map((construction) => (
+                <TableRow
+                  hover
+                  key={construction.id}
+                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                >
+                  <TableCell>{construction.name}</TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={construction.element_type} 
+                      color={
+                        construction.element_type === 'wall' ? 'primary' :
+                        construction.element_type === 'roof' ? 'secondary' :
+                        construction.element_type === 'floor' ? 'success' :
+                        construction.element_type === 'window' ? 'info' : 'default'
+                      }
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell align="right">{construction.u_value_w_m2k.toFixed(3)}</TableCell>
+                  <TableCell align="right">{construction.layers?.length || 0}</TableCell>
+                  <TableCell align="right">{construction.gwp_kgco2e_per_m2.toFixed(2)}</TableCell>
+                  <TableCell align="right">{construction.cost_sek_per_m2.toFixed(2)}</TableCell>
+                  <TableCell align="center">
+                    <Tooltip title="Edit">
+                      <IconButton size="small">
+                        <Edit size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Details">
+                      <IconButton 
+                        size="small"
+                        onClick={() => {
+                          setSelectedConstruction(construction);
+                          setDetailsDialogOpen(true);
+                        }}
+                      >
+                        <Info size={18} />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {paginatedConstructions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    No constructions found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <TablePagination
+          rowsPerPageOptions={[5, 10, 25]}
+          component="div"
+          count={filteredConstructions.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </Paper>
+
+      <Fab 
+        color="primary" 
+        aria-label="add" 
+        onClick={() => setOpenModal(true)}
+        sx={{ position: 'fixed', bottom: 16, right: 16 }}
+      >
+        <Plus />
+      </Fab>
+
+      {/* Add/Edit Construction Dialog */}
+      <Dialog 
+        open={openModal} 
+        onClose={() => setOpenModal(false)}
         maxWidth="lg"
         fullWidth
       >
-        {selectedConstruction && (
-          <>
-            <DialogTitle>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="h6">{selectedConstruction.name}</Typography>
-                  <Chip 
-                    label={selectedConstruction.element_type} 
-                    color="primary" 
+        <DialogTitle>
+          Add New Construction
+        </DialogTitle>
+        <DialogContent>
+          {formError && (
+            <Alert severity="error" sx={{ mb: 2, mt: 2 }}>
+              {formError}
+            </Alert>
+          )}
+          
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            {/* Basic Info */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Basic Information
+                  </Typography>
+                  <Stack spacing={2}>
+                    <TextField
+                      fullWidth
+                      label="Construction Name"
+                      required
+                      value={formData.name}
+                      onChange={(e) => handleInputChange('name', e.target.value)}
+                    />
+                    <FormControl fullWidth required>
+                      <InputLabel>Element Type</InputLabel>
+                      <Select
+                        value={formData.element_type}
+                        label="Element Type"
+                        onChange={(e) => handleInputChange('element_type', e.target.value)}
+                      >
+                        <MenuItem value="wall">Wall</MenuItem>
+                        <MenuItem value="roof">Roof</MenuItem>
+                        <MenuItem value="floor">Floor</MenuItem>
+                        <MenuItem value="window">Window</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      fullWidth
+                      label="U-Value (W/m²K)"
+                      type="number"
+                      required
+                      inputProps={{ step: 0.001, min: 0 }}
+                      value={formData.u_value_w_m2k}
+                      disabled
+                    />
+                    <TextField
+                      fullWidth
+                      label="GWP (kg CO₂e/m²)"
+                      type="number"
+                      required
+                      inputProps={{ step: 0.1, min: 0 }}
+                      value={formData.gwp_kgco2e_per_m2}
+                      disabled
+                    />
+                    <TextField
+                      fullWidth
+                      label="Cost (SEK/m²)"
+                      type="number"
+                      required
+                      inputProps={{ step: 0.1, min: 0 }}
+                      value={formData.cost_sek_per_m2}
+                      disabled
+                    />
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Layer Selection */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Available Components
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    Click to add components to the construction layers
+                  </Typography>
+
+                  <TextField
+                    fullWidth
                     size="small"
+                    placeholder="Search components..."
+                    value={componentSearchTerm}
+                    onChange={(e) => setComponentSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search size={16} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: componentSearchTerm && (
+                        <InputAdornment position="end">
+                          <IconButton size="small" onClick={() => setComponentSearchTerm('')}>
+                            <X size={14} />
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{ mb: 2 }}
                   />
-                </Box>
-                <Chip 
-                  label={`ID: ${selectedConstruction.id}`} 
-                  variant="outlined" 
-                  size="small"
-                />
-              </Box>
-            </DialogTitle>
-            <DialogContent>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-                        <Layers size={24} />
-                        <Typography variant="h6">Layer Composition</Typography>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" paragraph>
-                        Layers are listed from outside to inside. Each layer contributes to the overall thermal performance.
-                      </Typography>
-                      {selectedConstruction.layers?.map((layer, index) => (
-                        <LayerCard 
-                          key={layer.id} 
-                          layer={layer} 
-                          index={index}
-                          totalLayers={selectedConstruction.layers?.length || 1}
+
+                  <Divider sx={{ my: 2 }} />
+                  
+                  {formData.is_window ? (
+                    <Stack spacing={1}>
+                      <Typography variant="subtitle2">Window Glazing</Typography>
+                      {filteredGlazing.map((glazing) => (
+                        <Chip
+                          key={glazing.id}
+                          label={glazing.name}
+                          onClick={() => handleAddLayer('glazing', glazing)}
+                          color="primary"
+                          variant="outlined"
+                          sx={{ cursor: 'pointer' }}
                         />
                       ))}
-                    </CardContent>
-                  </Card>
-                </Grid>
+                    </Stack>
+                  ) : (
+                    <Stack spacing={1}>
+                      <Typography variant="subtitle2">Materials</Typography>
+                      {filteredMaterials.map((material) => (
+                        <Chip
+                          key={material.id}
+                          label={material.name}
+                          onClick={() => handleAddLayer('material', material)}
+                          color="primary"
+                          variant="outlined"
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
 
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-                        <Calculator size={24} />
-                        <Typography variant="h6">Thermal Performance</Typography>
-                      </Box>
-                      
-                      {(() => {
-                        const thermal = calculateThermalProperties(selectedConstruction.layers || []);
-                        return (
-                          <>
-                            <Box sx={{ mb: 3 }}>
-                              <Typography variant="subtitle2" gutterBottom>
-                                U-Value Calculation
-                              </Typography>
-                              <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
-                                <Typography variant="body2" gutterBottom>
-                                  1. Surface Resistances:
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
-                                  • Interior (Rsi) = {thermal.surfaceResistances.Rsi} m²K/W
-                                  <br />
-                                  • Exterior (Rse) = {thermal.surfaceResistances.Rse} m²K/W
-                                </Typography>
-                                
-                                <Typography variant="body2" gutterBottom sx={{ mt: 1 }}>
-                                  2. Layer Resistances (R = d/λ):
-                                </Typography>
-                                {thermal.layerResistances.map((r, i) => (
-                                  <Typography key={i} variant="body2" color="text.secondary" sx={{ ml: 2 }}>
-                                    • Layer {i + 1}: {r.toFixed(3)} m²K/W
-                                  </Typography>
-                                ))}
-                                
-                                <Typography variant="body2" gutterBottom sx={{ mt: 1 }}>
-                                  3. Total Resistance:
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
-                                  Rtotal = Rsi + ΣR + Rse = {thermal.totalR.toFixed(3)} m²K/W
-                                </Typography>
-                                
-                                <Typography variant="body2" gutterBottom sx={{ mt: 1 }}>
-                                  4. U-Value:
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ ml: 2 }}>
-                                  U = 1/Rtotal = {thermal.uValue.toFixed(3)} W/m²K
-                                </Typography>
-                              </Box>
-                            </Box>
+            {/* Layer Order */}
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Construction Layers
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    Arrange layers from outside to inside
+                  </Typography>
 
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                              <Typography variant="h4">
-                                {thermal.uValue.toFixed(3)}
-                              </Typography>
-                              <Typography variant="body1" color="text.secondary">
-                                W/m²K
-                              </Typography>
-                              <Chip 
-                                label={
-                                  thermal.uValue <= 0.3 ? "Excellent" :
-                                  thermal.uValue <= 0.5 ? "Good" :
-                                  thermal.uValue <= 1.0 ? "Moderate" : "Poor"
-                                }
-                                color={
-                                  thermal.uValue <= 0.3 ? "success" :
-                                  thermal.uValue <= 0.5 ? "primary" :
-                                  thermal.uValue <= 1.0 ? "warning" : "error"
-                                }
-                              />
-                            </Box>
-                          </>
-                        );
-                      })()}
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-                        <Leaf size={24} />
-                        <Typography variant="h6">Environmental Impact</Typography>
-                      </Box>
-                      
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Global Warming Potential (A1-A3)
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Typography variant="h4">
-                            {selectedConstruction.gwp_kgco2e_per_m2.toFixed(1)}
-                          </Typography>
-                          <Typography variant="body1" color="text.secondary">
-                            kg CO₂e/m²
-                          </Typography>
-                          <Chip 
-                            label={
-                              selectedConstruction.gwp_kgco2e_per_m2 <= 50 ? "Low Impact" :
-                              selectedConstruction.gwp_kgco2e_per_m2 <= 100 ? "Moderate" : "High Impact"
-                            }
-                            color={
-                              selectedConstruction.gwp_kgco2e_per_m2 <= 50 ? "success" :
-                              selectedConstruction.gwp_kgco2e_per_m2 <= 100 ? "warning" : "error"
-                            }
-                          />
-                        </Box>
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary">
-                        Includes raw material supply, transport, and manufacturing emissions.
-                        {selectedConstruction.gwp_kgco2e_per_m2 <= 50 
-                          ? " This construction has a low environmental impact."
-                          : selectedConstruction.gwp_kgco2e_per_m2 <= 100
-                          ? " Consider alternatives to reduce environmental impact."
-                          : " High environmental impact. Consider more sustainable alternatives."}
+                  <List>
+                    {layers.map((layer, index) => (
+                      <ListItem key={layer.id}>
+                        <ListItemText
+                          primary={layer.name}
+                          secondary={`Thickness: ${layer.thickness.toFixed(4)} m`}
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton
+                            edge="end"
+                            onClick={() => handleMoveLayer(index, 'up')}
+                            disabled={index === 0}
+                          >
+                            <ArrowUp size={18} />
+                          </IconButton>
+                          <IconButton
+                            edge="end"
+                            onClick={() => handleMoveLayer(index, 'down')}
+                            disabled={index === layers.length - 1}
+                          >
+                            <ArrowDown size={18} />
+                          </IconButton>
+                          <IconButton
+                            edge="end"
+                            onClick={() => handleRemoveLayer(layer.id)}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                    {layers.length === 0 && (
+                      <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                        No layers added yet
                       </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
+                    )}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
 
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-                        <DollarSign size={24} />
-                        <Typography variant="h6">Economic Analysis</Typography>
-                      </Box>
-                      
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Total Cost
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <Typography variant="h4">
-                            {selectedConstruction.cost_sek_per_m2.toFixed(0)}
-                          </Typography>
-                          <Typography variant="body1" color="text.secondary">
-                            SEK/m²
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary">
-                        Material costs only, excluding labor and installation.
-                        Cost-effectiveness ratio: {(selectedConstruction.cost_sek_per_m2 / (1/selectedConstruction.u_value_w_m2k)).toFixed(0)} SEK per thermal resistance unit.
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-
-                {selectedConstruction.source && (
-                  <Grid item xs={12}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          Source Information
-                        </Typography>
-                        <Typography variant="body2">
-                          {selectedConstruction.source}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                )}
-              </Grid>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setDetailsDialogOpen(false)}>
-                Close
-              </Button>
-            </DialogActions>
-          </>
-        )}
+            {/* Source Field */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Source"
+                multiline
+                rows={2}
+                value={formData.source || ''}
+                onChange={(e) => handleInputChange('source', e.target.value)}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenModal(false)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            Add Construction
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
