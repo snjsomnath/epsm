@@ -30,12 +30,12 @@ import {
   Tooltip,
   Card,
   CardContent,
-  Chip,
   Divider,
   List,
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  Chip,
   LinearProgress
 } from '@mui/material';
 import { 
@@ -43,7 +43,7 @@ import {
   Plus, 
   Edit, 
   Info, 
-  X, 
+  X,
   ArrowUp, 
   ArrowDown, 
   Trash2,
@@ -81,7 +81,7 @@ const defaultConstruction: ConstructionInsert = {
 
 const ConstructionsTab = () => {
   const { isAuthenticated } = useAuth();
-  const { constructions, materials, windowGlazing, addConstruction, error: dbError } = useDatabase();
+  const { constructions, materials, windowGlazing, addConstruction, updateConstruction, error: dbError } = useDatabase();
   const [openModal, setOpenModal] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -95,6 +95,86 @@ const ConstructionsTab = () => {
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedConstruction, setSelectedConstruction] = useState<Construction | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [editingConstruction, setEditingConstruction] = useState<Construction | null>(null);
+
+  const handleEdit = (construction: Construction) => {
+    setEditingConstruction(construction);
+    setFormData({
+      name: construction.name,
+      element_type: construction.element_type,
+      is_window: construction.is_window,
+      u_value_w_m2k: construction.u_value_w_m2k,
+      gwp_kgco2e_per_m2: construction.gwp_kgco2e_per_m2,
+      cost_sek_per_m2: construction.cost_sek_per_m2,
+      author_id: construction.author_id || '00000000-0000-0000-0000-000000000000',
+      source: construction.source
+    });
+
+    // Convert existing layers to the Layer format
+    const constructionLayers = construction.layers?.map(layer => ({
+      id: crypto.randomUUID(),
+      type: layer.is_glazing_layer ? 'glazing' : 'material',
+      itemId: layer.is_glazing_layer ? layer.glazing_id! : layer.material_id!,
+      name: layer.is_glazing_layer ? layer.glazing?.name! : layer.material?.name!,
+      thickness: layer.is_glazing_layer ? layer.glazing?.thickness_m! : layer.material?.thickness_m!,
+      conductivity: layer.is_glazing_layer ? layer.glazing?.conductivity_w_mk! : layer.material?.conductivity_w_mk!,
+      gwp: layer.is_glazing_layer ? layer.glazing?.gwp_kgco2e_per_m2! : layer.material?.gwp_kgco2e_per_m2!,
+      cost: layer.is_glazing_layer ? layer.glazing?.cost_sek_per_m2! : layer.material?.cost_sek_per_m2!
+    })) || [];
+
+    setLayers(constructionLayers);
+    setOpenModal(true);
+  };
+
+  const handleSubmit = async () => {
+    try {
+      setLoading(true);
+      setFormError(null);
+
+      if (!formData.name || !formData.element_type) {
+        throw new Error('Please fill in all required fields');
+      }
+
+      if (layers.length === 0) {
+        throw new Error('Please add at least one layer');
+      }
+
+      if (!isAuthenticated) {
+        throw new Error('You must be logged in to manage constructions');
+      }
+
+      // Convert layers to LayerInsert format
+      const layerInserts: Omit<LayerInsert, 'construction_id'>[] = layers.map((layer, index) => ({
+        material_id: layer.type === 'material' ? layer.itemId : null,
+        glazing_id: layer.type === 'glazing' ? layer.itemId : null,
+        layer_order: index + 1,
+        is_glazing_layer: layer.type === 'glazing'
+      }));
+
+      if (editingConstruction) {
+        await updateConstruction(editingConstruction.id, formData, layerInserts);
+      } else {
+        await addConstruction(formData, layerInserts);
+      }
+
+      setOpenModal(false);
+      setFormData(defaultConstruction);
+      setLayers([]);
+      setEditingConstruction(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setOpenModal(false);
+    setFormData(defaultConstruction);
+    setLayers([]);
+    setEditingConstruction(null);
+    setFormError(null);
+  };
 
   const handleInputChange = (field: keyof ConstructionInsert, value: any) => {
     setFormData(prev => ({
@@ -173,42 +253,6 @@ const ConstructionsTab = () => {
       [newLayers[index], newLayers[index + 1]] = [newLayers[index + 1], newLayers[index]];
     }
     setLayers(newLayers);
-  };
-
-  const handleSubmit = async () => {
-    try {
-      setLoading(true);
-      setFormError(null);
-
-      if (!formData.name || !formData.element_type) {
-        throw new Error('Please fill in all required fields');
-      }
-
-      if (layers.length === 0) {
-        throw new Error('Please add at least one layer');
-      }
-
-      if (!isAuthenticated) {
-        throw new Error('You must be logged in to add constructions');
-      }
-
-      // Convert layers to LayerInsert format
-      const layerInserts: Omit<LayerInsert, 'construction_id'>[] = layers.map((layer, index) => ({
-        material_id: layer.type === 'material' ? layer.itemId : null,
-        glazing_id: layer.type === 'glazing' ? layer.itemId : null,
-        layer_order: index + 1,
-        is_glazing_layer: layer.type === 'glazing'
-      }));
-
-      await addConstruction(formData, layerInserts);
-      setOpenModal(false);
-      setFormData(defaultConstruction);
-      setLayers([]);
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Filter available components based on search
@@ -609,7 +653,10 @@ const ConstructionsTab = () => {
                   <TableCell align="right">{construction.cost_sek_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="center">
                     <Tooltip title="Edit">
-                      <IconButton size="small">
+                      <IconButton 
+                        size="small"
+                        onClick={() => handleEdit(construction)}
+                      >
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
@@ -660,12 +707,12 @@ const ConstructionsTab = () => {
       {/* Add/Edit Construction Dialog */}
       <Dialog 
         open={openModal} 
-        onClose={() => setOpenModal(false)}
+        onClose={handleCloseModal}
         maxWidth="lg"
         fullWidth
       >
         <DialogTitle>
-          Add New Construction
+          {editingConstruction ? 'Edit Construction' : 'Add New Construction'}
         </DialogTitle>
         <DialogContent>
           {formError && (
@@ -758,7 +805,8 @@ const ConstructionsTab = () => {
                           <Search size={16} />
                         </InputAdornment>
                       ),
-                      endAdornment: componentSearchTerm && (
+                      endAdorn
+ment: componentSearchTerm && (
                         <InputAdornment position="end">
                           <IconButton size="small" onClick={() => setComponentSearchTerm('')}>
                             <X size={14} />
@@ -870,13 +918,13 @@ const ConstructionsTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenModal(false)}>Cancel</Button>
+          <Button onClick={handleCloseModal}>Cancel</Button>
           <Button 
             variant="contained" 
             onClick={handleSubmit}
             disabled={loading}
           >
-            Add Construction
+            {editingConstruction ? 'Save Changes' : 'Add Construction'}
           </Button>
         </DialogActions>
       </Dialog>
