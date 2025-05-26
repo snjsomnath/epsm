@@ -7,6 +7,33 @@ interface ApiResponse<T> {
   error?: string;
 }
 
+interface FileValidationOptions {
+  maxSize?: number;
+  allowedExtensions: string[];
+  maxFiles?: number;
+}
+
+// Shared file validation
+const validateFiles = (files: File[], options: FileValidationOptions): void => {
+  const { maxSize = 5 * 1024 * 1024, allowedExtensions, maxFiles = 10 } = options;
+
+  if (files.length > maxFiles) {
+    throw new Error(`Maximum ${maxFiles} files allowed`);
+  }
+
+  files.forEach(file => {
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (!ext || !allowedExtensions.includes(`.${ext}`)) {
+      throw new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`);
+    }
+
+    if (file.size > maxSize) {
+      throw new Error(`File size exceeds ${maxSize / 1024 / 1024}MB limit`);
+    }
+  });
+};
+
+// Type-safe response handling
 async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (!response.ok) {
     const error = await response.json();
@@ -16,42 +43,20 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   return { data };
 }
 
-// Validate file before upload
-const validateFile = (file: File, allowedExtensions: string[]): boolean => {
-  // Check file extension
-  const ext = file.name.toLowerCase().split('.').pop();
-  if (!ext || !allowedExtensions.includes(`.${ext}`)) {
-    throw new Error(`Invalid file type. Allowed types: ${allowedExtensions.join(', ')}`);
-  }
-
-  // Check file size (5MB limit)
-  const maxSize = 5 * 1024 * 1024; // 5MB
-  if (file.size > maxSize) {
-    throw new Error('File size exceeds 5MB limit');
-  }
-
-  return true;
-};
-
-// IDF parsing operations with timeout and validation
+// IDF parsing with improved error handling
 export const parseIdfFiles = async (files: File[]) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
   try {
-    // Validate files
-    const allowedExtensions = ['.idf'];
-    files.forEach(file => validateFile(file, allowedExtensions));
-
-    // Check total number of files
-    if (files.length > 10) {
-      throw new Error('Maximum 10 files allowed');
-    }
+    validateFiles(files, {
+      allowedExtensions: ['.idf'],
+      maxSize: 5 * 1024 * 1024,
+      maxFiles: 10
+    });
 
     const formData = new FormData();
-    files.forEach(file => {
-      formData.append('files', file);
-    });
+    files.forEach(file => formData.append('files', file));
 
     const response = await fetch(`${API_BASE_URL}/parse/idf/`, {
       method: 'POST',
@@ -69,13 +74,11 @@ export const parseIdfFiles = async (files: File[]) => {
     clearTimeout(timeoutId);
     if (err instanceof Error) {
       if (err.name === 'AbortError') {
-        throw new Error('API request timed out. Please try again.');
+        return { error: 'Request timed out' };
       }
-      if (err.message.includes('Failed to fetch')) {
-        throw new Error('API endpoint is not reachable. Please check your connection.');
-      }
+      return { error: err.message };
     }
-    throw err;
+    return { error: 'An unexpected error occurred' };
   }
 };
 

@@ -22,6 +22,7 @@ import AssignmentsTab from './AssignmentsTab';
 import InfiltrationTab from './InfiltrationTab';
 import ResultsTab from './ResultsTab';
 import { parseIdfFiles } from '../../utils/api';
+import type { ParsedData } from '../../types/simulation';
 
 const BaselinePage = () => {
   const [tabIndex, setTabIndex] = useState(0);
@@ -30,33 +31,36 @@ const BaselinePage = () => {
   const [simulating, setSimulating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [simulationComplete, setSimulationComplete] = useState(false);
-  const [parsedData, setParsedData] = useState<any>(null);
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
 
   const handleIdfFilesUploaded = async (files: File[]) => {
-    setUploadedFiles(files);
-    if (files.length > 0) {
-      try {
-        setParsing(true);
-        setParseError(null);
-        setParsedData(null);
-        const { data, error } = await parseIdfFiles(files);
-        
-        if (error) {
-          throw new Error(error);
-        }
-        
-        setParsedData(data);
-      } catch (err) {
-        setParseError(err instanceof Error ? err.message : 'Failed to parse IDF files');
-        setParsedData(null);
-      } finally {
-        setParsing(false);
-      }
-    } else {
+    if (files.length === 0) {
       setParsedData(null);
       setParseError(null);
+      setUploadedFiles([]);
+      return;
+    }
+
+    try {
+      setParsing(true);
+      setParseError(null);
+      setParsedData(null);
+      setUploadedFiles(files);
+      
+      const { data, error } = await parseIdfFiles(files);
+      
+      if (error) {
+        throw new Error(error);
+      }
+      
+      setParsedData(data);
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : 'Failed to parse IDF files');
+      setParsedData(null);
+    } finally {
+      setParsing(false);
     }
   };
 
