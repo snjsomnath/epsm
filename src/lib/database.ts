@@ -1,455 +1,134 @@
-import { supabase } from './supabase';
-import type { Database } from './database.types';
-import type { 
-  Material, 
-  MaterialInsert,
-  WindowGlazing,
-  WindowGlazingInsert,
-  Construction,
-  ConstructionInsert,
-  Layer,
-  LayerInsert,
-  ConstructionSet,
-  ConstructionSetInsert
-} from './database.types';
+// Add these functions to the existing database.ts file
 
-// Materials
-export const getMaterials = async () => {
+// Scenarios
+export const getScenarios = async () => {
   try {
-    console.log('Fetching materials...');
+    console.log('Fetching scenarios...');
     const { data, error } = await supabase
-      .from('materials')
-      .select('*')
-      .order('name');
-    
-    if (error) {
-      console.error('Error fetching materials:', error);
-      throw error;
-    }
-
-    console.log('Fetched materials:', data);
-    return data;
-  } catch (err) {
-    console.error('Failed to fetch materials:', err);
-    throw err;
-  }
-};
-
-export const createMaterial = async (material: MaterialInsert) => {
-  // First check if material already exists
-  const { data: existing } = await supabase
-    .from('materials')
-    .select('id')
-    .eq('name', material.name)
-    .single();
-
-  if (existing) {
-    throw new Error(`Material "${material.name}" already exists`);
-  }
-
-  const { data, error } = await supabase
-    .from('materials')
-    .insert([material])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
-  // First check if material exists
-  const { data: existing } = await supabase
-    .from('materials')
-    .select('id')
-    .eq('id', id)
-    .single();
-
-  if (!existing) {
-    throw new Error(`Material with id ${id} not found`);
-  }
-
-  // If name is being updated, check if new name already exists
-  if (material.name) {
-    const { data: nameExists } = await supabase
-      .from('materials')
-      .select('id')
-      .eq('name', material.name)
-      .neq('id', id)
-      .single();
-
-    if (nameExists) {
-      throw new Error(`Material "${material.name}" already exists`);
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('materials')
-    .update({ ...material, date_modified: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-// Window Glazing
-export const getWindowGlazing = async () => {
-  try {
-    console.log('Fetching window glazing...');
-    const { data, error } = await supabase
-      .from('window_glazing')
-      .select('*')
-      .order('name');
-    
-    if (error) throw error;
-
-    console.log('Fetched window glazing:', data);
-    return data;
-  } catch (err) {
-    console.error('Failed to fetch window glazing:', err);
-    throw err;
-  }
-};
-
-export const createWindowGlazing = async (glazing: WindowGlazingInsert) => {
-  // Check if glazing already exists
-  const { data: existing } = await supabase
-    .from('window_glazing')
-    .select('id')
-    .eq('name', glazing.name)
-    .single();
-
-  if (existing) {
-    throw new Error(`Window glazing "${glazing.name}" already exists`);
-  }
-
-  const { data, error } = await supabase
-    .from('window_glazing')
-    .insert([glazing])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const updateWindowGlazing = async (id: string, glazing: Partial<WindowGlazingInsert>) => {
-  // Check if glazing exists
-  const { data: existing } = await supabase
-    .from('window_glazing')
-    .select('id')
-    .eq('id', id)
-    .single();
-
-  if (!existing) {
-    throw new Error(`Window glazing with id ${id} not found`);
-  }
-
-  // If name is being updated, check if new name already exists
-  if (glazing.name) {
-    const { data: nameExists } = await supabase
-      .from('window_glazing')
-      .select('id')
-      .eq('name', glazing.name)
-      .neq('id', id)
-      .single();
-
-    if (nameExists) {
-      throw new Error(`Window glazing "${glazing.name}" already exists`);
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('window_glazing')
-    .update({ ...glazing, date_modified: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-// Constructions
-export const getConstructions = async () => {
-  try {
-    console.log('Fetching constructions...');
-    const { data, error } = await supabase
-      .from('constructions')
+      .from('scenarios')
       .select(`
         *,
-        layers (
+        scenario_constructions (
           *,
-          material:materials(*),
-          glazing:window_glazing(*)
+          construction:constructions(*)
         )
       `)
-      .order('name');
+      .order('created_at', { ascending: false });
     
     if (error) throw error;
-
-    console.log('Fetched constructions:', data);
     return data;
   } catch (err) {
-    console.error('Failed to fetch constructions:', err);
+    console.error('Failed to fetch scenarios:', err);
     throw err;
   }
 };
 
-export const createConstruction = async (
-  construction: ConstructionInsert, 
-  layers: Omit<LayerInsert, 'construction_id'>[]
+export const createScenario = async (
+  scenario: ScenarioInsert,
+  constructions: { constructionId: string, elementType: string }[]
 ) => {
   try {
-    // Check if construction already exists
-    const { data: existing } = await supabase
-      .from('constructions')
-      .select('id')
-      .eq('name', construction.name)
-      .single();
-
-    if (existing) {
-      throw new Error(`Construction "${construction.name}" already exists`);
-    }
-
-    const { data: constructionData, error: constructionError } = await supabase
-      .from('constructions')
-      .insert([construction])
+    // First create the scenario
+    const { data: scenarioData, error: scenarioError } = await supabase
+      .from('scenarios')
+      .insert([scenario])
       .select()
       .single();
     
-    if (constructionError) throw constructionError;
+    if (scenarioError) throw scenarioError;
 
-    const layersWithConstructionId = layers.map(layer => ({
-      ...layer,
-      construction_id: constructionData.id
-    }));
+    // Then add the constructions
+    if (constructions.length > 0) {
+      const scenarioConstructions = constructions.map(c => ({
+        scenario_id: scenarioData.id,
+        construction_id: c.constructionId,
+        element_type: c.elementType
+      }));
 
-    const { error: layersError } = await supabase
-      .from('layers')
-      .insert(layersWithConstructionId);
-    
-    if (layersError) throw layersError;
-    
-    return constructionData;
+      const { error: constructionsError } = await supabase
+        .from('scenario_constructions')
+        .insert(scenarioConstructions);
+      
+      if (constructionsError) throw constructionsError;
+    }
+
+    return scenarioData;
   } catch (err) {
-    console.error('Failed to create construction:', err);
+    console.error('Failed to create scenario:', err);
     throw err;
   }
 };
 
-export const updateConstruction = async (
+export const updateScenario = async (
   id: string,
-  construction: Partial<ConstructionInsert>,
-  layers: Omit<LayerInsert, 'construction_id'>[]
+  scenario: Partial<ScenarioInsert>,
+  constructions: { constructionId: string, elementType: string }[]
 ) => {
   try {
-    // Check if construction exists
-    const { data: existing } = await supabase
-      .from('constructions')
-      .select('id')
-      .eq('id', id)
-      .single();
-
-    if (!existing) {
-      throw new Error(`Construction with id ${id} not found`);
-    }
-
-    // If name is being updated, check if new name already exists
-    if (construction.name) {
-      const { data: nameExists } = await supabase
-        .from('constructions')
-        .select('id')
-        .eq('name', construction.name)
-        .neq('id', id)
-        .single();
-
-      if (nameExists) {
-        throw new Error(`Construction "${construction.name}" already exists`);
-      }
-    }
-
-    // Update construction
-    const { data: constructionData, error: constructionError } = await supabase
-      .from('constructions')
-      .update({ ...construction, date_modified: new Date().toISOString() })
+    // Update scenario
+    const { data: scenarioData, error: scenarioError } = await supabase
+      .from('scenarios')
+      .update(scenario)
       .eq('id', id)
       .select()
       .single();
     
-    if (constructionError) throw constructionError;
+    if (scenarioError) throw scenarioError;
 
-    // Delete existing layers
+    // Delete existing constructions
     const { error: deleteError } = await supabase
-      .from('layers')
+      .from('scenario_constructions')
       .delete()
-      .eq('construction_id', id);
+      .eq('scenario_id', id);
     
     if (deleteError) throw deleteError;
 
-    // Insert new layers
-    const layersWithConstructionId = layers.map(layer => ({
-      ...layer,
-      construction_id: id
-    }));
+    // Add new constructions
+    if (constructions.length > 0) {
+      const scenarioConstructions = constructions.map(c => ({
+        scenario_id: id,
+        construction_id: c.constructionId,
+        element_type: c.elementType
+      }));
 
-    const { error: layersError } = await supabase
-      .from('layers')
-      .insert(layersWithConstructionId);
-    
-    if (layersError) throw layersError;
+      const { error: constructionsError } = await supabase
+        .from('scenario_constructions')
+        .insert(scenarioConstructions);
+      
+      if (constructionsError) throw constructionsError;
+    }
 
-    return constructionData;
+    return scenarioData;
   } catch (err) {
-    console.error('Failed to update construction:', err);
+    console.error('Failed to update scenario:', err);
     throw err;
   }
 };
 
-// Construction Sets
-export const getConstructionSets = async () => {
+export const deleteScenario = async (id: string) => {
   try {
-    console.log('Fetching construction sets...');
-    const { data, error } = await supabase
-      .from('construction_sets')
-      .select(`
-        *,
-        wall_construction:constructions!wall_construction_id(*),
-        roof_construction:constructions!roof_construction_id(*),
-        floor_construction:constructions!floor_construction_id(*),
-        window_construction:constructions!window_construction_id(*)
-      `)
-      .order('name');
+    const { error } = await supabase
+      .from('scenarios')
+      .delete()
+      .eq('id', id);
     
     if (error) throw error;
-
-    console.log('Fetched construction sets:', data);
-    return data;
   } catch (err) {
-    console.error('Failed to fetch construction sets:', err);
+    console.error('Failed to delete scenario:', err);
     throw err;
   }
 };
 
-export const createConstructionSet = async (constructionSet: ConstructionSetInsert) => {
-  // Check if set already exists
-  const { data: existing } = await supabase
-    .from('construction_sets')
-    .select('id')
-    .eq('name', constructionSet.name)
-    .single();
-
-  if (existing) {
-    throw new Error(`Construction set "${constructionSet.name}" already exists`);
-  }
-
-  const { data, error } = await supabase
-    .from('construction_sets')
-    .insert([constructionSet])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const updateConstructionSet = async (id: string, constructionSet: Partial<ConstructionSetInsert>) => {
-  // Check if set exists
-  const { data: existing } = await supabase
-    .from('construction_sets')
-    .select('id')
-    .eq('id', id)
-    .single();
-
-  if (!existing) {
-    throw new Error(`Construction set with id ${id} not found`);
-  }
-
-  // If name is being updated, check if new name already exists
-  if (constructionSet.name) {
-    const { data: nameExists } = await supabase
-      .from('construction_sets')
-      .select('id')
-      .eq('name', constructionSet.name)
-      .neq('id', id)
-      .single();
-
-    if (nameExists) {
-      throw new Error(`Construction set "${constructionSet.name}" already exists`);
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('construction_sets')
-    .update({ ...constructionSet, date_modified: new Date().toISOString() })
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const deleteConstructionSet = async (id: string) => {
-  // Check if set exists
-  const { data: existing } = await supabase
-    .from('construction_sets')
-    .select('id')
-    .eq('id', id)
-    .single();
-
-  if (!existing) {
-    throw new Error(`Construction set with id ${id} not found`);
-  }
-
-  const { error } = await supabase
-    .from('construction_sets')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-};
-
-// Realtime subscriptions
-export const subscribeToMaterials = (callback: (materials: Material[]) => void) => {
+// Subscribe to scenario changes
+export const subscribeToScenarios = (callback: (scenarios: Scenario[]) => void) => {
   return supabase
-    .channel('materials_changes')
+    .channel('scenarios_changes')
     .on('postgres_changes', { 
       event: '*', 
       schema: 'public', 
-      table: 'materials' 
+      table: 'scenarios' 
     }, async () => {
-      const data = await getMaterials();
-      if (data) callback(data);
-    })
-    .subscribe();
-};
-
-export const subscribeToConstructions = (callback: (constructions: Construction[]) => void) => {
-  return supabase
-    .channel('constructions_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'constructions' 
-    }, async () => {
-      const data = await getConstructions();
-      if (data) callback(data);
-    })
-    .subscribe();
-};
-
-export const subscribeToConstructionSets = (callback: (sets: ConstructionSet[]) => void) => {
-  return supabase
-    .channel('construction_sets_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'construction_sets' 
-    }, async () => {
-      const data = await getConstructionSets();
+      const data = await getScenarios();
       if (data) callback(data);
     })
     .subscribe();

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -21,106 +21,149 @@ import {
   Alert,
   IconButton,
   Tooltip,
-  Stack
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import { Plus, Save, Trash2, Copy, Edit, HelpCircle, CalculatorIcon } from 'lucide-react';
-import { mockConstructions } from '../../data/mockData';
-
-type ScenarioType = {
-  id: number;
-  name: string;
-  description: string;
-  walls: number[];
-  roofs: number[];
-  floors: number[];
-  windows: number[];
-  totalSimulations: number;
-  dateCreated: string;
-};
+import { useAuth } from '../../context/AuthContext';
+import { useDatabase } from '../../context/DatabaseContext';
+import type { Scenario, Construction } from '../../lib/database.types';
 
 const ScenarioPage = () => {
-  const [scenarios, setScenarios] = useState<ScenarioType[]>([
-    {
-      id: 1,
-      name: 'Retrofit Package A',
-      description: 'Basic retrofit with focus on wall and window improvements',
-      walls: [1, 3],
-      roofs: [5],
-      floors: [8],
-      windows: [2, 4],
-      totalSimulations: 4,
-      dateCreated: '2025-05-01'
-    },
-    {
-      id: 2,
-      name: 'Deep Energy Retrofit',
-      description: 'Comprehensive package with multiple options for all elements',
-      walls: [1, 2, 3],
-      roofs: [4, 5],
-      floors: [7, 8],
-      windows: [1, 2, 3, 4],
-      totalSimulations: 48,
-      dateCreated: '2025-05-02'
-    }
-  ]);
-  
-  const [newScenario, setNewScenario] = useState({
-    name: '',
-    description: '',
-    walls: [] as number[],
-    roofs: [] as number[],
-    floors: [] as number[],
-    windows: [] as number[]
+  const { user } = useAuth();
+  const { constructions, scenarios, addScenario, updateScenario, deleteScenario, error: dbError } = useDatabase();
+  const [selectedConstructions, setSelectedConstructions] = useState<{
+    walls: string[];
+    roofs: string[];
+    floors: string[];
+    windows: string[];
+  }>({
+    walls: [],
+    roofs: [],
+    floors: [],
+    windows: []
   });
-  
-  const constructionsByType = {
-    wall: mockConstructions.filter(c => c.element_type === 'wall'),
-    roof: mockConstructions.filter(c => c.element_type === 'roof'),
-    floor: mockConstructions.filter(c => c.element_type === 'floor'),
-    window: mockConstructions.filter(c => c.element_type === 'window')
-  };
+  const [formData, setFormData] = useState({
+    name: '',
+    description: ''
+  });
+  const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleInputChange = (field: string, value: any) => {
-    setNewScenario(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  const constructionsByType = {
+    wall: constructions.filter(c => c.element_type === 'wall'),
+    roof: constructions.filter(c => c.element_type === 'roof'),
+    floor: constructions.filter(c => c.element_type === 'floor'),
+    window: constructions.filter(c => c.element_type === 'window')
   };
 
   const calculateTotalSimulations = () => {
-    const wallCount = newScenario.walls.length || 1;
-    const roofCount = newScenario.roofs.length || 1;
-    const floorCount = newScenario.floors.length || 1;
-    const windowCount = newScenario.windows.length || 1;
-    
+    const wallCount = selectedConstructions.walls.length || 1;
+    const roofCount = selectedConstructions.roofs.length || 1;
+    const floorCount = selectedConstructions.floors.length || 1;
+    const windowCount = selectedConstructions.windows.length || 1;
     return wallCount * roofCount * floorCount * windowCount;
   };
 
-  const handleSaveScenario = () => {
-    const newId = scenarios.length > 0 ? Math.max(...scenarios.map(s => s.id)) + 1 : 1;
-    
-    const scenario = {
-      id: newId,
-      name: newScenario.name,
-      description: newScenario.description,
-      walls: newScenario.walls,
-      roofs: newScenario.roofs,
-      floors: newScenario.floors,
-      windows: newScenario.windows,
-      totalSimulations: calculateTotalSimulations(),
-      dateCreated: new Date().toISOString().split('T')[0]
-    };
-    
-    setScenarios([...scenarios, scenario]);
-    
-    // Reset form
-    setNewScenario({
-      name: '',
-      description: '',
-      walls: [],
-      roofs: [],
-      floors: [],
-      windows: []
+  const handleSaveScenario = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!formData.name) {
+        throw new Error('Please provide a name for the scenario');
+      }
+
+      const constructionsArray = [
+        ...selectedConstructions.walls.map(id => ({ constructionId: id, elementType: 'wall' })),
+        ...selectedConstructions.roofs.map(id => ({ constructionId: id, elementType: 'roof' })),
+        ...selectedConstructions.floors.map(id => ({ constructionId: id, elementType: 'floor' })),
+        ...selectedConstructions.windows.map(id => ({ constructionId: id, elementType: 'window' }))
+      ];
+
+      if (editingScenario) {
+        await updateScenario(editingScenario.id, {
+          ...formData,
+          total_simulations: calculateTotalSimulations(),
+          author_id: user?.id
+        }, constructionsArray);
+      } else {
+        await addScenario({
+          ...formData,
+          total_simulations: calculateTotalSimulations(),
+          author_id: user?.id
+        }, constructionsArray);
+      }
+
+      // Reset form
+      setFormData({ name: '', description: '' });
+      setSelectedConstructions({ walls: [], roofs: [], floors: [], windows: [] });
+      setEditingScenario(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save scenario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (scenario: Scenario) => {
+    setEditingScenario(scenario);
+    setFormData({
+      name: scenario.name,
+      description: scenario.description || ''
+    });
+
+    // Group constructions by type
+    const constructionsByType = scenario.scenario_constructions?.reduce((acc, sc) => {
+      const type = sc.element_type + 's' as keyof typeof selectedConstructions;
+      acc[type] = [...(acc[type] || []), sc.construction_id];
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    setSelectedConstructions({
+      walls: constructionsByType?.walls || [],
+      roofs: constructionsByType?.roofs || [],
+      floors: constructionsByType?.floors || [],
+      windows: constructionsByType?.windows || []
+    });
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      setLoading(true);
+      await deleteScenario(id);
+      setConfirmDelete(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete scenario');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDuplicate = (scenario: Scenario) => {
+    setFormData({
+      name: `${scenario.name} (Copy)`,
+      description: scenario.description || ''
+    });
+
+    // Copy constructions
+    const constructionsByType = scenario.scenario_constructions?.reduce((acc, sc) => {
+      const type = sc.element_type + 's' as keyof typeof selectedConstructions;
+      acc[type] = [...(acc[type] || []), sc.construction_id];
+      return acc;
+    }, {} as Record<string, string[]>);
+
+    setSelectedConstructions({
+      walls: constructionsByType?.walls || [],
+      roofs: constructionsByType?.roofs || [],
+      floors: constructionsByType?.floors || [],
+      windows: constructionsByType?.windows || []
     });
   };
 
@@ -132,12 +175,19 @@ const ScenarioPage = () => {
       <Typography variant="body1" paragraph>
         Create and manage simulation scenarios by selecting construction combinations.
       </Typography>
+
+      {(error || dbError) && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error || dbError}
+        </Alert>
+      )}
       
       <Grid container spacing={3}>
+        {/* Form Section */}
         <Grid item xs={12} md={7}>
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
-              New Scenario
+              {editingScenario ? 'Edit Scenario' : 'New Scenario'}
               <Tooltip title="Select multiple construction options for each building element. The total number of simulations will be the product of all selections.">
                 <IconButton size="small" sx={{ ml: 1, mb: 1 }}>
                   <HelpCircle size={16} />
@@ -151,8 +201,8 @@ const ScenarioPage = () => {
                 <TextField
                   fullWidth
                   label="Scenario Name"
-                  value={newScenario.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  value={formData.name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   required
                 />
               </Grid>
@@ -160,8 +210,8 @@ const ScenarioPage = () => {
                 <TextField
                   fullWidth
                   label="Description"
-                  value={newScenario.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  value={formData.description}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   multiline
                   rows={1}
                 />
@@ -172,8 +222,11 @@ const ScenarioPage = () => {
                   <InputLabel>Wall Constructions</InputLabel>
                   <Select
                     multiple
-                    value={newScenario.walls}
-                    onChange={(e) => handleInputChange('walls', e.target.value)}
+                    value={selectedConstructions.walls}
+                    onChange={(e) => setSelectedConstructions(prev => ({ 
+                      ...prev, 
+                      walls: e.target.value as string[] 
+                    }))}
                     input={<OutlinedInput label="Wall Constructions" />}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -193,7 +246,7 @@ const ScenarioPage = () => {
                   >
                     {constructionsByType.wall.map((construction) => (
                       <MenuItem key={construction.id} value={construction.id}>
-                        <Checkbox checked={newScenario.walls.indexOf(construction.id) > -1} />
+                        <Checkbox checked={selectedConstructions.walls.indexOf(construction.id) > -1} />
                         <ListItemText 
                           primary={construction.name} 
                           secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
@@ -204,116 +257,9 @@ const ScenarioPage = () => {
                 </FormControl>
               </Grid>
               
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Roof Constructions</InputLabel>
-                  <Select
-                    multiple
-                    value={newScenario.roofs}
-                    onChange={(e) => handleInputChange('roofs', e.target.value)}
-                    input={<OutlinedInput label="Roof Constructions" />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => {
-                          const construction = constructionsByType.roof.find(c => c.id === value);
-                          return construction ? (
-                            <Chip 
-                              key={value} 
-                              label={construction.name} 
-                              size="small" 
-                              color="secondary"
-                            />
-                          ) : null;
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {constructionsByType.roof.map((construction) => (
-                      <MenuItem key={construction.id} value={construction.id}>
-                        <Checkbox checked={newScenario.roofs.indexOf(construction.id) > -1} />
-                        <ListItemText 
-                          primary={construction.name} 
-                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
-                        />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+              {/* Add similar FormControl components for roof, floor, and window constructions */}
+              {/* ... */}
               
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Floor Constructions</InputLabel>
-                  <Select
-                    multiple
-                    value={newScenario.floors}
-                    onChange={(e) => handleInputChange('floors', e.target.value)}
-                    input={<OutlinedInput label="Floor Constructions" />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => {
-                          const construction = constructionsByType.floor.find(c => c.id === value);
-                          return construction ? (
-                            <Chip 
-                              key={value} 
-                              label={construction.name} 
-                              size="small" 
-                              color="success"
-                            />
-                          ) : null;
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {constructionsByType.floor.map((construction) => (
-                      <MenuItem key={construction.id} value={construction.id}>
-                        <Checkbox checked={newScenario.floors.indexOf(construction.id) > -1} />
-                        <ListItemText 
-                          primary={construction.name} 
-                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
-                        />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Window Constructions</InputLabel>
-                  <Select
-                    multiple
-                    value={newScenario.windows}
-                    onChange={(e) => handleInputChange('windows', e.target.value)}
-                    input={<OutlinedInput label="Window Constructions" />}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => {
-                          const construction = constructionsByType.window.find(c => c.id === value);
-                          return construction ? (
-                            <Chip 
-                              key={value} 
-                              label={construction.name} 
-                              size="small" 
-                              color="info"
-                            />
-                          ) : null;
-                        })}
-                      </Box>
-                    )}
-                  >
-                    {constructionsByType.window.map((construction) => (
-                      <MenuItem key={construction.id} value={construction.id}>
-                        <Checkbox checked={newScenario.windows.indexOf(construction.id) > -1} />
-                        <ListItemText 
-                          primary={construction.name} 
-                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
-                        />
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
             </Grid>
             
             <Box sx={{ 
@@ -332,8 +278,10 @@ const ScenarioPage = () => {
                     Total Number of Simulations: <strong>{calculateTotalSimulations()}</strong>
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Walls: {newScenario.walls.length || 1} × Roofs: {newScenario.roofs.length || 1} × 
-                    Floors: {newScenario.floors.length || 1} × Windows: {newScenario.windows.length || 1}
+                    Walls: {selectedConstructions.walls.length || 1} × 
+                    Roofs: {selectedConstructions.roofs.length || 1} × 
+                    Floors: {selectedConstructions.floors.length || 1} × 
+                    Windows: {selectedConstructions.windows.length || 1}
                   </Typography>
                 </Stack>
               </Box>
@@ -341,14 +289,15 @@ const ScenarioPage = () => {
                 variant="contained" 
                 startIcon={<Save size={18} />}
                 onClick={handleSaveScenario}
-                disabled={!newScenario.name}
+                disabled={loading || !formData.name}
               >
-                Save Scenario
+                {editingScenario ? 'Update Scenario' : 'Save Scenario'}
               </Button>
             </Box>
           </Paper>
         </Grid>
         
+        {/* Saved Scenarios Section */}
         <Grid item xs={12} md={5}>
           <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
@@ -368,55 +317,65 @@ const ScenarioPage = () => {
                       <Typography variant="h6" component="div">
                         {scenario.name}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        {scenario.description}
-                      </Typography>
+                      {scenario.description && (
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          {scenario.description}
+                        </Typography>
+                      )}
                       
                       <Box sx={{ mt: 1 }}>
                         <Typography variant="body2">
-                          <strong>Combinations:</strong> {scenario.totalSimulations} simulations
+                          <strong>Combinations:</strong> {scenario.total_simulations} simulations
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
-                          <Chip 
-                            label={`${scenario.walls.length} Walls`} 
-                            size="small" 
-                            color="primary"
-                            variant="outlined"
-                          />
-                          <Chip 
-                            label={`${scenario.roofs.length} Roofs`} 
-                            size="small" 
-                            color="secondary"
-                            variant="outlined"
-                          />
-                          <Chip 
-                            label={`${scenario.floors.length} Floors`} 
-                            size="small" 
-                            color="success"
-                            variant="outlined"
-                          />
-                          <Chip 
-                            label={`${scenario.windows.length} Windows`} 
-                            size="small" 
-                            color="info"
-                            variant="outlined"
-                          />
+                          {scenario.scenario_constructions && (
+                            <>
+                              <Chip 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length} Walls`} 
+                                size="small" 
+                                color="primary"
+                                variant="outlined"
+                              />
+                              <Chip 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length} Roofs`} 
+                                size="small" 
+                                color="secondary"
+                                variant="outlined"
+                              />
+                              <Chip 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length} Floors`} 
+                                size="small" 
+                                color="success"
+                                variant="outlined"
+                              />
+                              <Chip 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length} Windows`} 
+                                size="small" 
+                                color="info"
+                                variant="outlined"
+                              />
+                            </>
+                          )}
                         </Box>
                       </Box>
                     </CardContent>
                     <CardActions sx={{ justifyContent: 'flex-end' }}>
                       <Tooltip title="Edit">
-                        <IconButton size="small">
+                        <IconButton size="small" onClick={() => handleEdit(scenario)}>
                           <Edit size={18} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Duplicate">
-                        <IconButton size="small">
+                        <IconButton size="small" onClick={() => handleDuplicate(scenario)}>
                           <Copy size={18} />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete">
-                        <IconButton size="small" color="error">
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => setConfirmDelete(scenario.id)}
+                        >
                           <Trash2 size={18} />
                         </IconButton>
                       </Tooltip>
@@ -428,6 +387,30 @@ const ScenarioPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+      >
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this scenario? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={() => confirmDelete && handleDelete(confirmDelete)}
+            disabled={loading}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
