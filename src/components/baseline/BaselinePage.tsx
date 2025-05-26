@@ -11,9 +11,11 @@ import {
   Alert,
   LinearProgress,
   Stack,
-  Tooltip
+  Tooltip,
+  Tabs,
+  Tab
 } from '@mui/material';
-import { Play, FileText, Wind, AlertCircle } from 'lucide-react';
+import { Play, FileText, Wind, AlertCircle, BarChart2 } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import EpwUploadArea from './EpwUploadArea';
 import AssignmentsTab from './AssignmentsTab';
@@ -203,43 +205,51 @@ const BaselinePage = () => {
         </Grid>
 
         {/* Results Section */}
-        {simulationComplete && (
-          <Grid item xs={12}>
-            <Paper>
-              <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                <Stack direction="row" spacing={2} sx={{ p: 2 }}>
-                  <Button 
-                    variant={tabIndex === 1 ? "contained" : "outlined"}
-                    onClick={() => setTabIndex(1)}
-                  >
-                    Infiltration Settings
-                  </Button>
-                  <Button 
-                    variant={tabIndex === 2 ? "contained" : "outlined"}
-                    onClick={() => setTabIndex(2)}
-                  >
-                    Simulation Results
-                  </Button>
-                </Stack>
-              </Box>
+        <Grid item xs={12}>
+          <Paper>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs 
+                value={tabIndex} 
+                onChange={(e, newValue) => setTabIndex(newValue)}
+                sx={{ px: 2, pt: 2 }}
+              >
+                <Tab 
+                  icon={<Wind size={18} />} 
+                  iconPosition="start" 
+                  label="Infiltration" 
+                  disabled={!simulationComplete}
+                />
+                <Tab 
+                  icon={<BarChart2 size={18} />} 
+                  iconPosition="start" 
+                  label="Results" 
+                  disabled={!simulationComplete}
+                />
+              </Tabs>
+            </Box>
 
-              <Box sx={{ p: 3 }}>
-                {tabIndex === 1 && (
-                  <InfiltrationTab 
-                    uploadedFiles={uploadedFiles}
-                    simulationComplete={simulationComplete}
-                  />
-                )}
-                {tabIndex === 2 && (
-                  <ResultsTab 
-                    uploadedFiles={uploadedFiles}
-                    simulationComplete={simulationComplete}
-                  />
-                )}
-              </Box>
-            </Paper>
-          </Grid>
-        )}
+            <Box sx={{ p: 3 }}>
+              {!simulationComplete && (
+                <Alert severity="info">
+                  Run the baseline simulation to view results
+                </Alert>
+              )}
+              
+              {simulationComplete && tabIndex === 0 && (
+                <InfiltrationTab 
+                  uploadedFiles={uploadedFiles}
+                  simulationComplete={simulationComplete}
+                />
+              )}
+              {simulationComplete && tabIndex === 1 && (
+                <ResultsTab 
+                  uploadedFiles={uploadedFiles}
+                  simulationComplete={simulationComplete}
+                />
+              )}
+            </Box>
+          </Paper>
+        </Grid>
       </Grid>
     </Box>
   );
