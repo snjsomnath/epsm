@@ -805,8 +805,7 @@ const ConstructionsTab = () => {
                           <Search size={16} />
                         </InputAdornment>
                       ),
-                      endAdorn
-ment: componentSearchTerm && (
+                      endAdornment: componentSearchTerm && (
                         <InputAdornment position="end">
                           <IconButton size="small" onClick={() => setComponentSearchTerm('')}>
                             <X size={14} />
