@@ -35,7 +35,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
+  LinearProgress
 } from '@mui/material';
 import { 
   Search, 
@@ -269,6 +270,230 @@ const ConstructionsTab = () => {
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+
+  // Get benchmark status
+  const getBenchmarkStatus = (value: number, type: 'u-value' | 'gwp' | 'cost') => {
+    const benchmarks = {
+      'u-value': { low: 0.2, high: 0.5 },
+      'gwp': { low: 50, high: 100 },
+      'cost': { low: 500, high: 1000 }
+    };
+
+    const threshold = benchmarks[type];
+    
+    if (value <= threshold.low) return { color: 'success', label: 'Low' };
+    if (value >= threshold.high) return { color: 'error', label: 'High' };
+    return { color: 'warning', label: 'Moderate' };
+  };
+
+  // Details Dialog
+  const ConstructionDetailsDialog = ({ 
+    construction, 
+    onClose 
+  }: { 
+    construction: Construction, 
+    onClose: () => void 
+  }) => {
+    return (
+      <Dialog
+        open={true}
+        onClose={onClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">{construction.name}</Typography>
+            <Chip 
+              label={construction.element_type.toUpperCase()}
+              color={
+                construction.element_type === 'wall' ? 'primary' :
+                construction.element_type === 'roof' ? 'secondary' :
+                construction.element_type === 'floor' ? 'success' :
+                'info'
+              }
+            />
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={3}>
+            {/* Thermal Properties */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                    <Calculator size={24} />
+                    <Typography variant="h6">Thermal Properties</Typography>
+                  </Box>
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <Tooltip 
+                        title="Overall heat transfer coefficient. Lower values indicate better insulation."
+                        arrow
+                        placement="top"
+                      >
+                        <span>U-Value</span>
+                      </Tooltip>
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography variant="h4">
+                        {construction.u_value_w_m2k.toFixed(2)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        W/m²K
+                      </Typography>
+                      <Chip 
+                        label={getBenchmarkStatus(construction.u_value_w_m2k, 'u-value').label}
+                        color={getBenchmarkStatus(construction.u_value_w_m2k, 'u-value').color}
+                        size="small"
+                      />
+                    </Box>
+                  </Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Layer Composition
+                  </Typography>
+                  <List dense>
+                    {construction.layers?.map((layer, index) => (
+                      <ListItem key={layer.id}>
+                        <ListItemText
+                          primary={layer.material?.name || layer.glazing?.name}
+                          secondary={`Layer ${index + 1} - ${(layer.material?.thickness_m || layer.glazing?.thickness_m || 0).toFixed(3)} m`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Environmental Impact */}
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined" sx={{ height: '100%' }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                    <Leaf size={24} />
+                    <Typography variant="h6">Environmental Impact</Typography>
+                  </Box>
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="body2" gutterBottom>
+                      <Tooltip 
+                        title="Global Warming Potential (A1-A3). Measures environmental impact of production."
+                        arrow
+                        placement="top"
+                      >
+                        <span>Global Warming Potential</span>
+                      </Tooltip>
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography variant="h4">
+                        {construction.gwp_kgco2e_per_m2.toFixed(1)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        kg CO₂e/m²
+                      </Typography>
+                      <Chip 
+                        label={getBenchmarkStatus(construction.gwp_kgco2e_per_m2, 'gwp').label}
+                        color={getBenchmarkStatus(construction.gwp_kgco2e_per_m2, 'gwp').color}
+                        size="small"
+                      />
+                    </Box>
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" gutterBottom>
+                      <Tooltip 
+                        title="Material cost per square meter, excluding labor and installation."
+                        arrow
+                        placement="top"
+                      >
+                        <span>Cost</span>
+                      </Tooltip>
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Typography variant="h4">
+                        {construction.cost_sek_per_m2.toFixed(0)}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        SEK/m²
+                      </Typography>
+                      <Chip 
+                        label={getBenchmarkStatus(construction.cost_sek_per_m2, 'cost').label}
+                        color={getBenchmarkStatus(construction.cost_sek_per_m2, 'cost').color}
+                        size="small"
+                      />
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Layer Details */}
+            <Grid item xs={12}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                    <Layers size={24} />
+                    <Typography variant="h6">Layer Details</Typography>
+                  </Box>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Layer</TableCell>
+                          <TableCell>Material</TableCell>
+                          <TableCell align="right">Thickness (m)</TableCell>
+                          <TableCell align="right">Conductivity (W/m·K)</TableCell>
+                          <TableCell align="right">R-Value (m²·K/W)</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {construction.layers?.map((layer, index) => {
+                          const material = layer.material || layer.glazing;
+                          const rValue = material ? 
+                            material.thickness_m / material.conductivity_w_mk : 
+                            0;
+                          
+                          return (
+                            <TableRow key={layer.id}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell>{material?.name}</TableCell>
+                              <TableCell align="right">{material?.thickness_m.toFixed(4)}</TableCell>
+                              <TableCell align="right">{material?.conductivity_w_mk.toFixed(3)}</TableCell>
+                              <TableCell align="right">{rValue.toFixed(4)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Source Information */}
+            {construction.source && (
+              <Grid item xs={12}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Source Information
+                    </Typography>
+                    <Typography variant="body2">
+                      {construction.source}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
 
   return (
     <Box>
@@ -655,6 +880,17 @@ const ConstructionsTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Details Dialog */}
+      {selectedConstruction && (
+        <ConstructionDetailsDialog
+          construction={selectedConstruction}
+          onClose={() => {
+            setSelectedConstruction(null);
+            setDetailsDialogOpen(false);
+          }}
+        />
+      )}
     </Box>
   );
 };
