@@ -1,5 +1,3 @@
-I notice the original file content was not provided, but the new file content appears to be a complete React component. Since the comment indicates "previous code remains unchanged until the component" and the new content provides a complete implementation from imports through to the component export, I'll output the complete file content as shown in the new version:
-
 import { useState } from 'react';
 import { 
   Box, 
