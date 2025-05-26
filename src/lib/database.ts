@@ -355,6 +355,63 @@ export const createConstructionSet = async (constructionSet: ConstructionSetInse
   return data;
 };
 
+export const updateConstructionSet = async (id: string, constructionSet: Partial<ConstructionSetInsert>) => {
+  // Check if set exists
+  const { data: existing } = await supabase
+    .from('construction_sets')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (!existing) {
+    throw new Error(`Construction set with id ${id} not found`);
+  }
+
+  // If name is being updated, check if new name already exists
+  if (constructionSet.name) {
+    const { data: nameExists } = await supabase
+      .from('construction_sets')
+      .select('id')
+      .eq('name', constructionSet.name)
+      .neq('id', id)
+      .single();
+
+    if (nameExists) {
+      throw new Error(`Construction set "${constructionSet.name}" already exists`);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('construction_sets')
+    .update({ ...constructionSet, date_modified: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteConstructionSet = async (id: string) => {
+  // Check if set exists
+  const { data: existing } = await supabase
+    .from('construction_sets')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (!existing) {
+    throw new Error(`Construction set with id ${id} not found`);
+  }
+
+  const { error } = await supabase
+    .from('construction_sets')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
 // Realtime subscriptions
 export const subscribeToMaterials = (callback: (materials: Material[]) => void) => {
   return supabase

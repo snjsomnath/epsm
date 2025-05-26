@@ -12,6 +12,8 @@ import {
   createConstruction,
   updateConstruction,
   createConstructionSet,
+  updateConstructionSet,
+  deleteConstructionSet,
   subscribeToMaterials,
   subscribeToConstructions,
   subscribeToConstructionSets
@@ -43,6 +45,8 @@ interface DatabaseContextType {
   addConstruction: (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
   updateConstruction: (id: string, construction: Partial<ConstructionInsert>, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
   addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<void>;
+  updateConstructionSet: (id: string, constructionSet: Partial<ConstructionSetInsert>) => Promise<void>;
+  deleteConstructionSet: (id: string) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType>({
@@ -60,6 +64,8 @@ const DatabaseContext = createContext<DatabaseContextType>({
   addConstruction: async () => {},
   updateConstruction: async () => {},
   addConstructionSet: async () => {},
+  updateConstructionSet: async () => {},
+  deleteConstructionSet: async () => {},
 });
 
 export const useDatabase = () => useContext(DatabaseContext);
@@ -177,6 +183,26 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
+  const handleUpdateConstructionSet = async (id: string, constructionSet: Partial<ConstructionSetInsert>) => {
+    try {
+      await updateConstructionSet(id, constructionSet);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update construction set');
+      throw err;
+    }
+  };
+
+  const handleDeleteConstructionSet = async (id: string) => {
+    try {
+      await deleteConstructionSet(id);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete construction set');
+      throw err;
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -209,6 +235,8 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     addConstruction: handleAddConstruction,
     updateConstruction: handleUpdateConstruction,
     addConstructionSet: handleAddConstructionSet,
+    updateConstructionSet: handleUpdateConstructionSet,
+    deleteConstructionSet: handleDeleteConstructionSet,
   };
 
   return (
