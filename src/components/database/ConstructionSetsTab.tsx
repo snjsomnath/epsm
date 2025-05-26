@@ -30,34 +30,6 @@ import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { ConstructionSetInsert } from '../../lib/database.types';
 
-type ConstructionSet = {
-  id: number;
-  name: string;
-  description: string;
-  wall_construction: {
-    id: number;
-    name: string;
-    u_value_w_m2k: number;
-  } | null;
-  roof_construction: {
-    id: number;
-    name: string;
-    u_value_w_m2k: number;
-  } | null;
-  floor_construction: {
-    id: number;
-    name: string;
-    u_value_w_m2k: number;
-  } | null;
-  window_construction: {
-    id: number;
-    name: string;
-    u_value_w_m2k: number;
-  } | null;
-  author: string;
-  date_created: string;
-};
-
 const defaultConstructionSet: ConstructionSetInsert = {
   name: '',
   description: '',
@@ -70,22 +42,56 @@ const defaultConstructionSet: ConstructionSetInsert = {
 
 const ConstructionSetsTab = () => {
   const { isAuthenticated, user } = useAuth();
-  const { constructions, constructionSets, addConstructionSet, error: dbError } = useDatabase();
+  const { constructions, constructionSets, addConstructionSet, updateConstructionSet, deleteConstructionSet, error: dbError } = useDatabase();
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<ConstructionSetInsert>(defaultConstructionSet);
-
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-  };
+  const [editingSet, setEditingSet] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const handleInputChange = (field: keyof ConstructionSetInsert, value: any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleEdit = (set: typeof constructionSets[0]) => {
+    setEditingSet(set.id);
+    setFormData({
+      name: set.name,
+      description: set.description,
+      wall_construction_id: set.wall_construction_id,
+      roof_construction_id: set.roof_construction_id,
+      floor_construction_id: set.floor_construction_id,
+      window_construction_id: set.window_construction_id,
+      author_id: set.author_id
+    });
+    setOpenDialog(true);
+  };
+
+  const handleCopy = (set: typeof constructionSets[0]) => {
+    setFormData({
+      name: `${set.name} (Copy)`,
+      description: set.description,
+      wall_construction_id: set.wall_construction_id,
+      roof_construction_id: set.roof_construction_id,
+      floor_construction_id: set.floor_construction_id,
+      window_construction_id: set.window_construction_id,
+      author_id: user?.id || null
+    });
+    setOpenDialog(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteConstructionSet(id);
+      setConfirmDelete(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to delete construction set');
+    }
   };
 
   const handleSubmit = async () => {
@@ -98,20 +104,36 @@ const ConstructionSetsTab = () => {
       }
 
       if (!isAuthenticated || !user) {
-        throw new Error('You must be logged in to add construction sets');
+        throw new Error('You must be logged in to manage construction sets');
       }
 
-      await addConstructionSet({
-        ...formData,
-        author_id: user.id
-      });
+      if (editingSet) {
+        await updateConstructionSet(editingSet, {
+          ...formData,
+          author_id: user.id
+        });
+      } else {
+        await addConstructionSet({
+          ...formData,
+          author_id: user.id
+        });
+      }
+
       setOpenDialog(false);
       setFormData(defaultConstructionSet);
+      setEditingSet(null);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setFormData(defaultConstructionSet);
+    setEditingSet(null);
+    setFormError(null);
   };
 
   // Filter construction sets
@@ -135,7 +157,7 @@ const ConstructionSetsTab = () => {
           variant="outlined"
           size="small"
           value={searchTerm}
-          onChange={handleSearchChange}
+          onChange={(e) => setSearchTerm(e.target.value)}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -271,13 +293,25 @@ const ConstructionSetsTab = () => {
                 </Box>
                 
                 <CardActions sx={{ p: 0 }}>
-                  <IconButton size="small" color="primary">
+                  <IconButton 
+                    size="small" 
+                    color="primary"
+                    onClick={() => handleEdit(set)}
+                  >
                     <Edit size={18} />
                   </IconButton>
-                  <IconButton size="small" color="primary">
+                  <IconButton 
+                    size="small" 
+                    color="primary"
+                    onClick={() => handleCopy(set)}
+                  >
                     <Copy size={18} />
                   </IconButton>
-                  <IconButton size="small" color="error">
+                  <IconButton 
+                    size="small" 
+                    color="error"
+                    onClick={() => setConfirmDelete(set.id)}
+                  >
                     <Trash2 size={18} />
                   </IconButton>
                 </CardActions>
@@ -314,14 +348,15 @@ const ConstructionSetsTab = () => {
         <Plus />
       </Fab>
 
+      {/* Add/Edit Dialog */}
       <Dialog
         open={openDialog}
-        onClose={() => setOpenDialog(false)}
+        onClose={handleCloseDialog}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle>
-          Add New Construction Set
+          {editingSet ? 'Edit Construction Set' : 'Add New Construction Set'}
         </DialogTitle>
         <DialogContent>
           {formError && (
@@ -433,13 +468,36 @@ const ConstructionSetsTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
           <Button 
             variant="contained" 
             onClick={handleSubmit}
             disabled={loading}
           >
-            Add Construction Set
+            {editingSet ? 'Save Changes' : 'Add Construction Set'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+      >
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this construction set? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button 
+            variant="contained" 
+            color="error" 
+            onClick={() => confirmDelete && handleDelete(confirmDelete)}
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
