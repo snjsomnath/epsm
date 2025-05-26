@@ -15,10 +15,12 @@ import {
   Switch,
   FormControlLabel,
   Stack,
-  Divider
+  Divider,
+  Chip
 } from '@mui/material';
 import { Database, Home, FlaskConical, Activity, BarChart } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
+import { supabase } from '../lib/supabase';
 
 const steps: Step[] = [
   {
@@ -48,11 +50,76 @@ const HomePage = () => {
     return saved === null || saved === 'true';
   });
 
+  // System status states
+  const [dbConnected, setDbConnected] = useState(false);
+  const [dbStats, setDbStats] = useState({
+    materials: 0,
+    constructions: 0,
+    lastUpdate: null as string | null
+  });
+
   useEffect(() => {
     if (showTourNextTime) {
       setRunTour(true);
     }
   }, [showTourNextTime]);
+
+  // Check database connection and get stats
+  useEffect(() => {
+    const checkDatabase = async () => {
+      try {
+        // Test connection with a simple query
+        const { data: materialsData, error: materialsError } = await supabase
+          .from('materials')
+          .select('created_at, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        const { data: constructionsData, error: constructionsError } = await supabase
+          .from('constructions')
+          .select('created_at, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        if (materialsError || constructionsError) {
+          setDbConnected(false);
+          return;
+        }
+
+        // Get counts
+        const [materialsCount, constructionsCount] = await Promise.all([
+          supabase.from('materials').select('id', { count: 'exact', head: true }),
+          supabase.from('constructions').select('id', { count: 'exact', head: true })
+        ]);
+
+        // Find latest update across all tables
+        const allDates = [
+          ...(materialsData || []).map(m => new Date(m.updated_at || m.created_at)),
+          ...(constructionsData || []).map(c => new Date(c.updated_at || c.created_at))
+        ].filter(date => date instanceof Date && !isNaN(date.getTime()));
+
+        const latestUpdate = allDates.length > 0 
+          ? new Date(Math.max(...allDates.map(d => d.getTime()))).toLocaleString()
+          : null;
+
+        setDbConnected(true);
+        setDbStats({
+          materials: materialsCount.count || 0,
+          constructions: constructionsCount.count || 0,
+          lastUpdate: latestUpdate
+        });
+      } catch (err) {
+        console.error('Database connection check failed:', err);
+        setDbConnected(false);
+      }
+    };
+
+    checkDatabase();
+    
+    // Set up periodic check every 30 seconds
+    const interval = setInterval(checkDatabase, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleTourCallback = (data: CallBackProps) => {
     if (data.status === 'finished' || data.status === 'skipped') {
@@ -212,8 +279,21 @@ const HomePage = () => {
                 <List dense>
                   <ListItem>
                     <ListItemText 
-                      primary="Database Connection" 
-                      secondary="Connected"
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          Database Connection
+                          <Chip 
+                            size="small"
+                            color={dbConnected ? "success" : "error"}
+                            label={dbConnected ? "Connected" : "Disconnected"}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        dbConnected ? 
+                          `${dbStats.materials} materials, ${dbStats.constructions} constructions` :
+                          "Check your connection"
+                      }
                     />
                   </ListItem>
                   <ListItem>
@@ -224,8 +304,8 @@ const HomePage = () => {
                   </ListItem>
                   <ListItem>
                     <ListItemText 
-                      primary="Last Backup" 
-                      secondary="2 hours ago"
+                      primary="Last Database Update" 
+                      secondary={dbStats.lastUpdate || "No updates yet"}
                     />
                   </ListItem>
                 </List>
