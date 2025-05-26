@@ -82,7 +82,7 @@ const headCells: HeadCell[] = [
 
 const WindowGlazingTab = () => {
   const { isAuthenticated } = useAuth();
-  const { windowGlazing, addWindowGlazing, error: dbError } = useDatabase();
+  const { windowGlazing, addWindowGlazing, updateWindowGlazing, error: dbError } = useDatabase();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof WindowGlazing>('name');
@@ -94,6 +94,7 @@ const WindowGlazingTab = () => {
   const [formData, setFormData] = useState<WindowGlazingInsert>(defaultGlazing);
   const [selectedGlazing, setSelectedGlazing] = useState<WindowGlazing | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [editingGlazing, setEditingGlazing] = useState<WindowGlazing | null>(null);
 
   const handleRequestSort = (property: keyof WindowGlazing) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -128,8 +129,22 @@ const WindowGlazingTab = () => {
   };
 
   const handleEdit = (glazing: WindowGlazing) => {
-    // Implement edit functionality
-    console.log('Edit glazing:', glazing);
+    setEditingGlazing(glazing);
+    setFormData({
+      name: glazing.name,
+      thickness_m: glazing.thickness_m,
+      conductivity_w_mk: glazing.conductivity_w_mk,
+      solar_transmittance: glazing.solar_transmittance,
+      visible_transmittance: glazing.visible_transmittance,
+      infrared_transmittance: glazing.infrared_transmittance,
+      front_ir_emissivity: glazing.front_ir_emissivity,
+      back_ir_emissivity: glazing.back_ir_emissivity,
+      gwp_kgco2e_per_m2: glazing.gwp_kgco2e_per_m2,
+      cost_sek_per_m2: glazing.cost_sek_per_m2,
+      author_id: glazing.author_id || '00000000-0000-0000-0000-000000000000',
+      source: glazing.source
+    });
+    setOpenModal(true);
   };
 
   const handleSubmit = async () => {
@@ -142,24 +157,30 @@ const WindowGlazingTab = () => {
       }
 
       if (!isAuthenticated) {
-        throw new Error('You must be logged in to add window glazing');
+        throw new Error('You must be logged in to manage window glazing');
       }
 
-      const isDemoMode = sessionStorage.getItem('demoMode') === 'true';
-      
-      const glazingWithAuthor = {
-        ...formData,
-        author_id: isDemoMode ? '00000000-0000-0000-0000-000000000000' : formData.author_id
-      };
+      if (editingGlazing) {
+        await updateWindowGlazing(editingGlazing.id, formData);
+      } else {
+        await addWindowGlazing(formData);
+      }
 
-      await addWindowGlazing(glazingWithAuthor);
       setOpenModal(false);
       setFormData(defaultGlazing);
+      setEditingGlazing(null);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCloseModal = () => {
+    setOpenModal(false);
+    setFormData(defaultGlazing);
+    setEditingGlazing(null);
+    setFormError(null);
   };
 
   // Calculate thermal resistance
@@ -532,7 +553,7 @@ const WindowGlazingTab = () => {
                   <TableCell align="right">{glazing.cost_sek_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="center">
                     <Tooltip title="Edit">
-                      <IconButton size="small">
+                      <IconButton size="small" onClick={() => handleEdit(glazing)}>
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
@@ -576,12 +597,12 @@ const WindowGlazingTab = () => {
 
       <Dialog 
         open={openModal} 
-        onClose={() => setOpenModal(false)}
+        onClose={handleCloseModal}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle>
-          Add New Window Glazing
+          {editingGlazing ? 'Edit Window Glazing' : 'Add New Window Glazing'}
         </DialogTitle>
         <DialogContent>
           {formError && (
@@ -677,13 +698,13 @@ const WindowGlazingTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenModal(false)}>Cancel</Button>
+          <Button onClick={handleCloseModal}>Cancel</Button>
           <Button 
             variant="contained" 
             onClick={handleSubmit}
             disabled={loading}
           >
-            Add Window Glazing
+            {editingGlazing ? 'Save Changes' : 'Add Window Glazing'}
           </Button>
         </DialogActions>
       </Dialog>
