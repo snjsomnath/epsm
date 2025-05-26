@@ -144,7 +144,8 @@ const WindowGlazingTab = () => {
       author_id: glazing.author_id || '00000000-0000-0000-0000-000000000000',
       source: glazing.source
     });
-    setOpenModal(true);
+    setDetailsDialogOpen(false); // Close details dialog before opening edit dialog
+    setTimeout(() => setOpenModal(true), 100); // Slight delay to ensure smooth transition
   };
 
   const handleSubmit = async () => {
@@ -266,6 +267,7 @@ const WindowGlazingTab = () => {
         onClose={onClose}
         maxWidth="md"
         fullWidth
+        sx={{ zIndex: 1300 }} // Lower z-index for details dialog
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -595,11 +597,13 @@ const WindowGlazingTab = () => {
         <Plus />
       </Fab>
 
+      {/* Add/Edit Dialog */}
       <Dialog 
         open={openModal} 
         onClose={handleCloseModal}
         maxWidth="md"
         fullWidth
+        sx={{ zIndex: 1400 }} // Higher z-index for edit dialog
       >
         <DialogTitle>
           {editingGlazing ? 'Edit Window Glazing' : 'Add New Window Glazing'}
@@ -709,6 +713,7 @@ const WindowGlazingTab = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Details Dialog */}
       {selectedGlazing && (
         <GlazingDetailsDialog
           glazing={selectedGlazing}
