@@ -28,7 +28,13 @@ import {
   Chip,
   Alert,
   Stack,
-  Tooltip
+  Tooltip,
+  Card,
+  CardContent,
+  Divider,
+  List,
+  ListItem,
+  ListItemText
 } from '@mui/material';
 import { Search, Plus, Edit, Info, X } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
@@ -91,6 +97,8 @@ const MaterialsTab = () => {
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [searchTerm, setSearchTerm] = useState('');
   const [openModal, setOpenModal] = useState(false);
+  const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<MaterialInsert>(defaultMaterial);
@@ -130,6 +138,11 @@ const MaterialsTab = () => {
       author_id: material.author_id || '00000000-0000-0000-0000-000000000000'
     });
     setOpenModal(true);
+  };
+
+  const handleViewDetails = (material: Material) => {
+    setSelectedMaterial(material);
+    setOpenDetailsDialog(true);
   };
 
   const handleSubmit = async () => {
@@ -193,6 +206,15 @@ const MaterialsTab = () => {
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+
+  // Calculate thermal properties
+  const calculateThermalResistance = (thickness: number, conductivity: number) => {
+    return thickness / conductivity;
+  };
+
+  const calculateHeatCapacity = (density: number, specificHeat: number, thickness: number) => {
+    return density * specificHeat * thickness;
+  };
 
   return (
     <Box>
@@ -288,7 +310,7 @@ const MaterialsTab = () => {
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Details">
-                      <IconButton size="small">
+                      <IconButton size="small" onClick={() => handleViewDetails(material)}>
                         <Info size={18} />
                       </IconButton>
                     </Tooltip>
@@ -325,6 +347,215 @@ const MaterialsTab = () => {
         <Plus />
       </Fab>
 
+      {/* Material Details Dialog */}
+      <Dialog
+        open={openDetailsDialog}
+        onClose={() => setOpenDetailsDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedMaterial && (
+          <>
+            <DialogTitle>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">{selectedMaterial.name}</Typography>
+                <Chip 
+                  label={selectedMaterial.roughness} 
+                  color="primary" 
+                  variant="outlined" 
+                />
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Grid container spacing={3}>
+                {/* Physical Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Physical Properties
+                      </Typography>
+                      <List dense>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Thickness" 
+                            secondary={`${selectedMaterial.thickness_m.toFixed(4)} m`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Density" 
+                            secondary={`${selectedMaterial.density_kg_m3.toFixed(1)} kg/m³`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Specific Heat" 
+                            secondary={`${selectedMaterial.specific_heat_j_kgk.toFixed(1)} J/kg·K`}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Thermal Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Thermal Properties
+                      </Typography>
+                      <List dense>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Conductivity" 
+                            secondary={`${selectedMaterial.conductivity_w_mk.toFixed(4)} W/m·K`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Thermal Resistance (R-value)" 
+                            secondary={`${calculateThermalResistance(
+                              selectedMaterial.thickness_m, 
+                              selectedMaterial.conductivity_w_mk
+                            ).toFixed(4)} m²·K/W`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Heat Capacity" 
+                            secondary={`${calculateHeatCapacity(
+                              selectedMaterial.density_kg_m3,
+                              selectedMaterial.specific_heat_j_kgk,
+                              selectedMaterial.thickness_m
+                            ).toFixed(1)} J/m²·K`}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Optical Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Optical Properties
+                      </Typography>
+                      <List dense>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Thermal Absorptance" 
+                            secondary={`${(selectedMaterial.thermal_absorptance * 100).toFixed(1)}%`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Solar Absorptance" 
+                            secondary={`${(selectedMaterial.solar_absorptance * 100).toFixed(1)}%`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Visible Absorptance" 
+                            secondary={`${(selectedMaterial.visible_absorptance * 100).toFixed(1)}%`}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Environmental & Economic Impact */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Environmental & Economic Impact
+                      </Typography>
+                      <List dense>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Global Warming Potential" 
+                            secondary={`${selectedMaterial.gwp_kgco2e_per_m2.toFixed(2)} kg CO₂e/m²`}
+                          />
+                        </ListItem>
+                        <ListItem>
+                          <ListItemText 
+                            primary="Cost" 
+                            secondary={`${selectedMaterial.cost_sek_per_m2.toFixed(2)} SEK/m²`}
+                          />
+                        </ListItem>
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Applications */}
+                <Grid item xs={12}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        Allowed Applications
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Chip 
+                          label="Wall" 
+                          color={selectedMaterial.wall_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.wall_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Roof" 
+                          color={selectedMaterial.roof_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.roof_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Floor" 
+                          color={selectedMaterial.floor_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.floor_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Window Layer" 
+                          color={selectedMaterial.window_layer_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.window_layer_allowed ? "filled" : "outlined"} 
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Source Information */}
+                {selectedMaterial.source && (
+                  <Grid item xs={12}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          Source Information
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {selectedMaterial.source}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => handleEdit(selectedMaterial)} color="primary">
+                Edit Material
+              </Button>
+              <Button onClick={() => setOpenDetailsDialog(false)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Add/Edit Material Dialog */}
       <Dialog 
         open={openModal} 
         onClose={handleCloseModal}
