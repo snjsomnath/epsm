@@ -15,10 +15,10 @@ import {
   Button,
   Chip,
   Tooltip,
-  Alert
+  Alert,
+  LinearProgress
 } from '@mui/material';
 import { ChevronDown, AlertCircle, Database, Check } from 'lucide-react';
-import { mockExtractedComponents } from '../../data/mockData';
 
 interface ComponentItem {
   id: string;
@@ -28,8 +28,7 @@ interface ComponentItem {
   existsInDatabase: boolean;
 }
 
-interface ExtractedComponents {
-  fileName: string;
+interface ParsedData {
   materials: ComponentItem[];
   constructions: ComponentItem[];
   zones: ComponentItem[];
@@ -37,11 +36,10 @@ interface ExtractedComponents {
 
 interface AssignmentsTabProps {
   uploadedFiles: File[];
-  simulationComplete: boolean;
+  parsedData: ParsedData | null;
 }
 
-const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabProps) => {
-  const [extractedComponents] = useState<ExtractedComponents[]>(mockExtractedComponents);
+const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
   const [expanded, setExpanded] = useState<string | false>('panel0');
 
   const handleChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
@@ -56,11 +54,14 @@ const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabPro
     );
   }
 
-  if (!simulationComplete) {
+  if (!parsedData) {
     return (
-      <Alert severity="warning" sx={{ mt: 2 }}>
-        Run the baseline simulation to extract components.
-      </Alert>
+      <Box sx={{ mt: 2 }}>
+        <LinearProgress />
+        <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+          Analyzing IDF components...
+        </Typography>
+      </Box>
     );
   }
 
@@ -73,7 +74,7 @@ const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabPro
         Components extracted from your IDF files are listed below. Add unique components to the database.
       </Typography>
 
-      {extractedComponents.map((fileComponents, fileIndex) => (
+      {uploadedFiles.map((file, fileIndex) => (
         <Accordion
           key={fileIndex}
           expanded={expanded === `panel${fileIndex}`}
@@ -86,10 +87,10 @@ const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabPro
             id={`panel${fileIndex}bh-header`}
           >
             <Typography sx={{ width: '33%', flexShrink: 0 }}>
-              {fileComponents.fileName}
+              {file.name}
             </Typography>
             <Typography sx={{ color: 'text.secondary' }}>
-              {fileComponents.materials.length} materials, {fileComponents.constructions.length} constructions, {fileComponents.zones.length} zones
+              {parsedData.materials.length} materials, {parsedData.constructions.length} constructions, {parsedData.zones.length} zones
             </Typography>
           </AccordionSummary>
           <AccordionDetails>
@@ -109,7 +110,7 @@ const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabPro
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {fileComponents.materials.map((material) => (
+                  {parsedData.materials.map((material) => (
                     <TableRow key={material.id}>
                       <TableCell>{material.name}</TableCell>
                       <TableCell>{material.type}</TableCell>
@@ -166,7 +167,7 @@ const AssignmentsTab = ({ uploadedFiles, simulationComplete }: AssignmentsTabPro
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {fileComponents.constructions.map((construction) => (
+                  {parsedData.constructions.map((construction) => (
                     <TableRow key={construction.id}>
                       <TableCell>{construction.name}</TableCell>
                       <TableCell>{construction.type}</TableCell>
