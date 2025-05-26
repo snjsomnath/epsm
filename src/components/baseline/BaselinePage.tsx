@@ -37,15 +37,23 @@ const BaselinePage = () => {
       try {
         setParsing(true);
         setParseError(null);
-        const data = await parseIdfFiles(files);
+        setParsedData(null);
+        const { data, error } = await parseIdfFiles(files);
+        
+        if (error) {
+          throw new Error(error);
+        }
+        
         setParsedData(data);
       } catch (err) {
         setParseError(err instanceof Error ? err.message : 'Failed to parse IDF files');
+        setParsedData(null);
       } finally {
         setParsing(false);
       }
     } else {
       setParsedData(null);
+      setParseError(null);
     }
   };
 
@@ -104,7 +112,7 @@ const BaselinePage = () => {
                 <Box sx={{ mt: 2 }}>
                   <LinearProgress />
                   <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
-                    Parsing IDF files...
+                    Analyzing IDF components...
                   </Typography>
                 </Box>
               )}
@@ -118,7 +126,7 @@ const BaselinePage = () => {
           </Card>
         </Grid>
 
-        {/* Simulation Setup Section */}
+        {/* Weather File Section */}
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
@@ -190,7 +198,6 @@ const BaselinePage = () => {
               {tabIndex === 0 && (
                 <AssignmentsTab 
                   uploadedFiles={uploadedFiles}
-                  simulationComplete={simulationComplete}
                   parsedData={parsedData}
                 />
               )}
