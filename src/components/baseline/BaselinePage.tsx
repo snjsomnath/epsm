@@ -161,8 +161,8 @@ const BaselinePage = () => {
                 Configure and run the baseline simulation
               </Typography>
 
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
+              <Stack spacing={3}>
+                <Box>
                   <Typography variant="subtitle2" gutterBottom>
                     <Wind size={20} style={{ verticalAlign: 'text-bottom', marginRight: '8px' }} />
                     Weather Data
@@ -170,37 +170,34 @@ const BaselinePage = () => {
                   <Box sx={{ opacity: uploadedFiles.length === 0 ? 0.7 : 1, pointerEvents: uploadedFiles.length === 0 ? 'none' : 'auto' }}>
                     <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} />
                   </Box>
-                </Grid>
+                </Box>
 
-                <Grid item xs={12} md={6}>
-                  <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                    <Tooltip title={uploadedFiles.length === 0 ? "Upload IDF files first" : !weatherFile ? "Upload weather file to enable simulation" : ""}>
-                      <span>
-                        <Button 
-                          variant="contained" 
-                          color="primary" 
-                          fullWidth 
-                          startIcon={<Play size={18} />}
-                          disabled={uploadedFiles.length === 0 || !weatherFile || simulating}
-                          onClick={handleRunSimulation}
-                          sx={{ mt: 2 }}
-                        >
-                          Run Baseline Simulation
-                        </Button>
-                      </span>
-                    </Tooltip>
-                    
-                    {simulating && (
-                      <Box sx={{ width: '100%', mt: 2 }}>
-                        <LinearProgress variant="determinate" value={progress} />
-                        <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
-                          Simulating... {Math.round(progress)}%
-                        </Typography>
-                      </Box>
-                    )}
-                  </Box>
-                </Grid>
-              </Grid>
+                <Box>
+                  <Tooltip title={uploadedFiles.length === 0 ? "Upload IDF files first" : !weatherFile ? "Upload weather file to enable simulation" : ""}>
+                    <span>
+                      <Button 
+                        variant="contained" 
+                        color="primary" 
+                        fullWidth 
+                        startIcon={<Play size={18} />}
+                        disabled={uploadedFiles.length === 0 || !weatherFile || simulating}
+                        onClick={handleRunSimulation}
+                      >
+                        Run Baseline Simulation
+                      </Button>
+                    </span>
+                  </Tooltip>
+                  
+                  {simulating && (
+                    <Box sx={{ width: '100%', mt: 2 }}>
+                      <LinearProgress variant="determinate" value={progress} />
+                      <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>
+                        Simulating... {Math.round(progress)}%
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
