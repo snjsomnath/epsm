@@ -92,9 +92,9 @@ const WindowGlazingTab = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<WindowGlazingInsert>(defaultGlazing);
-  const [selectedGlazing, setSelectedGlazing] = useState<WindowGlazing | null>(null);
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [editingGlazing, setEditingGlazing] = useState<WindowGlazing | null>(null);
+  const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
+  const [selectedGlazing, setSelectedGlazing] = useState<WindowGlazing | null>(null);
 
   const handleRequestSort = (property: keyof WindowGlazing) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -125,7 +125,7 @@ const WindowGlazingTab = () => {
 
   const handleViewDetails = (glazing: WindowGlazing) => {
     setSelectedGlazing(glazing);
-    setDetailsDialogOpen(true);
+    setOpenDetailsDialog(true);
   };
 
   const handleEdit = (glazing: WindowGlazing) => {
@@ -144,8 +144,7 @@ const WindowGlazingTab = () => {
       author_id: glazing.author_id || '00000000-0000-0000-0000-000000000000',
       source: glazing.source
     });
-    setDetailsDialogOpen(false); // Close details dialog before opening edit dialog
-    setTimeout(() => setOpenModal(true), 100); // Slight delay to ensure smooth transition
+    setOpenModal(true);
   };
 
   const handleSubmit = async () => {
@@ -250,25 +249,21 @@ const WindowGlazingTab = () => {
     );
   };
 
-  // Details Dialog
-  const GlazingDetailsDialog = ({ 
-    glazing, 
-    onClose 
-  }: { 
-    glazing: WindowGlazing, 
-    onClose: () => void 
+  // Refactor GlazingDetailsDialog to return only dialog content, not a <Dialog>
+  const GlazingDetailsDialog = ({
+    glazing,
+    onEdit,
+    onClose
+  }: {
+    glazing: WindowGlazing,
+    onEdit: () => void,
+    onClose: () => void
   }) => {
     const rValue = calculateThermalResistance(glazing.thickness_m, glazing.conductivity_w_mk);
     const uValue = 1 / rValue;
 
     return (
-      <Dialog
-        open={true}
-        onClose={onClose}
-        maxWidth="md"
-        fullWidth
-        sx={{ zIndex: 1300 }} // Lower z-index for details dialog
-      >
+      <>
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">{glazing.name}</Typography>
@@ -438,14 +433,14 @@ const WindowGlazingTab = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => handleEdit(glazing)} color="primary">
+          <Button onClick={onEdit} color="primary">
             Edit Glazing
           </Button>
           <Button onClick={onClose}>
             Close
           </Button>
         </DialogActions>
-      </Dialog>
+      </>
     );
   };
 
@@ -597,13 +592,28 @@ const WindowGlazingTab = () => {
         <Plus />
       </Fab>
 
+      {/* Details Dialog */}
+      <Dialog
+        open={openDetailsDialog}
+        onClose={() => setOpenDetailsDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedGlazing && (
+          <GlazingDetailsDialog
+            glazing={selectedGlazing}
+            onEdit={() => setOpenModal(true)}
+            onClose={() => setOpenDetailsDialog(false)}
+          />
+        )}
+      </Dialog>
+
       {/* Add/Edit Dialog */}
       <Dialog 
         open={openModal} 
         onClose={handleCloseModal}
         maxWidth="md"
         fullWidth
-        sx={{ zIndex: 1400 }} // Higher z-index for edit dialog
       >
         <DialogTitle>
           {editingGlazing ? 'Edit Window Glazing' : 'Add New Window Glazing'}
@@ -712,17 +722,6 @@ const WindowGlazingTab = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Details Dialog */}
-      {selectedGlazing && (
-        <GlazingDetailsDialog
-          glazing={selectedGlazing}
-          onClose={() => {
-            setSelectedGlazing(null);
-            setDetailsDialogOpen(false);
-          }}
-        />
-      )}
     </Box>
   );
 };
