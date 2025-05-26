@@ -71,14 +71,14 @@ const HomePage = () => {
         // Test connection with a simple query
         const { data: materialsData, error: materialsError } = await supabase
           .from('materials')
-          .select('created_at, updated_at')
-          .order('updated_at', { ascending: false })
+          .select('created_at')
+          .order('created_at', { ascending: false })
           .limit(1);
 
         const { data: constructionsData, error: constructionsError } = await supabase
           .from('constructions')
-          .select('created_at, updated_at')
-          .order('updated_at', { ascending: false })
+          .select('created_at')
+          .order('created_at', { ascending: false })
           .limit(1);
 
         if (materialsError || constructionsError) {
@@ -94,8 +94,8 @@ const HomePage = () => {
 
         // Find latest update across all tables
         const allDates = [
-          ...(materialsData || []).map(m => new Date(m.updated_at || m.created_at)),
-          ...(constructionsData || []).map(c => new Date(c.updated_at || c.created_at))
+          ...(materialsData || []).map(m => new Date(m.created_at)),
+          ...(constructionsData || []).map(c => new Date(c.created_at))
         ].filter(date => date instanceof Date && !isNaN(date.getTime()));
 
         const latestUpdate = allDates.length > 0 
