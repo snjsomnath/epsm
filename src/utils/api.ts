@@ -1,4 +1,6 @@
+// API configuration
 const API_BASE_URL = 'http://localhost:8000/api';
+const API_TIMEOUT = 10000; // 10 seconds
 
 interface ApiResponse<T> {
   data?: T;
@@ -14,18 +16,37 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   return { data };
 }
 
-// IDF parsing operations
+// IDF parsing operations with timeout
 export const parseIdfFiles = async (files: File[]) => {
-  const formData = new FormData();
-  files.forEach(file => {
-    formData.append('files', file);
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
-  const response = await fetch(`${API_BASE_URL}/parse/idf/`, {
-    method: 'POST',
-    body: formData,
-  });
-  return handleResponse(response);
+  try {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('files', file);
+    });
+
+    const response = await fetch(`${API_BASE_URL}/parse/idf/`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    return handleResponse(response);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error) {
+      if (err.name === 'AbortError') {
+        throw new Error('API request timed out. Please try again.');
+      }
+      if (err.message.includes('Failed to fetch')) {
+        throw new Error('API endpoint is not reachable. Please check your connection.');
+      }
+    }
+    throw err;
+  }
 };
 
 // Simulation operations
