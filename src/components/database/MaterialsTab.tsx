@@ -278,7 +278,13 @@ const MaterialsTab = () => {
     unit?: string,
     tooltip: string 
   }) => (
-    <Tooltip title={tooltip} placement="top">
+    <Tooltip 
+      title={tooltip}
+      placement="top"
+      arrow
+      enterDelay={200}
+      leaveDelay={0}
+    >
       <ListItem>
         <ListItemText 
           primary={label}
@@ -303,7 +309,13 @@ const MaterialsTab = () => {
     value: number,
     tooltip: string 
   }) => (
-    <Tooltip title={tooltip} placement="top">
+    <Tooltip 
+      title={tooltip}
+      placement="top"
+      arrow
+      enterDelay={200}
+      leaveDelay={0}
+    >
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" gutterBottom>
           {label}
@@ -480,192 +492,230 @@ const MaterialsTab = () => {
               <Grid container spacing={3}>
                 {/* Physical Properties */}
                 <Grid item xs={12} md={6}>
-                  <PropertyCard 
-                    icon={<BoxIcon size={24} />}
-                    title="Physical Properties"
-                    tooltip="Basic material characteristics that define its physical structure"
-                  >
-                    <List dense>
-                      <MaterialProperty
-                        label="Thickness"
-                        value={selectedMaterial.thickness_m.toFixed(4)}
-                        unit="m"
-                        tooltip="The thickness of the material layer, used in calculating thermal resistance"
-                      />
-                      <MaterialProperty
-                        label="Density"
-                        value={selectedMaterial.density_kg_m3.toFixed(1)}
-                        unit="kg/m³"
-                        tooltip="Mass per unit volume of the material. Affects thermal mass and structural performance"
-                      />
-                      <MaterialProperty
-                        label="Specific Heat"
-                        value={selectedMaterial.specific_heat_j_kgk.toFixed(1)}
-                        unit="J/kg·K"
-                        tooltip="Amount of energy required to raise the temperature of 1 kg of the material by 1°C"
-                      />
-                    </List>
-                  </PropertyCard>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <BoxIcon size={24} />
+                        <Typography variant="h6">Physical Properties</Typography>
+                      </Box>
+                      <List dense>
+                        <MaterialProperty
+                          label="Thickness"
+                          value={selectedMaterial.thickness_m.toFixed(4)}
+                          unit="m"
+                          tooltip="The thickness of the material layer. Typical range: 0.001 - 0.5 m. Affects thermal resistance and material cost."
+                        />
+                        <MaterialProperty
+                          label="Density"
+                          value={selectedMaterial.density_kg_m3.toFixed(1)}
+                          unit="kg/m³"
+                          tooltip="Mass per unit volume. Light: < 500 kg/m³, Medium: 500-1500 kg/m³, Heavy: > 1500 kg/m³. Affects thermal mass and structural properties."
+                        />
+                        <MaterialProperty
+                          label="Specific Heat"
+                          value={selectedMaterial.specific_heat_j_kgk.toFixed(1)}
+                          unit="J/kg·K"
+                          tooltip="Energy needed to raise 1kg by 1°C. Low: < 800 J/kg·K, Medium: 800-1200 J/kg·K, High: > 1200 J/kg·K. Higher values indicate better thermal storage."
+                        />
+                      </List>
+                    </CardContent>
+                  </Card>
                 </Grid>
 
                 {/* Thermal Properties */}
                 <Grid item xs={12} md={6}>
-                  <PropertyCard 
-                    icon={<Thermometer size={24} />}
-                    title="Thermal Properties"
-                    tooltip="Properties that determine the material's heat transfer characteristics"
-                  >
-                    <List dense>
-                      <MaterialProperty
-                        label="Conductivity"
-                        value={selectedMaterial.conductivity_w_mk.toFixed(4)}
-                        unit="W/m·K"
-                        tooltip="Rate at which heat passes through the material. Lower values mean better insulation"
-                      />
-                      {(() => {
-                        const rValue = calculateThermalResistance(
-                          selectedMaterial.thickness_m,
-                          selectedMaterial.conductivity_w_mk
-                        );
-                        const status = getBenchmarkStatus(rValue, 'r-value');
-                        return (
-                          <ListItem>
-                            <ListItemText
-                              primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <span>Thermal Resistance (R-value)</span>
-                                  <Chip 
-                                    label={status.label} 
-                                    color={status.color as any} 
-                                    size="small"
-                                  />
-                                </Box>
-                              }
-                              secondary={`${rValue.toFixed(4)} m²·K/W`}
-                            />
-                          </ListItem>
-                        );
-                      })()}
-                      {(() => {
-                        const heatCapacity = calculateHeatCapacity(
-                          selectedMaterial.density_kg_m3,
-                          selectedMaterial.specific_heat_j_kgk,
-                          selectedMaterial.thickness_m
-                        );
-                        const status = getBenchmarkStatus(heatCapacity, 'heat-capacity');
-                        return (
-                          <ListItem>
-                            <ListItemText
-                              primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <span>Heat Capacity</span>
-                                  <Chip 
-                                    label={status.label} 
-                                    color={status.color as any} 
-                                    size="small"
-                                  />
-                                </Box>
-                              }
-                              secondary={`${heatCapacity.toFixed(1)} J/m²·K`}
-                            />
-                          </ListItem>
-                        );
-                      })()}
-                    </List>
-                  </PropertyCard>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Thermometer size={24} />
+                        <Typography variant="h6">Thermal Properties</Typography>
+                      </Box>
+                      <List dense>
+                        <MaterialProperty
+                          label="Conductivity"
+                          value={selectedMaterial.conductivity_w_mk.toFixed(4)}
+                          unit="W/m·K"
+                          tooltip="Heat transfer rate. Insulating: < 0.1 W/m·K, Moderate: 0.1-1.0 W/m·K, Conductive: > 1.0 W/m·K. Lower values indicate better insulation."
+                        />
+                        {(() => {
+                          const rValue = calculateThermalResistance(
+                            selectedMaterial.thickness_m,
+                            selectedMaterial.conductivity_w_mk
+                          );
+                          const status = getBenchmarkStatus(rValue, 'r-value');
+                          return (
+                            <ListItem>
+                              <ListItemText
+                                primary={
+                                  <Tooltip 
+                                    title="Thermal resistance (R-value). Good: ≥ 0.5 m²·K/W, Moderate: 0.2-0.49 m²·K/W, Poor: < 0.2 m²·K/W. Higher values mean better insulation."
+                                    arrow
+                                    placement="top"
+                                  >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <span>Thermal Resistance (R-value)</span>
+                                      <Chip 
+                                        label={status.label} 
+                                        color={status.color as any} 
+                                        size="small"
+                                      />
+                                    </Box>
+                                  </Tooltip>
+                                }
+                                secondary={`${rValue.toFixed(4)} m²·K/W`}
+                              />
+                            </ListItem>
+                          );
+                        })()}
+                        {(() => {
+                          const heatCapacity = calculateHeatCapacity(
+                            selectedMaterial.density_kg_m3,
+                            selectedMaterial.specific_heat_j_kgk,
+                            selectedMaterial.thickness_m
+                          );
+                          const status = getBenchmarkStatus(heatCapacity, 'heat-capacity');
+                          return (
+                            <ListItem>
+                              <ListItemText
+                                primary={
+                                  <Tooltip 
+                                    title="Total heat storage capacity. High: ≥ 150,000 J/m²·K, Moderate: 75,000-149,999 J/m²·K, Low: < 75,000 J/m²·K. Higher values provide better temperature stability."
+                                    arrow
+                                    placement="top"
+                                  >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                      <span>Heat Capacity</span>
+                                      <Chip 
+                                        label={status.label} 
+                                        color={status.color as any} 
+                                        size="small"
+                                      />
+                                    </Box>
+                                  </Tooltip>
+                                }
+                                secondary={`${heatCapacity.toFixed(1)} J/m²·K`}
+                              />
+                            </ListItem>
+                          );
+                        })()}
+                      </List>
+                    </CardContent>
+                  </Card>
                 </Grid>
 
                 {/* Optical Properties */}
                 <Grid item xs={12} md={6}>
-                  <PropertyCard 
-                    icon={<Sun size={24} />}
-                    title="Optical Properties"
-                    tooltip="Properties that determine how the material interacts with radiation"
-                  >
-                    <AbsorptanceProperty
-                      label="Thermal Absorptance"
-                      value={selectedMaterial.thermal_absorptance}
-                      tooltip="Fraction of incident thermal radiation absorbed by the surface"
-                    />
-                    <AbsorptanceProperty
-                      label="Solar Absorptance"
-                      value={selectedMaterial.solar_absorptance}
-                      tooltip="Fraction of solar energy absorbed by the surface"
-                    />
-                    <AbsorptanceProperty
-                      label="Visible Absorptance"
-                      value={selectedMaterial.visible_absorptance}
-                      tooltip="Fraction of visible light absorbed by the surface"
-                    />
-                  </PropertyCard>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Sun size={24} />
+                        <Typography variant="h6">Optical Properties</Typography>
+                      </Box>
+                      <AbsorptanceProperty
+                        label="Thermal Absorptance"
+                        value={selectedMaterial.thermal_absorptance}
+                        tooltip="Fraction of incident thermal radiation absorbed. Low: < 0.5, Moderate: 0.5-0.8, High: > 0.8. Affects heat gain and loss through radiation."
+                      />
+                      <AbsorptanceProperty
+                        label="Solar Absorptance"
+                        value={selectedMaterial.solar_absorptance}
+                        tooltip="Fraction of solar energy absorbed. Low: < 0.4, Moderate: 0.4-0.7, High: > 0.7. Lower values reduce solar heat gain, important for cooling loads."
+                      />
+                      <AbsorptanceProperty
+                        label="Visible Absorptance"
+                        value={selectedMaterial.visible_absorptance}
+                        tooltip="Fraction of visible light absorbed. Low: < 0.4, Moderate: 0.4-0.7, High: > 0.7. Affects surface appearance and daylight performance."
+                      />
+                    </CardContent>
+                  </Card>
                 </Grid>
 
                 {/* Environmental & Economic Impact */}
                 <Grid item xs={12} md={6}>
-                  <PropertyCard 
-                    icon={<Leaf size={24} />}
-                    title="Impact & Applications"
-                    tooltip="Environmental impact and economic considerations"
-                  >
-                    {(() => {
-                      const gwpStatus = getBenchmarkStatus(selectedMaterial.gwp_kgco2e_per_m2, 'gwp');
-                      return (
-                        <Box sx={{ mb: 2 }}>
-                          <Typography variant="body2" gutterBottom>
-                            Global Warming Potential
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography variant="h6">
-                              {selectedMaterial.gwp_kgco2e_per_m2.toFixed(2)}
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Leaf size={24} />
+                        <Typography variant="h6">Impact & Applications</Typography>
+                      </Box>
+                      {(() => {
+                        const gwpStatus = getBenchmarkStatus(selectedMaterial.gwp_kgco2e_per_m2, 'gwp');
+                        return (
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="body2" gutterBottom>
+                              <Tooltip 
+                                title="Global Warming Potential (A1-A3). Low: ≤ 50 kg CO₂e/m², Moderate: 51-100 kg CO₂e/m², High: > 100 kg CO₂e/m². Measures environmental impact of production."
+                                arrow
+                                placement="top"
+                              >
+                                <span>Global Warming Potential</span>
+                              </Tooltip>
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              kg CO₂e/m²
-                            </Typography>
-                            <Chip 
-                              label={gwpStatus.label} 
-                              color={gwpStatus.color as any} 
-                              size="small"
-                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="h6">
+                                {selectedMaterial.gwp_kgco2e_per_m2.toFixed(2)}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                kg CO₂e/m²
+                              </Typography>
+                              <Chip 
+                                label={gwpStatus.label} 
+                                color={gwpStatus.color as any} 
+                                size="small"
+                              />
+                            </Box>
                           </Box>
-                        </Box>
-                      );
-                    })()}
-                    
-                    <Typography variant="body2" gutterBottom sx={{ mt: 2 }}>
-                      Cost
-                    </Typography>
-                    <Typography variant="h6" gutterBottom>
-                      {selectedMaterial.cost_sek_per_m2.toFixed(2)} SEK/m²
-                    </Typography>
+                        );
+                      })()}
+                      
+                      <Typography variant="body2" gutterBottom sx={{ mt: 2 }}>
+                        <Tooltip 
+                          title="Material cost per square meter, excluding labor and installation. Includes raw material and manufacturing costs."
+                          arrow
+                          placement="top"
+                        >
+                          <span>Cost</span>
+                        </Tooltip>
+                      </Typography>
+                      <Typography variant="h6" gutterBottom>
+                        {selectedMaterial.cost_sek_per_m2.toFixed(2)} SEK/m²
+                      </Typography>
 
-                    <Divider sx={{ my: 2 }} />
-                    
-                    <Typography variant="body2" gutterBottom>
-                      Allowed Applications
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      <Chip 
-                        label="Wall" 
-                        color={selectedMaterial.wall_allowed ? "primary" : "default"} 
-                        variant={selectedMaterial.wall_allowed ? "filled" : "outlined"} 
-                      />
-                      <Chip 
-                        label="Roof" 
-                        color={selectedMaterial.roof_allowed ? "primary" : "default"} 
-                        variant={selectedMaterial.roof_allowed ? "filled" : "outlined"} 
-                      />
-                      <Chip 
-                        label="Floor" 
-                        color={selectedMaterial.floor_allowed ? "primary" : "default"} 
-                        variant={selectedMaterial.floor_allowed ? "filled" : "outlined"} 
-                      />
-                      <Chip 
-                        label="Window" 
-                        color={selectedMaterial.window_layer_allowed ? "primary" : "default"} 
-                        variant={selectedMaterial.window_layer_allowed ? "filled" : "outlined"} 
-                      />
-                    </Stack>
-                  </PropertyCard>
+                      <Divider sx={{ my: 2 }} />
+                      
+                      <Typography variant="body2" gutterBottom>
+                        <Tooltip 
+                          title="Building components where this material can be used. Affects simulation behavior and compliance with building codes."
+                          arrow
+                          placement="top"
+                        >
+                          <span>Allowed Applications</span>
+                        </Tooltip>
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Chip 
+                          label="Wall" 
+                          color={selectedMaterial.wall_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.wall_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Roof" 
+                          color={selectedMaterial.roof_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.roof_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Floor" 
+                          color={selectedMaterial.floor_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.floor_allowed ? "filled" : "outlined"} 
+                        />
+                        <Chip 
+                          label="Window" 
+                          color={selectedMaterial.window_layer_allowed ? "primary" : "default"} 
+                          variant={selectedMaterial.window_layer_allowed ? "filled" : "outlined"} 
+                        />
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 </Grid>
 
                 {/* Source Information */}
