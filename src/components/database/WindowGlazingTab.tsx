@@ -42,7 +42,7 @@ import {
   Sun,
   Thermometer,
   Leaf,
-  ArrowsUpDown
+  ArrowUpDown
 } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
@@ -262,7 +262,7 @@ const WindowGlazingTab = () => {
               <Card variant="outlined" sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-                    <ArrowsUpDown size={24} />
+                    <ArrowUpDown size={24} />
                     <Typography variant="h6">Physical Properties</Typography>
                   </Box>
                   <List dense>
