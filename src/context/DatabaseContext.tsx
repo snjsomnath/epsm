@@ -8,7 +8,9 @@ import {
   createMaterial,
   updateMaterial,
   createWindowGlazing,
+  updateWindowGlazing,
   createConstruction,
+  updateConstruction,
   createConstructionSet,
   subscribeToMaterials,
   subscribeToConstructions,
@@ -37,7 +39,9 @@ interface DatabaseContextType {
   addMaterial: (material: MaterialInsert) => Promise<void>;
   updateMaterial: (id: string, material: Partial<MaterialInsert>) => Promise<void>;
   addWindowGlazing: (glazing: WindowGlazingInsert) => Promise<void>;
+  updateWindowGlazing: (id: string, glazing: Partial<WindowGlazingInsert>) => Promise<void>;
   addConstruction: (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
+  updateConstruction: (id: string, construction: Partial<ConstructionInsert>, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
   addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<void>;
 }
 
@@ -52,7 +56,9 @@ const DatabaseContext = createContext<DatabaseContextType>({
   addMaterial: async () => {},
   updateMaterial: async () => {},
   addWindowGlazing: async () => {},
+  updateWindowGlazing: async () => {},
   addConstruction: async () => {},
+  updateConstruction: async () => {},
   addConstructionSet: async () => {},
 });
 
@@ -131,12 +137,32 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
+  const handleUpdateWindowGlazing = async (id: string, glazing: Partial<WindowGlazingInsert>) => {
+    try {
+      await updateWindowGlazing(id, glazing);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update window glazing');
+      throw err;
+    }
+  };
+
   const handleAddConstruction = async (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => {
     try {
       await createConstruction(construction, layers);
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add construction');
+      throw err;
+    }
+  };
+
+  const handleUpdateConstruction = async (id: string, construction: Partial<ConstructionInsert>, layers: Omit<LayerInsert, 'construction_id'>[]) => {
+    try {
+      await updateConstruction(id, construction, layers);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update construction');
       throw err;
     }
   };
@@ -179,7 +205,9 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     addMaterial: handleAddMaterial,
     updateMaterial: handleUpdateMaterial,
     addWindowGlazing: handleAddWindowGlazing,
+    updateWindowGlazing: handleUpdateWindowGlazing,
     addConstruction: handleAddConstruction,
+    updateConstruction: handleUpdateConstruction,
     addConstructionSet: handleAddConstructionSet,
   };
 

@@ -135,6 +135,43 @@ export const createWindowGlazing = async (glazing: WindowGlazingInsert) => {
   return data;
 };
 
+export const updateWindowGlazing = async (id: string, glazing: Partial<WindowGlazingInsert>) => {
+  // Check if glazing exists
+  const { data: existing } = await supabase
+    .from('window_glazing')
+    .select('id')
+    .eq('id', id)
+    .single();
+
+  if (!existing) {
+    throw new Error(`Window glazing with id ${id} not found`);
+  }
+
+  // If name is being updated, check if new name already exists
+  if (glazing.name) {
+    const { data: nameExists } = await supabase
+      .from('window_glazing')
+      .select('id')
+      .eq('name', glazing.name)
+      .neq('id', id)
+      .single();
+
+    if (nameExists) {
+      throw new Error(`Window glazing "${glazing.name}" already exists`);
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('window_glazing')
+    .update({ ...glazing, date_modified: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
 // Constructions
 export const getConstructions = async () => {
   try {
@@ -199,6 +236,74 @@ export const createConstruction = async (
     return constructionData;
   } catch (err) {
     console.error('Failed to create construction:', err);
+    throw err;
+  }
+};
+
+export const updateConstruction = async (
+  id: string,
+  construction: Partial<ConstructionInsert>,
+  layers: Omit<LayerInsert, 'construction_id'>[]
+) => {
+  try {
+    // Check if construction exists
+    const { data: existing } = await supabase
+      .from('constructions')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (!existing) {
+      throw new Error(`Construction with id ${id} not found`);
+    }
+
+    // If name is being updated, check if new name already exists
+    if (construction.name) {
+      const { data: nameExists } = await supabase
+        .from('constructions')
+        .select('id')
+        .eq('name', construction.name)
+        .neq('id', id)
+        .single();
+
+      if (nameExists) {
+        throw new Error(`Construction "${construction.name}" already exists`);
+      }
+    }
+
+    // Update construction
+    const { data: constructionData, error: constructionError } = await supabase
+      .from('constructions')
+      .update({ ...construction, date_modified: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (constructionError) throw constructionError;
+
+    // Delete existing layers
+    const { error: deleteError } = await supabase
+      .from('layers')
+      .delete()
+      .eq('construction_id', id);
+    
+    if (deleteError) throw deleteError;
+
+    // Insert new layers
+    const layersWithConstructionId = layers.map(layer => ({
+      ...layer,
+      construction_id: id
+    }));
+
+    const { error: layersError } = await supabase
+      .from('layers')
+      .insert(layersWithConstructionId);
+    
+    if (layersError) throw layersError;
+
+    return constructionData;
+  } catch (err) {
+    console.error('Failed to update construction:', err);
     throw err;
   }
 };
