@@ -1,5 +1,94 @@
 // Add these functions to the existing database.ts file
 
+import { supabase } from './supabase';
+import type { 
+  ConstructionInsert, 
+  LayerInsert,
+  ScenarioInsert,
+  Scenario 
+} from './database.types';
+
+// Construction functions
+export const createConstruction = async (
+  construction: ConstructionInsert,
+  layers: Omit<LayerInsert, 'construction_id'>[]
+) => {
+  try {
+    // First create the construction
+    const { data: constructionData, error: constructionError } = await supabase
+      .from('constructions')
+      .insert([construction])
+      .select()
+      .single();
+    
+    if (constructionError) throw constructionError;
+
+    // Then add the layers
+    if (layers.length > 0) {
+      const constructionLayers = layers.map(layer => ({
+        ...layer,
+        construction_id: constructionData.id
+      }));
+
+      const { error: layersError } = await supabase
+        .from('layers')
+        .insert(constructionLayers);
+      
+      if (layersError) throw layersError;
+    }
+
+    return constructionData;
+  } catch (err) {
+    console.error('Failed to create construction:', err);
+    throw err;
+  }
+};
+
+export const updateConstruction = async (
+  id: string,
+  construction: Partial<ConstructionInsert>,
+  layers: Omit<LayerInsert, 'construction_id'>[]
+) => {
+  try {
+    // Update construction
+    const { data: constructionData, error: constructionError } = await supabase
+      .from('constructions')
+      .update(construction)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (constructionError) throw constructionError;
+
+    // Delete existing layers
+    const { error: deleteError } = await supabase
+      .from('layers')
+      .delete()
+      .eq('construction_id', id);
+    
+    if (deleteError) throw deleteError;
+
+    // Add new layers
+    if (layers.length > 0) {
+      const constructionLayers = layers.map(layer => ({
+        ...layer,
+        construction_id: id
+      }));
+
+      const { error: layersError } = await supabase
+        .from('layers')
+        .insert(constructionLayers);
+      
+      if (layersError) throw layersError;
+    }
+
+    return constructionData;
+  } catch (err) {
+    console.error('Failed to update construction:', err);
+    throw err;
+  }
+};
+
 // Scenarios
 export const getScenarios = async () => {
   try {
