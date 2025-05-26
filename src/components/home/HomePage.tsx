@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { Database, Home, FlaskConical, Activity, BarChart } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 const steps: Step[] = [
   {
