@@ -22,9 +22,29 @@ import {
   Button,
   Grid,
   Alert,
-  Tooltip
+  Tooltip,
+  Card,
+  CardContent,
+  Stack,
+  Chip,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemText,
+  Divider,
+  Avatar
 } from '@mui/material';
-import { Search, Plus, Edit, Info, X } from 'lucide-react';
+import { 
+  Search, 
+  Plus, 
+  Edit, 
+  Info, 
+  X,
+  Sun,
+  Thermometer,
+  Leaf,
+  Waves
+} from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { WindowGlazing, WindowGlazingInsert } from '../../lib/database.types';
@@ -73,6 +93,8 @@ const WindowGlazingTab = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<WindowGlazingInsert>(defaultGlazing);
+  const [selectedGlazing, setSelectedGlazing] = useState<WindowGlazing | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   const handleRequestSort = (property: keyof WindowGlazing) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -99,6 +121,11 @@ const WindowGlazingTab = () => {
       ...prev,
       [field]: value
     }));
+  };
+
+  const handleViewDetails = (glazing: WindowGlazing) => {
+    setSelectedGlazing(glazing);
+    setDetailsDialogOpen(true);
   };
 
   const handleSubmit = async () => {
@@ -130,6 +157,84 @@ const WindowGlazingTab = () => {
       setLoading(false);
     }
   };
+
+  const OpticalProperty = ({ 
+    label, 
+    value, 
+    tooltip 
+  }: { 
+    label: string, 
+    value: number | null, 
+    tooltip: string 
+  }) => (
+    <Box sx={{ mb: 2 }}>
+      <Typography variant="body2" gutterBottom>
+        <Tooltip 
+          title={tooltip}
+          arrow
+          placement="top"
+          enterDelay={200}
+          leaveDelay={0}
+        >
+          <span>{label}</span>
+        </Tooltip>
+      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <LinearProgress 
+          variant="determinate" 
+          value={(value || 0) * 100} 
+          sx={{ 
+            flexGrow: 1,
+            height: 8,
+            borderRadius: 4
+          }}
+        />
+        <Typography variant="body2" sx={{ minWidth: 45 }}>
+          {value ? (value * 100).toFixed(1) : '0'}%
+        </Typography>
+      </Box>
+    </Box>
+  );
+
+  const PropertyValue = ({ 
+    label, 
+    value, 
+    unit, 
+    tooltip 
+  }: { 
+    label: string, 
+    value: number | string, 
+    unit?: string,
+    tooltip: string 
+  }) => (
+    <ListItem>
+      <ListItemText
+        primary={
+          <Tooltip 
+            title={tooltip}
+            arrow
+            placement="top"
+            enterDelay={200}
+            leaveDelay={0}
+          >
+            <span>{label}</span>
+          </Tooltip>
+        }
+        secondary={
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontFamily: 'monospace',
+              fontSize: '0.9rem'
+            }}
+          >
+            {typeof value === 'number' ? value.toFixed(4) : value}
+            {unit && ` ${unit}`}
+          </Typography>
+        }
+      />
+    </ListItem>
+  );
 
   // Filter and sort glazing
   const filteredGlazing = windowGlazing.filter(glazing => 
@@ -242,7 +347,7 @@ const WindowGlazingTab = () => {
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Details">
-                      <IconButton size="small">
+                      <IconButton size="small" onClick={() => handleViewDetails(glazing)}>
                         <Info size={18} />
                       </IconButton>
                     </Tooltip>
@@ -391,6 +496,155 @@ const WindowGlazingTab = () => {
             Add Window Glazing
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={detailsDialogOpen}
+        onClose={() => setDetailsDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        {selectedGlazing && (
+          <>
+            <DialogTitle>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">{selectedGlazing.name}</Typography>
+                <Chip 
+                  label={`ID: ${selectedGlazing.id}`} 
+                  variant="outlined" 
+                  size="small"
+                />
+              </Box>
+            </DialogTitle>
+            <DialogContent>
+              <Grid container spacing={3}>
+                {/* Physical Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Waves size={24} />
+                        <Typography variant="h6">Physical Properties</Typography>
+                      </Box>
+                      <List dense>
+                        <PropertyValue
+                          label="Thickness"
+                          value={selectedGlazing.thickness_m}
+                          unit="m"
+                          tooltip="Physical thickness of the glazing layer. Typical range: 0.003 - 0.012 m. Affects thermal and optical properties."
+                        />
+                        <PropertyValue
+                          label="Conductivity"
+                          value={selectedGlazing.conductivity_w_mk}
+                          unit="W/m·K"
+                          tooltip="Thermal conductivity of the glass. Typical range: 0.8 - 1.1 W/m·K. Lower values indicate better insulation."
+                        />
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Optical Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Sun size={24} />
+                        <Typography variant="h6">Optical Properties</Typography>
+                      </Box>
+                      <OpticalProperty
+                        label="Solar Transmittance"
+                        value={selectedGlazing.solar_transmittance}
+                        tooltip="Fraction of solar radiation that passes through. High: > 0.6, Moderate: 0.3-0.6, Low: < 0.3. Affects solar heat gain."
+                      />
+                      <OpticalProperty
+                        label="Visible Transmittance"
+                        value={selectedGlazing.visible_transmittance}
+                        tooltip="Fraction of visible light transmitted. High: > 0.7, Moderate: 0.4-0.7, Low: < 0.4. Affects daylight and visibility."
+                      />
+                      <OpticalProperty
+                        label="Infrared Transmittance"
+                        value={selectedGlazing.infrared_transmittance}
+                        tooltip="Fraction of infrared radiation transmitted. Typically very low for energy-efficient glazing. Affects heat transfer."
+                      />
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Surface Properties */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Thermometer size={24} />
+                        <Typography variant="h6">Surface Properties</Typography>
+                      </Box>
+                      <List dense>
+                        <PropertyValue
+                          label="Front IR Emissivity"
+                          value={selectedGlazing.front_ir_emissivity}
+                          tooltip="Front surface infrared emission. Low-E: < 0.2, Standard: 0.84. Lower values reduce radiative heat transfer."
+                        />
+                        <PropertyValue
+                          label="Back IR Emissivity"
+                          value={selectedGlazing.back_ir_emissivity}
+                          tooltip="Back surface infrared emission. Low-E: < 0.2, Standard: 0.84. Lower values reduce radiative heat transfer."
+                        />
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Environmental & Economic Impact */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
+                        <Leaf size={24} />
+                        <Typography variant="h6">Impact Assessment</Typography>
+                      </Box>
+                      <List dense>
+                        <PropertyValue
+                          label="Global Warming Potential"
+                          value={selectedGlazing.gwp_kgco2e_per_m2}
+                          unit="kg CO₂e/m²"
+                          tooltip="Environmental impact (A1-A3). Low: < 30, Moderate: 30-60, High: > 60 kg CO₂e/m². Measures production emissions."
+                        />
+                        <PropertyValue
+                          label="Cost"
+                          value={selectedGlazing.cost_sek_per_m2}
+                          unit="SEK/m²"
+                          tooltip="Material cost per square meter, excluding framing and installation."
+                        />
+                      </List>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Source Information */}
+                {selectedGlazing.source && (
+                  <Grid item xs={12}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                          Source Information
+                        </Typography>
+                        <Typography variant="body2">
+                          {selectedGlazing.source}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDetailsDialogOpen(false)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
     </Box>
   );
