@@ -305,7 +305,7 @@ const ScenarioPage = () => {
             </Typography>
             <Divider sx={{ mb: 2 }} />
             
-            {scenarios.length === 0 ? (
+            {!scenarios || scenarios.length === 0 ? (
               <Alert severity="info" sx={{ mt: 2 }}>
                 No scenarios saved yet. Create your first scenario using the form.
               </Alert>
@@ -331,25 +331,25 @@ const ScenarioPage = () => {
                           {scenario.scenario_constructions && (
                             <>
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length} Walls`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length || 0} Walls`} 
                                 size="small" 
                                 color="primary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length} Roofs`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length || 0} Roofs`} 
                                 size="small" 
                                 color="secondary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length} Floors`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length || 0} Floors`} 
                                 size="small" 
                                 color="success"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length} Windows`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length || 0} Windows`} 
                                 size="small" 
                                 color="info"
                                 variant="outlined"
