@@ -135,6 +135,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
 ]
 
+CORS_ALLOW_CREDENTIALS = True
+
 # EnergyPlus simulation settings
 ENERGYPLUS_PATH = os.getenv('ENERGYPLUS_PATH', '/usr/local/EnergyPlus-23-2-0')
 WEATHER_FILES_DIR = BASE_DIR / 'weather_files'

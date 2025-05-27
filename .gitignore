@@ -23,3 +23,14 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Virtual environment and dependency directories .venv
+.venv
+# Python cache files
+__pycache__/
+# Python bytecode files
+*.py[cod]
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+# Python egg files
+*.egg
