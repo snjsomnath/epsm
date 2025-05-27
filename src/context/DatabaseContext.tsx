@@ -5,6 +5,7 @@ import {
   getWindowGlazing, 
   getConstructions, 
   getConstructionSets,
+  getScenarios,
   createMaterial,
   updateMaterial,
   createWindowGlazing,
@@ -14,20 +15,26 @@ import {
   createConstructionSet,
   updateConstructionSet,
   deleteConstructionSet,
+  createScenario,
+  updateScenario as updateScenarioInDb,
+  deleteScenario as deleteScenarioInDb,
   subscribeToMaterials,
   subscribeToConstructions,
-  subscribeToConstructionSets
+  subscribeToConstructionSets,
+  subscribeToScenarios
 } from '../lib/database';
 import type { 
   Material, 
   WindowGlazing, 
   Construction, 
   ConstructionSet,
+  Scenario,
   MaterialInsert,
   WindowGlazingInsert,
   ConstructionInsert,
   LayerInsert,
-  ConstructionSetInsert
+  ConstructionSetInsert,
+  ScenarioInsert
 } from '../lib/database.types';
 
 interface DatabaseContextType {
@@ -35,6 +42,7 @@ interface DatabaseContextType {
   windowGlazing: WindowGlazing[];
   constructions: Construction[];
   constructionSets: ConstructionSet[];
+  scenarios: Scenario[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
@@ -47,6 +55,9 @@ interface DatabaseContextType {
   addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<void>;
   updateConstructionSet: (id: string, constructionSet: Partial<ConstructionSetInsert>) => Promise<void>;
   deleteConstructionSet: (id: string) => Promise<void>;
+  addScenario: (scenario: ScenarioInsert, constructions: { constructionId: string, elementType: string }[]) => Promise<void>;
+  updateScenario: (id: string, scenario: Partial<ScenarioInsert>, constructions: { constructionId: string, elementType: string }[]) => Promise<void>;
+  deleteScenario: (id: string) => Promise<void>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType>({
@@ -54,6 +65,7 @@ const DatabaseContext = createContext<DatabaseContextType>({
   windowGlazing: [],
   constructions: [],
   constructionSets: [],
+  scenarios: [],
   loading: true,
   error: null,
   refreshData: async () => {},
@@ -66,6 +78,9 @@ const DatabaseContext = createContext<DatabaseContextType>({
   addConstructionSet: async () => {},
   updateConstructionSet: async () => {},
   deleteConstructionSet: async () => {},
+  addScenario: async () => {},
+  updateScenario: async () => {},
+  deleteScenario: async () => {},
 });
 
 export const useDatabase = () => useContext(DatabaseContext);
@@ -80,6 +95,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
   const [windowGlazing, setWindowGlazing] = useState<WindowGlazing[]>([]);
   const [constructions, setConstructions] = useState<Construction[]>([]);
   const [constructionSets, setConstructionSets] = useState<ConstructionSet[]>([]);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,18 +110,21 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
         materialsData,
         glazingData,
         constructionsData,
-        setsData
+        setsData,
+        scenariosData
       ] = await Promise.all([
         getMaterials(),
         getWindowGlazing(),
         getConstructions(),
-        getConstructionSets()
+        getConstructionSets(),
+        getScenarios()
       ]);
 
       setMaterials(materialsData);
       setWindowGlazing(glazingData);
       setConstructions(constructionsData);
       setConstructionSets(setsData);
+      setScenarios(scenariosData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -203,6 +222,43 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
+  const handleAddScenario = async (
+    scenario: ScenarioInsert, 
+    constructions: { constructionId: string, elementType: string }[]
+  ) => {
+    try {
+      await createScenario(scenario, constructions);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add scenario');
+      throw err;
+    }
+  };
+
+  const handleUpdateScenario = async (
+    id: string, 
+    scenario: Partial<ScenarioInsert>, 
+    constructions: { constructionId: string, elementType: string }[]
+  ) => {
+    try {
+      await updateScenarioInDb(id, scenario, constructions);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update scenario');
+      throw err;
+    }
+  };
+
+  const handleDeleteScenario = async (id: string) => {
+    try {
+      await deleteScenarioInDb(id);
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete scenario');
+      throw err;
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -211,11 +267,13 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
       const materialsSubscription = subscribeToMaterials(setMaterials);
       const constructionsSubscription = subscribeToConstructions(setConstructions);
       const setsSubscription = subscribeToConstructionSets(setConstructionSets);
+      const scenariosSubscription = subscribeToScenarios(setScenarios);
 
       return () => {
         materialsSubscription.unsubscribe();
         constructionsSubscription.unsubscribe();
         setsSubscription.unsubscribe();
+        scenariosSubscription.unsubscribe();
       };
     }
   }, [isAuthenticated]);
@@ -225,6 +283,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     windowGlazing,
     constructions,
     constructionSets,
+    scenarios,
     loading,
     error,
     refreshData: fetchData,
@@ -237,6 +296,9 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     addConstructionSet: handleAddConstructionSet,
     updateConstructionSet: handleUpdateConstructionSet,
     deleteConstructionSet: handleDeleteConstructionSet,
+    addScenario: handleAddScenario,
+    updateScenario: handleUpdateScenario,
+    deleteScenario: handleDeleteScenario,
   };
 
   return (

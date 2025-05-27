@@ -284,125 +284,100 @@ export const updateConstruction = async (
 };
 
 // Scenarios
-export const getScenarios = async () => {
-  try {
-    console.log('Fetching scenarios...');
-    const { data, error } = await supabase
-      .from('scenarios')
-      .select(`
+export const getScenarios = async (): Promise<Scenario[]> => {
+  const { data, error } = await supabase
+    .from('scenarios')
+    .select(`
+      *,
+      scenario_constructions (
         *,
-        scenario_constructions (
-          *,
-          construction:constructions(*)
-        )
-      `)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to fetch scenarios:', err);
-    throw err;
-  }
+        construction:construction_id (name)
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
 };
 
 export const createScenario = async (
-  scenario: ScenarioInsert,
+  scenario: ScenarioInsert, 
   constructions: { constructionId: string, elementType: string }[]
-) => {
-  try {
-    // First create the scenario
-    const { data: scenarioData, error: scenarioError } = await supabase
-      .from('scenarios')
-      .insert([scenario])
-      .select()
-      .single();
-    
-    if (scenarioError) throw scenarioError;
+): Promise<Scenario> => {
+  // First, insert the scenario
+  const { data: scenarioData, error: scenarioError } = await supabase
+    .from('scenarios')
+    .insert(scenario)
+    .select()
+    .single();
 
-    // Then add the constructions
-    if (constructions.length > 0) {
-      const scenarioConstructions = constructions.map(c => ({
-        scenario_id: scenarioData.id,
-        construction_id: c.constructionId,
-        element_type: c.elementType
-      }));
+  if (scenarioError) throw scenarioError;
 
-      const { error: constructionsError } = await supabase
-        .from('scenario_constructions')
-        .insert(scenarioConstructions);
-      
-      if (constructionsError) throw constructionsError;
-    }
+  if (constructions.length > 0) {
+    // Then, insert the scenario_constructions
+    const scenarioConstructions = constructions.map(c => ({
+      scenario_id: scenarioData.id,
+      construction_id: c.constructionId,
+      element_type: c.elementType
+    }));
 
-    return scenarioData;
-  } catch (err) {
-    console.error('Failed to create scenario:', err);
-    throw err;
+    const { error: constructionsError } = await supabase
+      .from('scenario_constructions')
+      .insert(scenarioConstructions);
+
+    if (constructionsError) throw constructionsError;
   }
+
+  return scenarioData;
 };
 
 export const updateScenario = async (
   id: string,
   scenario: Partial<ScenarioInsert>,
   constructions: { constructionId: string, elementType: string }[]
-) => {
-  try {
-    // Update scenario
-    const { data: scenarioData, error: scenarioError } = await supabase
-      .from('scenarios')
-      .update(scenario)
-      .eq('id', id)
-      .select()
-      .single();
-    
-    if (scenarioError) throw scenarioError;
+): Promise<void> => {
+  // First, update the scenario
+  const { error: scenarioError } = await supabase
+    .from('scenarios')
+    .update(scenario)
+    .eq('id', id);
 
-    // Delete existing constructions
-    const { error: deleteError } = await supabase
+  if (scenarioError) throw scenarioError;
+
+  // Then, delete existing scenario_constructions
+  const { error: deleteError } = await supabase
+    .from('scenario_constructions')
+    .delete()
+    .eq('scenario_id', id);
+
+  if (deleteError) throw deleteError;
+
+  if (constructions.length > 0) {
+    // Finally, insert new scenario_constructions
+    const scenarioConstructions = constructions.map(c => ({
+      scenario_id: id,
+      construction_id: c.constructionId,
+      element_type: c.elementType
+    }));
+
+    const { error: constructionsError } = await supabase
       .from('scenario_constructions')
-      .delete()
-      .eq('scenario_id', id);
-    
-    if (deleteError) throw deleteError;
+      .insert(scenarioConstructions);
 
-    // Add new constructions
-    if (constructions.length > 0) {
-      const scenarioConstructions = constructions.map(c => ({
-        scenario_id: id,
-        construction_id: c.constructionId,
-        element_type: c.elementType
-      }));
-
-      const { error: constructionsError } = await supabase
-        .from('scenario_constructions')
-        .insert(scenarioConstructions);
-      
-      if (constructionsError) throw constructionsError;
-    }
-
-    return scenarioData;
-  } catch (err) {
-    console.error('Failed to update scenario:', err);
-    throw err;
+    if (constructionsError) throw constructionsError;
   }
 };
 
-export const deleteScenario = async (id: string) => {
-  try {
-    const { error } = await supabase
-      .from('scenarios')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
-  } catch (err) {
-    console.error('Failed to delete scenario:', err);
-    throw err;
-  }
+export const deleteScenario = async (id: string): Promise<void> => {
+  // Deleting the scenario will cascade to scenario_constructions
+  const { error } = await supabase
+    .from('scenarios')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
 };
 
-// Subscribe to changes
 export const subscribeToMaterials = (callback: (materials: Material[]) => void) => {
   return supabase
     .channel('materials_changes')
