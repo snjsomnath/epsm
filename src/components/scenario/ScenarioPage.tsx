@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -8,25 +8,22 @@ import {
   CardContent, 
   CardActions,
   Button,
-  TextField,
-  Divider,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Checkbox,
-  ListItemText,
-  OutlinedInput,
-  Chip,
+  TextField,
+  Divider,
   Alert,
-  IconButton,
-  Tooltip,
   Stack,
+  Chip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import { Plus, Save, Trash2, Copy, Edit, HelpCircle, CalculatorIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -256,10 +253,126 @@ const ScenarioPage = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              
-              {/* Add similar FormControl components for roof, floor, and window constructions */}
-              {/* ... */}
-              
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Roof Constructions</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedConstructions.roofs}
+                    onChange={(e) => setSelectedConstructions(prev => ({ 
+                      ...prev, 
+                      roofs: e.target.value as string[] 
+                    }))}
+                    input={<OutlinedInput label="Roof Constructions" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const construction = constructionsByType.roof.find(c => c.id === value);
+                          return construction ? (
+                            <Chip 
+                              key={value} 
+                              label={construction.name} 
+                              size="small" 
+                              color="secondary"
+                            />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {constructionsByType.roof.map((construction) => (
+                      <MenuItem key={construction.id} value={construction.id}>
+                        <Checkbox checked={selectedConstructions.roofs.indexOf(construction.id) > -1} />
+                        <ListItemText 
+                          primary={construction.name} 
+                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
+                        />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Floor Constructions</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedConstructions.floors}
+                    onChange={(e) => setSelectedConstructions(prev => ({ 
+                      ...prev, 
+                      floors: e.target.value as string[] 
+                    }))}
+                    input={<OutlinedInput label="Floor Constructions" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const construction = constructionsByType.floor.find(c => c.id === value);
+                          return construction ? (
+                            <Chip 
+                              key={value} 
+                              label={construction.name} 
+                              size="small" 
+                              color="success"
+                            />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {constructionsByType.floor.map((construction) => (
+                      <MenuItem key={construction.id} value={construction.id}>
+                        <Checkbox checked={selectedConstructions.floors.indexOf(construction.id) > -1} />
+                        <ListItemText 
+                          primary={construction.name} 
+                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
+                        />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Window Constructions</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedConstructions.windows}
+                    onChange={(e) => setSelectedConstructions(prev => ({ 
+                      ...prev, 
+                      windows: e.target.value as string[] 
+                    }))}
+                    input={<OutlinedInput label="Window Constructions" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const construction = constructionsByType.window.find(c => c.id === value);
+                          return construction ? (
+                            <Chip 
+                              key={value} 
+                              label={construction.name} 
+                              size="small" 
+                              color="info"
+                            />
+                          ) : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {constructionsByType.window.map((construction) => (
+                      <MenuItem key={construction.id} value={construction.id}>
+                        <Checkbox checked={selectedConstructions.windows.indexOf(construction.id) > -1} />
+                        <ListItemText 
+                          primary={construction.name} 
+                          secondary={`U-value: ${construction.u_value_w_m2k.toFixed(3)} W/m²K`} 
+                        />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
             
             <Box sx={{ 
@@ -305,8 +418,8 @@ const ScenarioPage = () => {
             </Typography>
             <Divider sx={{ mb: 2 }} />
             
-            {scenarios.length === 0 ? (
-              <Alert severity="info" sx={{ mt: 2 }}>
+            {!scenarios || scenarios.length === 0 ? (
+              <Alert severity="info\" sx={{ mt: 2 }}>
                 No scenarios saved yet. Create your first scenario using the form.
               </Alert>
             ) : (
@@ -331,25 +444,25 @@ const ScenarioPage = () => {
                           {scenario.scenario_constructions && (
                             <>
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length} Walls`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length || 0} Walls`} 
                                 size="small" 
                                 color="primary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length} Roofs`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length || 0} Roofs`} 
                                 size="small" 
                                 color="secondary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length} Floors`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length || 0} Floors`} 
                                 size="small" 
                                 color="success"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length} Windows`} 
+                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length || 0} Windows`} 
                                 size="small" 
                                 color="info"
                                 variant="outlined"
