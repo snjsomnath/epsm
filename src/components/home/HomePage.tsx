@@ -16,11 +16,13 @@ import {
   FormControlLabel,
   Stack,
   Divider,
-  Chip
+  Chip,
+  Avatar
 } from '@mui/material';
 import { Database, Home, FlaskConical, Activity, BarChart } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 
 const steps: Step[] = [
   {
@@ -44,6 +46,7 @@ const steps: Step[] = [
 
 const HomePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [runTour, setRunTour] = useState(false);
   const [showTourNextTime, setShowTourNextTime] = useState(() => {
     const saved = localStorage.getItem('showTour');
@@ -281,21 +284,51 @@ const HomePage = () => {
                     <ListItemText 
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          Database Connection
+                          Authentication Status
                           <Chip 
                             size="small"
-                            color={dbConnected ? "success" : "error"}
-                            label={dbConnected ? "Connected" : "Disconnected"}
+                            color={user ? "success" : "error"}
+                            label={user ? "Authenticated" : "Not Authenticated"}
                           />
                         </Box>
                       }
-                      secondary={
-                        dbConnected ? 
-                          `${dbStats.materials} materials, ${dbStats.constructions} constructions` :
-                          "Check your connection"
-                      }
                     />
                   </ListItem>
+                  {user && (
+                    <>
+                      <ListItem>
+                        <ListItemText 
+                          primary="User ID"
+                          secondary={user.id}
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText 
+                          primary="Email"
+                          secondary={user.email}
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText 
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              Database Connection
+                              <Chip 
+                                size="small"
+                                color={dbConnected ? "success" : "error"}
+                                label={dbConnected ? "Connected" : "Disconnected"}
+                              />
+                            </Box>
+                          }
+                          secondary={
+                            dbConnected ? 
+                              `${dbStats.materials} materials, ${dbStats.constructions} constructions` :
+                              "Check your connection"
+                          }
+                        />
+                      </ListItem>
+                    </>
+                  )}
                   <ListItem>
                     <ListItemText 
                       primary="EnergyPlus" 
