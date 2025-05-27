@@ -306,7 +306,7 @@ const ScenarioPage = () => {
             <Divider sx={{ mb: 2 }} />
             
             {!scenarios || scenarios.length === 0 ? (
-              <Alert severity="info" sx={{ mt: 2 }}>
+              <Alert severity="info\" sx={{ mt: 2 }}>
                 No scenarios saved yet. Create your first scenario using the form.
               </Alert>
             ) : (
