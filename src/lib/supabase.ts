@@ -26,44 +26,55 @@ const testConnection = async () => {
   try {
     // First check auth state
     const { data: { session } } = await supabase.auth.getSession();
-    console.log('Auth state:', session ? 'Authenticated' : 'Not authenticated');
-
-    // Test database access
-    const results = await Promise.all([
-      supabase.from('materials').select('count').single(),
-      supabase.from('window_glazing').select('count').single(),
-      supabase.from('constructions').select('count').single(),
-      supabase.from('construction_sets').select('count').single()
-    ]);
-
-    const [materials, glazing, constructions, sets] = results;
-    const errors = results.filter(r => r.error);
-
-    if (errors.length > 0) {
-      console.error('❌ Some tables are inaccessible:');
-      errors.forEach(result => {
-        console.error('Error:', result.error?.message);
-      });
+    
+    if (!session) {
+      console.log('❌ Not authenticated');
       return false;
     }
 
-    console.log('✅ Connected to Supabase');
-    console.log('Database status:', {
-      materials: materials.data?.count ?? 0,
-      glazing: glazing.data?.count ?? 0,
-      constructions: constructions.data?.count ?? 0,
-      sets: sets.data?.count ?? 0
-    });
-    return true;
+    // Test database access with RLS policies
+    try {
+      const results = await Promise.all([
+        supabase.from('materials').select('count').single(),
+        supabase.from('window_glazing').select('count').single(),
+        supabase.from('constructions').select('count').single(),
+        supabase.from('construction_sets').select('count').single()
+      ]);
+
+      const [materials, glazing, constructions, sets] = results;
+      const errors = results.filter(r => r.error);
+
+      if (errors.length > 0) {
+        console.error('❌ Database access denied:');
+        errors.forEach(result => {
+          console.error('Error:', result.error?.message);
+        });
+        return false;
+      }
+
+      console.log('✅ Connected to Supabase');
+      console.log('Database status:', {
+        materials: materials.data?.count ?? 0,
+        glazing: glazing.data?.count ?? 0,
+        constructions: constructions.data?.count ?? 0,
+        sets: sets.data?.count ?? 0
+      });
+      return true;
+    } catch (err) {
+      console.error('❌ Database access error:', err);
+      return false;
+    }
   } catch (err) {
-    console.error('❌ Failed to connect to Supabase:', err);
+    console.error('❌ Authentication error:', err);
     return false;
   }
 };
 
-// Run connection test
-testConnection().catch(err => {
-  console.error('❌ Unexpected error during connection test:', err);
+// Only test connection if we have a session
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN') {
+    testConnection();
+  }
 });
 
 export const getAuthHeaders = () => {
