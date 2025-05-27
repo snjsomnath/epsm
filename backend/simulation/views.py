@@ -1,21 +1,22 @@
-```python
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from .idf_parser import IdfParser
 from database.models import Material, Construction
 
 @csrf_exempt
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def parse_idf(request):
     """Parse uploaded IDF files and compare with database."""
     try:
+        print("FILES:", request.FILES)
         files = request.FILES.getlist('files')
         if not files:
+            print("No files provided")
             return JsonResponse({
                 'error': 'No files provided'
             }, status=400)
@@ -28,6 +29,7 @@ def parse_idf(request):
         }
         
         for file in files:
+            print("Processing file:", file.name)
             content = file.read().decode('utf-8')
             parser = IdfParser(content)
             file_data = parser.parse()
@@ -58,6 +60,7 @@ def parse_idf(request):
         return JsonResponse(parsed_data)
 
     except Exception as e:
+        print("Exception in parse_idf:", str(e))
         return JsonResponse({
             'error': str(e)
         }, status=500)
@@ -126,4 +129,3 @@ def add_components(request):
         return JsonResponse({
             'error': str(e)
         }, status=500)
-```

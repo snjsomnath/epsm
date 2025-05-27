@@ -1,13 +1,14 @@
 from eppy.modeleditor import IDF
-from eppy.runner.run_functions import install_paths, paths
+from eppy.runner.run_functions import install_paths
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import os
+import tempfile
 
 # Configure eppy paths
 install_paths(
-    eplus_path=os.getenv('ENERGYPLUS_PATH', '/usr/local/EnergyPlus-23-2-0'),
-    idd_path=None  # Will use default IDD from EnergyPlus installation
+    os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0'),
+    None  # Will use default IDD from EnergyPlus installation
 )
 
 @dataclass
@@ -41,18 +42,26 @@ class IdfParser:
         self.materials: Dict[str, Material] = {}
         self.constructions: Dict[str, Construction] = {}
         self.zones: Dict[str, Zone] = {}
-        
-        # Create a temporary file for eppy
-        self.temp_path = "temp.idf"
-        with open(self.temp_path, "w") as f:
-            f.write(content)
-        
+
+        # Create a unique temporary file for eppy
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".idf", mode="w", encoding="utf-8")
+        tmp.write(content)
+        tmp.close()
+        self.temp_path = tmp.name
+
+        # Set IDD file for eppy
+        idd_path = os.path.join(
+            os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0'),
+            'Energy+.idd'
+        )
+        IDF.setiddname(idd_path)
+
         # Initialize IDF object
         self.idf = IDF(self.temp_path)
 
     def __del__(self):
         # Cleanup temporary file
-        if os.path.exists(self.temp_path):
+        if hasattr(self, "temp_path") and os.path.exists(self.temp_path):
             os.remove(self.temp_path)
 
     def parse(self) -> Dict:
