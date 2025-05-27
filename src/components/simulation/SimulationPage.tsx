@@ -39,18 +39,14 @@ import {
   Info
 } from 'lucide-react';
 import SimulationResultsView from './SimulationResultsView';
+import { useDatabase } from '../../context/DatabaseContext';
+import type { Scenario } from '../../lib/database.types';
 
 interface SimulationPageProps {}
 
-type ScenarioType = {
-  id: number;
-  name: string;
-  description: string;
-  totalSimulations: number;
-};
-
 const SimulationPage = ({}: SimulationPageProps) => {
-  const [selectedScenario, setSelectedScenario] = useState<number | ''>('');
+  const { scenarios, loading } = useDatabase();
+  const [selectedScenario, setSelectedScenario] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -58,28 +54,15 @@ const SimulationPage = ({}: SimulationPageProps) => {
   const [totalSimulations, setTotalSimulations] = useState(0);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
-  const [scenarios] = useState<ScenarioType[]>([
-    {
-      id: 1,
-      name: 'Retrofit Package A',
-      description: 'Basic retrofit with focus on wall and window improvements',
-      totalSimulations: 4
-    },
-    {
-      id: 2,
-      name: 'Deep Energy Retrofit',
-      description: 'Comprehensive package with multiple options for all elements',
-      totalSimulations: 48
-    }
-  ]);
 
   const handleScenarioChange = (event: any) => {
-    setSelectedScenario(event.target.value);
+    const scenarioId = event.target.value;
+    setSelectedScenario(scenarioId);
     
     // Find scenario for setting total simulations
-    const scenario = scenarios.find(s => s.id === event.target.value);
+    const scenario = scenarios.find(s => s.id === scenarioId);
     if (scenario) {
-      setTotalSimulations(scenario.totalSimulations);
+      setTotalSimulations(scenario.total_simulations);
     } else {
       setTotalSimulations(0);
     }
@@ -178,25 +161,33 @@ const SimulationPage = ({}: SimulationPageProps) => {
               </Typography>
               <Divider sx={{ mb: 3 }} />
               
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel id="scenario-select-label">Select Scenario</InputLabel>
-                <Select
-                  labelId="scenario-select-label"
-                  value={selectedScenario}
-                  label="Select Scenario"
-                  onChange={handleScenarioChange}
-                  disabled={isRunning || isPaused}
-                >
-                  <MenuItem value="">
-                    <em>Select a scenario</em>
-                  </MenuItem>
-                  {scenarios.map(scenario => (
-                    <MenuItem key={scenario.id} value={scenario.id}>
-                      {scenario.name} ({scenario.totalSimulations} simulations)
+              {loading ? (
+                <Alert severity="info">Loading scenarios...</Alert>
+              ) : scenarios.length === 0 ? (
+                <Alert severity="warning">
+                  No scenarios available. Please create a scenario first on the Scenario Setup page.
+                </Alert>
+              ) : (
+                <FormControl fullWidth sx={{ mb: 3 }}>
+                  <InputLabel id="scenario-select-label">Select Scenario</InputLabel>
+                  <Select
+                    labelId="scenario-select-label"
+                    value={selectedScenario}
+                    label="Select Scenario"
+                    onChange={handleScenarioChange}
+                    disabled={isRunning || isPaused}
+                  >
+                    <MenuItem value="">
+                      <em>Select a scenario</em>
                     </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                    {scenarios.map(scenario => (
+                      <MenuItem key={scenario.id} value={scenario.id}>
+                        {scenario.name} ({scenario.total_simulations} simulations)
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
               
               {selectedScenario && (
                 <Box>
@@ -205,7 +196,7 @@ const SimulationPage = ({}: SimulationPageProps) => {
                   </Typography>
                   <Box sx={{ backgroundColor: 'background.default', p: 2, borderRadius: 1, mb: 3 }}>
                     <Typography variant="body2" paragraph>
-                      {scenarios.find(s => s.id === selectedScenario)?.description}
+                      {scenarios.find(s => s.id === selectedScenario)?.description || "No description available"}
                     </Typography>
                     <Typography variant="body2">
                       <strong>Total Simulations:</strong> {totalSimulations}
