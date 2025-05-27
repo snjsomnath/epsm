@@ -1,14 +1,92 @@
-// Add these functions to the existing database.ts file
-
 import { supabase } from './supabase';
 import type { 
   ConstructionInsert, 
   LayerInsert,
   ScenarioInsert,
-  Scenario 
+  Scenario,
+  Material,
+  WindowGlazing,
+  Construction,
+  ConstructionSet
 } from './database.types';
 
+// Material functions
+export const getMaterials = async (): Promise<Material[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('materials')
+      .select('*')
+      .order('name');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Failed to fetch materials:', err);
+    throw err;
+  }
+};
+
+// Window Glazing functions
+export const getWindowGlazing = async (): Promise<WindowGlazing[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('window_glazing')
+      .select('*')
+      .order('name');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Failed to fetch window glazing:', err);
+    throw err;
+  }
+};
+
 // Construction functions
+export const getConstructions = async (): Promise<Construction[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('constructions')
+      .select(`
+        *,
+        layers (
+          *,
+          material:materials(*),
+          glazing:window_glazing(*)
+        )
+      `)
+      .order('name');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Failed to fetch constructions:', err);
+    throw err;
+  }
+};
+
+// Construction Sets functions
+export const getConstructionSets = async (): Promise<ConstructionSet[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('construction_sets')
+      .select(`
+        *,
+        wall_construction:constructions!construction_sets_wall_construction_id_fkey(*),
+        roof_construction:constructions!construction_sets_roof_construction_id_fkey(*),
+        floor_construction:constructions!construction_sets_floor_construction_id_fkey(*),
+        window_construction:constructions!construction_sets_window_construction_id_fkey(*)
+      `)
+      .order('name');
+    
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Failed to fetch construction sets:', err);
+    throw err;
+  }
+};
+
 export const createConstruction = async (
   construction: ConstructionInsert,
   layers: Omit<LayerInsert, 'construction_id'>[]
