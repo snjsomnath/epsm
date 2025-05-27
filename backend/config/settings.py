@@ -126,18 +126,49 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Simulation settings
+SIMULATION_RESULTS_DIR = os.path.join(MEDIA_ROOT, 'simulation_results')
+
+# Create necessary directories
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+os.makedirs(SIMULATION_RESULTS_DIR, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# CORS settings - add or update these
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    "http://localhost:5173",  # Add your frontend development server
 ]
 
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # EnergyPlus simulation settings
-ENERGYPLUS_PATH = os.getenv('ENERGYPLUS_PATH', '/usr/local/EnergyPlus-23-2-0')
+# Update the path to include .exe for Windows
+ENERGYPLUS_PATH = os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0')
+ENERGYPLUS_EXE = os.path.join(ENERGYPLUS_PATH, 'energyplus.exe')  # Add .exe extension for Windows
 WEATHER_FILES_DIR = BASE_DIR / 'weather_files'
 SIMULATION_RESULTS_DIR = BASE_DIR / 'simulation_results'
