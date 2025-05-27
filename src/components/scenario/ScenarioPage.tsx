@@ -23,7 +23,10 @@ import {
   DialogContentText,
   DialogActions,
   IconButton,
-  Tooltip
+  Tooltip,
+  OutlinedInput,
+  Checkbox,
+  ListItemText
 } from '@mui/material';
 import { Plus, Save, Trash2, Copy, Edit, HelpCircle, CalculatorIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -91,6 +94,11 @@ const ScenarioPage = () => {
           author_id: user?.id
         }, constructionsArray);
       } else {
+        // Check if addScenario exists and is a function
+        if (typeof addScenario !== 'function') {
+          throw new Error('addScenario is not available - check the DatabaseContext implementation');
+        }
+        
         await addScenario({
           ...formData,
           total_simulations: calculateTotalSimulations(),
@@ -104,6 +112,7 @@ const ScenarioPage = () => {
       setEditingScenario(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save scenario');
+      console.error('Error saving scenario:', err);
     } finally {
       setLoading(false);
     }
