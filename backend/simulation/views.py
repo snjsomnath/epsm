@@ -287,53 +287,93 @@ def simulation_results(request, simulation_id):
     try:
         simulation = Simulation.objects.get(id=simulation_id)
         
+        # Helper function to safely get file name
+        def get_safe_filename(file_field):
+            if file_field and hasattr(file_field, 'file') and hasattr(file_field.file, 'name'):
+                return os.path.basename(file_field.file.name)
+            return "unknown.idf"
+        
+        # Get IDF file name safely
+        idf_file = simulation.files.filter(file_type='idf').first()
+        file_name = get_safe_filename(idf_file) if idf_file else "unknown.idf"
+        
         if simulation.status != 'completed':
             return JsonResponse({
-                'error': 'Simulation not yet completed'
+                'error': 'Simulation not yet completed',
+                'status': simulation.status,
+                'simulationId': simulation_id,
+                'fileName': file_name,
+                'totalEnergyUse': 0.0,
+                'heatingDemand': 0.0,
+                'coolingDemand': 0.0,
+                'runTime': 0.0
             }, status=400)
         
-        # Use the actual saved results file if it exists
-        if simulation.results_file:
+        # Handle results directly rather than trying to access files
+        try:
             from .services import parse_simulation_results
             results = parse_simulation_results(simulation)
-            return JsonResponse(results)
-        
-        # Fall back to mock results if no results file is available
-        return JsonResponse({
-            'summary': {
-                'total_site_energy': 125.5,
-                'energy_use_intensity': 45.8
-            },
-            'energy_use': {
-                'Electricity': 75.2,
-                'NaturalGas': 50.3
-            },
-            'zones': [
-                {
-                    'name': 'Zone 1',
-                    'area': 120.5,
-                    'volume': 361.5,
-                    'peak_load': 5.2
-                },
-                {
-                    'name': 'Zone 2',
-                    'area': 85.3,
-                    'volume': 255.9,
-                    'peak_load': 3.8
+            
+            # Ensure we don't include any FieldFile objects
+            clean_results = {}
+            if isinstance(results, dict):
+                for key, value in results.items():
+                    # Convert FieldFile objects to strings
+                    if hasattr(value, 'name') and callable(getattr(value, 'read', None)):
+                        clean_results[key] = value.name
+                    else:
+                        clean_results[key] = value
+                
+                # Add simulation ID if not present
+                if 'simulationId' not in clean_results:
+                    clean_results['simulationId'] = simulation_id
+                
+                # Add filename if not present
+                if 'fileName' not in clean_results:
+                    clean_results['fileName'] = file_name
+            else:
+                clean_results = {
+                    'error': 'Invalid results format',
+                    'simulationId': simulation_id,
+                    'fileName': file_name,
+                    'totalEnergyUse': 0.0,
+                    'heatingDemand': 0.0,
+                    'coolingDemand': 0.0,
+                    'runTime': 0.0
                 }
-            ]
-        })
+            
+            return JsonResponse(clean_results)
+        except Exception as e:
+            import traceback
+            print(f"Error in simulation_results: {str(e)}")
+            traceback.print_exc()
+            return JsonResponse({
+                'error': f"Error retrieving simulation results: {str(e)}",
+                'simulationId': simulation_id,
+                'fileName': file_name,
+                'totalEnergyUse': 0.0,
+                'heatingDemand': 0.0,
+                'coolingDemand': 0.0,
+                'runTime': 0.0
+            }, status=500)
         
     except Simulation.DoesNotExist:
         return JsonResponse({
-            'error': 'Simulation not found'
+            'error': 'Simulation not found',
+            'simulationId': simulation_id
         }, status=404)
     except Exception as e:
         import traceback
         print(f"ERROR in simulation_results view: {str(e)}")
-        print(traceback.format_exc())
+        traceback.print_exc()
         return JsonResponse({
-            'error': str(e)
+            'error': str(e),
+            'simulationId': simulation_id,
+            'fileName': "unknown.idf",
+            'totalEnergyUse': 0.0,
+            'heatingDemand': 0.0,
+            'coolingDemand': 0.0,
+            'runTime': 0.0
         }, status=500)
 
 @api_view(['GET'])

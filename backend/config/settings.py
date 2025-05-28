@@ -171,4 +171,4 @@ CORS_ALLOW_HEADERS = [
 ENERGYPLUS_PATH = os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0')
 ENERGYPLUS_EXE = os.path.join(ENERGYPLUS_PATH, 'energyplus.exe')  # Add .exe extension for Windows
 WEATHER_FILES_DIR = BASE_DIR / 'weather_files'
-SIMULATION_RESULTS_DIR = BASE_DIR / 'simulation_results'
+SIMULATION_RESULTS_DIR = BASE_DIR / 'media/simulation_results'
