@@ -15,11 +15,10 @@ import {
   Tabs,
   Tab
 } from '@mui/material';
-import { Play, FileText, Wind, AlertCircle, BarChart2 } from 'lucide-react';
+import { Play, FileText, AlertCircle, BarChart2 } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import EpwUploadArea from './EpwUploadArea';
 import AssignmentsTab from './AssignmentsTab';
-import InfiltrationTab from './InfiltrationTab';
 import ResultsTab from './ResultsTab';
 import { parseIdfFiles } from '../../utils/api';
 import type { ParsedData } from '../../types/simulation';
@@ -167,7 +166,7 @@ const BaselinePage = () => {
               
               setSimulationComplete(true);
               setSimulating(false);
-              setTabIndex(1); // Switch to Results tab
+              setTabIndex(0); // Switch to Results tab (now it's the only tab, so index is 0)
             } catch (resultError) {
               console.error("Error fetching results:", resultError);
               // Use mock results on error
@@ -332,12 +331,6 @@ const BaselinePage = () => {
                 sx={{ px: 2, pt: 2 }}
               >
                 <Tab 
-                  icon={<Wind size={18} />} 
-                  iconPosition="start" 
-                  label="Infiltration" 
-                  disabled={!simulationComplete}
-                />
-                <Tab 
                   icon={<BarChart2 size={18} />} 
                   iconPosition="start" 
                   label="Results" 
@@ -353,13 +346,7 @@ const BaselinePage = () => {
                 </Alert>
               )}
               
-              {simulationComplete && tabIndex === 0 && (
-                <InfiltrationTab 
-                  uploadedFiles={uploadedFiles}
-                  simulationComplete={simulationComplete}
-                />
-              )}
-              {simulationComplete && tabIndex === 1 && (
+              {simulationComplete && (
                 <ResultsTab 
                   uploadedFiles={uploadedFiles}
                   simulationComplete={simulationComplete}
