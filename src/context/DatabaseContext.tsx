@@ -138,14 +138,12 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
       const result = await createMaterial(material);
       console.log("DatabaseContext: Result from createMaterial:", result);
       
-      // Use getMaterials function to refresh the materials list
       try {
         const updatedMaterials = await getMaterials();
         setMaterials(updatedMaterials);
         console.log("Materials list refreshed successfully");
       } catch (refreshError) {
         console.warn("Failed to refresh materials after adding:", refreshError);
-        // Continue without refreshing - the material was likely still added
       }
       
       return result;
@@ -195,29 +193,18 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
       const result = await createConstruction(construction, layers);
       console.log("DatabaseContext: Result from createConstruction:", result);
       
-      // Use the proper function to refresh constructions
       try {
         const updatedConstructions = await getConstructions();
         setConstructions(updatedConstructions);
-        console.log("Construction list refreshed successfully");
+        console.log("Constructions list refreshed successfully");
       } catch (refreshError) {
         console.warn("Failed to refresh constructions after adding:", refreshError);
-        // Continue even if refresh fails - the construction was likely added
       }
       
-      return result;
+      return { data: result };
     } catch (error) {
       console.error("DatabaseContext: Error in addConstruction:", error);
       setError(error instanceof Error ? error.message : 'Failed to add construction');
-      
-      // Try to refresh anyway in case the construction was added despite the error
-      try {
-        const updatedConstructions = await getConstructions();
-        setConstructions(updatedConstructions);
-      } catch (refreshError) {
-        console.warn("Failed to refresh constructions after error:", refreshError);
-      }
-      
       return { error };
     }
   };
