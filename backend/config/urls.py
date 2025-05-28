@@ -4,9 +4,29 @@ from django.http import HttpResponse
 from django.conf import settings
 from django.conf.urls.static import static
 from simulation import views as simulation_views
+import json
+from django.http import JsonResponse
+import datetime
 
 def root_view(request):
-    return HttpResponse("Welcome to the EPSM API.")
+    """Root view for the API with diagnostics."""
+    from django.http import JsonResponse
+    import datetime
+    
+    # Include available endpoints for debugging
+    available_endpoints = [
+        '/api/simulation/system-resources/',
+        '/api/parse/idf/',
+        '/api/components/add/',
+        '/api/simulation/run/',
+    ]
+    
+    return JsonResponse({
+        'status': 'ok',
+        'message': 'Welcome to the EPSM API.',
+        'time': str(datetime.datetime.now()),
+        'available_endpoints': available_endpoints
+    })
 
 urlpatterns = [
     path('', root_view),
@@ -17,6 +37,13 @@ urlpatterns = [
     
     # Include the simulation URLs under the api/simulation/ prefix
     path('api/simulation/', include('simulation.urls')),
+
+    # Add a test endpoint for diagnostics
+    path('api/test/', lambda request: JsonResponse({
+        'status': 'ok', 
+        'message': 'API test endpoint working',
+        'time': str(datetime.datetime.now())
+    })),
 ]
 
 # Add this if not already present
