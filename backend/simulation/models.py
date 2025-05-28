@@ -20,6 +20,7 @@ class Simulation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     results_file = models.FileField(upload_to='simulation_results', null=True, blank=True)
     error_message = models.TextField(blank=True)
+    file_count = models.IntegerField(default=1)
 
     def __str__(self):
         return f"{self.name} - {self.status}"
@@ -29,6 +30,7 @@ class SimulationFile(models.Model):
     file = models.FileField(upload_to='simulation_files')
     file_type = models.CharField(max_length=50)  # 'idf' or 'weather'
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    original_name = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         return f"{self.file_type} file for {self.simulation.name}"
