@@ -42,13 +42,13 @@ class EnergyPlusSimulator:
             self.simulation.status = 'running'
             self.simulation.save()
 
-            idf_file = self.simulation.files.filter(file_type='idf').first()
+            idf_files = self.simulation.files.filter(file_type='idf')
             weather_file = self.simulation.files.filter(file_type='weather').first()
 
-            if not idf_file or not weather_file:
+            if not idf_files or not weather_file:
                 raise ValueError("Missing required simulation files")
 
-            print(f"Starting simulation for: {idf_file.file.path}")
+            print(f"Starting simulation for {idf_files.count()} IDF files")
             print(f"Using weather file: {weather_file.file.path}")
             
             # Check if EnergyPlus exists at the specified path
@@ -76,142 +76,128 @@ class EnergyPlusSimulator:
             print(f"Using EnergyPlus executable: {energyplus_exe}")
             
             # Check if IDF file exists and is readable
-            if not os.path.exists(idf_file.file.path):
-                print(f"ERROR: IDF file not found at: {idf_file.file.path}")
-                raise FileNotFoundError(f"IDF file not found at: {idf_file.file.path}")
+            for idf_file in idf_files:
+                if not os.path.exists(idf_file.file.path):
+                    print(f"ERROR: IDF file not found at: {idf_file.file.path}")
+                    raise FileNotFoundError(f"IDF file not found at: {idf_file.file.path}")
             
             # Check if weather file exists and is readable
             if not os.path.exists(weather_file.file.path):
                 print(f"ERROR: Weather file not found at: {weather_file.file.path}")
                 raise FileNotFoundError(f"Weather file not found at: {weather_file.file.path}")
             
-            # Create a working copy of the IDF file
-            temp_idf_path = os.path.join(self.results_dir, 'input.idf')
-            try:
-                with open(idf_file.file.path, 'rb') as src, open(temp_idf_path, 'wb') as dst:
-                    dst.write(src.read())
-                print(f"Successfully created working copy of IDF file at: {temp_idf_path}")
-            except Exception as e:
-                print(f"ERROR copying IDF file: {str(e)}")
-                raise
+            # Process each IDF file separately
+            all_results = []
+            for idf_file in idf_files:
+                try:
+                    print(f"Processing IDF file: {idf_file.file.path}")
+                    
+                    # Create a subdirectory for this specific IDF file's results
+                    idf_basename = os.path.basename(idf_file.file.path)
+                    idf_name_no_ext = os.path.splitext(idf_basename)[0]
+                    idf_results_dir = self.results_dir / idf_name_no_ext
+                    idf_results_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    print(f"Results for {idf_basename} will be saved to: {idf_results_dir}")
+                    
+                    # Create working copies for this specific IDF file
+                    temp_idf_path = os.path.join(idf_results_dir, 'input.idf')
+                    temp_epw_path = os.path.join(idf_results_dir, 'weather.epw')
+                    
+                    # Copy IDF file
+                    with open(idf_file.file.path, 'rb') as src, open(temp_idf_path, 'wb') as dst:
+                        dst.write(src.read())
+                    
+                    # Copy weather file
+                    with open(weather_file.file.path, 'rb') as src, open(temp_epw_path, 'wb') as dst:
+                        dst.write(src.read())
+                    
+                    # Prepare command for this specific IDF file
+                    command = [
+                        energyplus_exe,
+                        '--weather', temp_epw_path,
+                        '--output-directory', str(idf_results_dir),
+                        '--expandobjects',
+                        '--readvars',
+                        temp_idf_path
+                    ]
+                    
+                    print(f"Running EnergyPlus for {idf_basename} with command: {' '.join(command)}")
+                    
+                    # Run EnergyPlus for this specific IDF file
+                    import subprocess
+                    process = subprocess.run(
+                        command, 
+                        capture_output=True, 
+                        text=True, 
+                        cwd=str(idf_results_dir),
+                        timeout=300  # 5 minute timeout
+                    )
+                    
+                    # Always print the output for debugging
+                    print(f"EnergyPlus STDOUT:\n{process.stdout}")
+                    print(f"EnergyPlus STDERR:\n{process.stderr}")
+                    
+                    # Check for errors
+                    if process.returncode != 0:
+                        print(f"ERROR: EnergyPlus failed for {idf_basename} with return code {process.returncode}")
+                        print(f"STDERR: {process.stderr}")
+                        # Continue with next file rather than aborting everything
+                        continue
+                    
+                    # Save output logs
+                    with open(os.path.join(idf_results_dir, 'run_output.log'), 'w') as f:
+                        f.write(f"COMMAND: {' '.join(command)}\n\n")
+                        f.write(f"STDOUT:\n{process.stdout}\n\nSTDERR:\n{process.stderr}")
+                    
+                    # Rename standard output files
+                    standard_files = {
+                        'eplusout.err': 'output.err',
+                        'eplusout.eso': 'output.eso',
+                        'eplusout.csv': 'output.csv',
+                        'eplusout.html': 'output.html',
+                        'eplusout.mtd': 'output.mtd',
+                        'eplusout.mtr': 'output.mtr',
+                        'eplusout.rdd': 'output.rdd',
+                        'eplusout.shd': 'output.shd',
+                        'eplustbl.htm': 'output.htm',
+                        'epluszsz.csv': 'output_zones.csv',
+                        'eplusssz.csv': 'output_system.csv',
+                        'eplusout.sql': 'output.sql'
+                    }
+                    
+                    for src_name, dst_name in standard_files.items():
+                        src_path = os.path.join(idf_results_dir, src_name)
+                        if os.path.exists(src_path):
+                            dst_path = os.path.join(idf_results_dir, dst_name)
+                            os.rename(src_path, dst_path)
+                    
+                    # Process results for this IDF file
+                    results_path = idf_results_dir / 'output'
+                    file_results = self.process_file_results(results_path, idf_file)
+                    
+                    if file_results:
+                        all_results.append(file_results)
+                    
+                except Exception as e:
+                    print(f"Error processing IDF file {idf_file.file.path}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    # Continue with next file rather than aborting everything
             
-            # Create a working copy of the weather file
-            temp_epw_path = os.path.join(self.results_dir, 'weather.epw')
-            try:
-                with open(weather_file.file.path, 'rb') as src, open(temp_epw_path, 'wb') as dst:
-                    dst.write(src.read())
-                print(f"Successfully created working copy of weather file at: {temp_epw_path}")
-            except Exception as e:
-                print(f"ERROR copying weather file: {str(e)}")
-                raise
+            # Save all results to a combined JSON file
+            combined_results_path = self.results_dir / 'combined_results.json'
+            with open(combined_results_path, 'w') as f:
+                json.dump(all_results, f)
             
-            # Verify the working copies exist
-            if not os.path.exists(temp_idf_path):
-                print(f"ERROR: Working copy of IDF file not created at: {temp_idf_path}")
-                raise FileNotFoundError(f"Working copy of IDF file not created at: {temp_idf_path}")
-            
-            if not os.path.exists(temp_epw_path):
-                print(f"ERROR: Working copy of weather file not created at: {temp_epw_path}")
-                raise FileNotFoundError(f"Working copy of weather file not created at: {temp_epw_path}")
-            
-            # Use subprocess to run EnergyPlus directly
-            import subprocess
-            
-            # Prepare the command
-            command = [
-                energyplus_exe,  # Use the found executable
-                '--weather', temp_epw_path,
-                '--output-directory', str(self.results_dir),
-                '--expandobjects',
-                '--readvars',
-                temp_idf_path
-            ]
-            
-            print(f"Running EnergyPlus with command: {' '.join(command)}")
-            print(f"Working directory: {str(self.results_dir)}")
-            
-            # Run the process and capture output
-            try:
-                process = subprocess.run(
-                    command, 
-                    capture_output=True, 
-                    text=True, 
-                    cwd=str(self.results_dir),
-                    timeout=300  # 5 minute timeout
-                )
-                
-                # Always print the output for debugging
-                print(f"EnergyPlus STDOUT:\n{process.stdout}")
-                print(f"EnergyPlus STDERR:\n{process.stderr}")
-                
-                # Check for errors
-                if process.returncode != 0:
-                    print(f"ERROR: EnergyPlus failed with return code {process.returncode}")
-                    raise Exception(f"EnergyPlus simulation failed with return code {process.returncode}: {process.stderr}")
-                
-                print(f"EnergyPlus process completed successfully with return code {process.returncode}")
-            except subprocess.TimeoutExpired:
-                print("ERROR: EnergyPlus process timed out after 5 minutes")
-                raise Exception("EnergyPlus simulation timed out after 5 minutes")
-            except Exception as e:
-                print(f"ERROR running EnergyPlus: {str(e)}")
-                raise
-            
-            # Save the output for debugging
-            with open(os.path.join(self.results_dir, 'run_output.log'), 'w') as f:
-                f.write(f"COMMAND: {' '.join(command)}\n\n")
-                f.write(f"STDOUT:\n{process.stdout}\n\nSTDERR:\n{process.stderr}")
-            
-            # List all files in the output directory to verify
-            print("Files in results directory after simulation:")
-            for file in os.listdir(self.results_dir):
-                print(f"  {file}")
-            
-            # Check if any output files were created
-            expected_files = ['eplusout.err', 'eplusout.html', 'eplustbl.htm']
-            missing_files = [f for f in expected_files if not os.path.exists(os.path.join(self.results_dir, f))]
-            
-            if missing_files:
-                print(f"WARNING: Some expected output files are missing: {', '.join(missing_files)}")
-                # Check the error file if it exists
-                err_file = os.path.join(self.results_dir, 'eplusout.err')
-                if os.path.exists(err_file):
-                    with open(err_file, 'r') as f:
-                        err_content = f.read()
-                        print(f"Contents of eplusout.err:\n{err_content}")
-            
-            # Rename standard output files to our convention
-            standard_files = {
-                'eplusout.err': 'output.err',
-                'eplusout.eso': 'output.eso',
-                'eplusout.csv': 'output.csv',
-                'eplusout.html': 'output.html',
-                'eplusout.mtd': 'output.mtd',
-                'eplusout.mtr': 'output.mtr',
-                'eplusout.rdd': 'output.rdd',
-                'eplusout.shd': 'output.shd',
-                'eplustbl.htm': 'output.htm',
-                'epluszsz.csv': 'output_zones.csv',
-                'eplusssz.csv': 'output_system.csv',
-                'eplusout.sql': 'output.sql'
-            }
-            
-            for src_name, dst_name in standard_files.items():
-                src_path = os.path.join(self.results_dir, src_name)
-                if os.path.exists(src_path):
-                    dst_path = os.path.join(self.results_dir, dst_name)
-                    print(f"Renaming {src_path} to {dst_path}")
-                    os.rename(src_path, dst_path)
-            
-            # Process and save results
-            results_path = self.results_dir / 'output'
-            print(f"Processing results from: {results_path}")
-            self.process_results(results_path)
-            
+            # Store the relative path to the combined results
+            rel_path = str(combined_results_path.relative_to(self.media_root))
+            self.simulation.results_file = rel_path
             self.simulation.status = 'completed'
             self.simulation.save()
-            print(f"Simulation {self.simulation.id} completed successfully")
-
+            
+            print(f"Simulation {self.simulation.id} completed successfully with {len(all_results)} result sets")
+        
         except Exception as e:
             print(f"Simulation failed: {str(e)}")
             import traceback
@@ -222,8 +208,9 @@ class EnergyPlusSimulator:
             self.simulation.save()
             raise
 
-    def process_results(self, output_file: Path):
-        """Process and store simulation results."""
+    # Add a new helper method to process results for a single file
+    def process_file_results(self, output_file: Path, idf_file):
+        """Process and store results for a single IDF file."""
         try:
             # Ensure output_file is a Path object
             if isinstance(output_file, str):
@@ -231,71 +218,40 @@ class EnergyPlusSimulator:
             
             # Get the HTML file path
             html_path = output_file.with_suffix('.htm')
-            log_path = self.results_dir / 'run_output.log'
-            print(f"Looking for HTML results at: {html_path}")
-            print(f"Looking for log file at: {log_path}")
+            log_path = output_file.parent / 'run_output.log'
             
             if html_path.exists():
-                print(f"Found HTML results file: {html_path}")
                 # Extract results from HTML
-                results = parse_html_with_table_lookup(html_path, log_path, self.simulation.files.filter(file_type='idf'))
+                results = parse_html_with_table_lookup(html_path, log_path, [idf_file])
+                
+                # Add original filename to results
+                results['originalFileName'] = idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name)
                 
                 # Save parsed results as a JSON file
                 json_path = output_file.with_suffix('.json')
-                print(f"Saving JSON results to: {json_path}")
-                
                 with open(json_path, 'w') as f:
                     json.dump(results, f)
                 
-                # Store only the relative path from MEDIA_ROOT
-                try:
-                    # Make sure to compute a valid relative path from MEDIA_ROOT
-                    rel_path = str(json_path.relative_to(self.media_root))
-                    print(f"Storing results file path relative to MEDIA_ROOT: {rel_path}")
-                    
-                    # Store as a valid relative path
-                    self.simulation.results_file = rel_path
-                    self.simulation.save()
-                except ValueError:
-                    # If the path is not relative to MEDIA_ROOT, try to copy the file to a proper location
-                    proper_results_path = self.results_dir / 'output.json'
-                    import shutil
-                    shutil.copy2(json_path, proper_results_path)
-                    
-                    # Now store the relative path to the copied file
-                    rel_path = str(proper_results_path.relative_to(self.media_root))
-                    print(f"Copied results to proper location, storing path: {rel_path}")
-                    
-                    self.simulation.results_file = rel_path
-                    self.simulation.save()
-                
-                print(f"Successfully processed and saved results for simulation {self.simulation.id}")
+                return results
             else:
                 print(f"Warning: HTML results file not found at {html_path}")
-                # Create a simple JSON with error message if HTML file is missing
-                json_path = output_file.with_suffix('.json')
-                with open(json_path, 'w') as f:
-                    json.dump({
-                        'error': 'HTML results file not found',
-                        'summary': {},
-                        'energy_use': {},
-                        'zones': []
-                    }, f)
-                
-                # Store the proper relative path
-                rel_path = str(json_path.relative_to(self.media_root))
-                self.simulation.results_file = rel_path
-                self.simulation.save()
+                return {
+                    'error': 'HTML results file not found',
+                    'fileName': os.path.basename(idf_file.file.name),
+                    'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name),
+                    'status': 'error'
+                }
                 
         except Exception as e:
-            print(f"Error processing results: {str(e)}")
+            print(f"Error processing file results: {str(e)}")
             import traceback
             traceback.print_exc()
-            
-            self.simulation.error_message = f"Error processing results: {str(e)}"
-            self.simulation.status = 'failed'
-            self.simulation.save()
-            raise
+            return {
+                'error': str(e),
+                'fileName': os.path.basename(idf_file.file.name),
+                'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name),
+                'status': 'error'
+            }
 
 def parse_html_with_table_lookup(html_path, log_path, idf_files):
     """Parse EnergyPlus HTML output and log to extract structured results."""
@@ -452,7 +408,7 @@ def parse_simulation_results(simulation):
             
             # Check if the file exists
             if not results_path.exists():
-                # Try alternative paths if the standard path doesn't exist
+                # Try alternative paths
                 alternative_paths = [
                     # Try the absolute path stored in the DB
                     Path(str(simulation.results_file)),
@@ -468,21 +424,86 @@ def parse_simulation_results(simulation):
                         break
             
             if not results_path.exists():
+                # If we still can't find combined results, look for individual results
+                if simulation.file_count > 1:
+                    # Try to collect results from individual IDF files
+                    idf_files = simulation.files.filter(file_type='idf')
+                    all_results = []
+                    
+                    for idf_file in idf_files:
+                        idf_basename = os.path.basename(idf_file.file.path)
+                        idf_name_no_ext = os.path.splitext(idf_basename)[0]
+                        
+                        individual_results_path = media_root / 'simulation_results' / str(simulation.id) / idf_name_no_ext / 'output.json'
+                        
+                        if individual_results_path.exists():
+                            with open(individual_results_path, 'r') as f:
+                                file_results = json.load(f)
+                                file_results['simulationId'] = simulation.id
+                                all_results.append(file_results)
+                    
+                    if all_results:
+                        return all_results
+                
                 raise FileNotFoundError(f"Results file not found at {results_path} or any alternative locations")
                 
             print(f"Opening results file from: {results_path}")
             
             with open(results_path, 'r') as f:
                 result_data = json.load(f)
-                # Add simulation ID to the results for frontend reference
-                if isinstance(result_data, dict):
+                
+                # Handle both single results and multiple results
+                if isinstance(result_data, list):
+                    # Add simulation ID to each result
+                    for item in result_data:
+                        if isinstance(item, dict):
+                            item['simulationId'] = simulation.id
+                elif isinstance(result_data, dict):
+                    # Add simulation ID to the single result
                     result_data['simulationId'] = simulation.id
+                
                 return result_data
+                
         except Exception as e:
             import traceback
             traceback.print_exc()
+            
+            # Return a consistent format whether one file or multiple
+            if simulation.file_count > 1:
+                return [{
+                    'error': f"Failed to read results: {str(e)}",
+                    'simulationId': simulation.id,
+                    'fileName': file.file.name if hasattr(file, 'file') else "unknown.idf",
+                    'totalEnergyUse': 0.0,
+                    'heatingDemand': 0.0,
+                    'coolingDemand': 0.0,
+                    'runTime': 0.0
+                } for file in simulation.files.filter(file_type='idf')]
+            else:
+                return {
+                    'error': f"Failed to read results: {str(e)}",
+                    'simulationId': simulation.id,
+                    'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
+                    'totalEnergyUse': 0.0,
+                    'heatingDemand': 0.0,
+                    'coolingDemand': 0.0,
+                    'runTime': 0.0
+                }
+    else:
+        # Return a consistent format whether one file or multiple
+        if simulation.file_count > 1:
+            return [{
+                'error': "No results file available",
+                'simulationId': simulation.id,
+                'fileName': file.file.name if hasattr(file, 'file') else "unknown.idf",
+                'totalEnergyUse': 0.0,
+                'heatingDemand': 0.0,
+                'coolingDemand': 0.0,
+                'runTime': 0.0
+            } for file in simulation.files.filter(file_type='idf')]
+        else:
             return {
-                'error': f"Failed to read results: {str(e)}",
+                'error': "No results file available",
                 'simulationId': simulation.id,
                 'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
                 'totalEnergyUse': 0.0,
@@ -490,13 +511,3 @@ def parse_simulation_results(simulation):
                 'coolingDemand': 0.0,
                 'runTime': 0.0
             }
-    else:
-        return {
-            'error': "No results file available",
-            'simulationId': simulation.id,
-            'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
-            'totalEnergyUse': 0.0,
-            'heatingDemand': 0.0,
-            'coolingDemand': 0.0,
-            'runTime': 0.0
-        }

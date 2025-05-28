@@ -31,17 +31,48 @@ export const getMaterials = async (): Promise<Material[]> => {
 
 export const createMaterial = async (material: MaterialInsert) => {
   try {
-    const { data, error } = await supabase
-      .from('materials')
-      .insert([material])
-      .select()
-      .single();
+    console.log("database.ts: Creating material in Supabase:", material);
     
-    if (error) throw error;
-    return data;
+    // Ensure all required fields are present and have valid values
+    const validatedMaterial = {
+      ...material,
+      thickness_m: material.thickness_m || 0,
+      conductivity_w_mk: material.conductivity_w_mk || 0,
+      density_kg_m3: material.density_kg_m3 || 0,
+      specific_heat_j_kgk: material.specific_heat_j_kgk || 0,
+      roughness: material.roughness || 'MediumRough',
+      thermal_absorptance: material.thermal_absorptance ?? 0.9,
+      solar_absorptance: material.solar_absorptance ?? 0.7,
+      visible_absorptance: material.visible_absorptance ?? 0.7,
+      gwp_kgco2e_per_m2: material.gwp_kgco2e_per_m2 || 0,
+      cost_sek_per_m2: material.cost_sek_per_m2 || 0,
+      wall_allowed: material.wall_allowed ?? true,
+      roof_allowed: material.roof_allowed ?? true,
+      floor_allowed: material.floor_allowed ?? true,
+      window_layer_allowed: material.window_layer_allowed ?? false,
+    };
+    
+    const { data, error, status, statusText } = await supabase
+      .from('materials')
+      .insert([validatedMaterial])
+      .select();
+    
+    console.log("database.ts: Supabase response:", { data, error, status, statusText });
+    
+    if (error) {
+      console.error("database.ts: Supabase error:", error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      console.warn("database.ts: No data returned from Supabase insert");
+      return { data: null };
+    }
+    
+    return { data: data[0] };
   } catch (err) {
-    console.error('Failed to create material:', err);
-    throw err;
+    console.error('database.ts: Failed to create material:', err);
+    return { error: err };
   }
 };
 
@@ -208,32 +239,51 @@ export const createConstruction = async (
   layers: Omit<LayerInsert, 'construction_id'>[]
 ) => {
   try {
+    console.log("database.ts: Creating construction in Supabase:", construction);
+    
     // First create the construction
-    const { data: constructionData, error: constructionError } = await supabase
+    const { data: constructionData, error: constructionError, status, statusText } = await supabase
       .from('constructions')
       .insert([construction])
       .select()
       .single();
     
-    if (constructionError) throw constructionError;
+    console.log("database.ts: Supabase construction response:", { constructionData, constructionError, status, statusText });
+    
+    if (constructionError) {
+      console.error("database.ts: Supabase construction error:", constructionError);
+      throw constructionError;
+    }
+
+    if (!constructionData) {
+      console.warn("database.ts: No data returned from Supabase construction insert");
+      throw new Error("No data returned from construction insert");
+    }
 
     // Then add the layers
     if (layers.length > 0) {
+      console.log("database.ts: Adding layers to construction:", layers);
+      
       const constructionLayers = layers.map(layer => ({
         ...layer,
         construction_id: constructionData.id
       }));
 
-      const { error: layersError } = await supabase
+      const { data: layersData, error: layersError } = await supabase
         .from('layers')
         .insert(constructionLayers);
       
-      if (layersError) throw layersError;
+      console.log("database.ts: Supabase layers response:", { layersData, layersError });
+      
+      if (layersError) {
+        console.error("database.ts: Supabase layers error:", layersError);
+        throw layersError;
+      }
     }
 
     return constructionData;
   } catch (err) {
-    console.error('Failed to create construction:', err);
+    console.error('database.ts: Failed to create construction:', err);
     throw err;
   }
 };

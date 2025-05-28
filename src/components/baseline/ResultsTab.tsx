@@ -90,7 +90,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
       
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {resultsArray.map((result, index) => (
-          <Grid item xs={12} md={6} key={index}>
+          <Grid item xs={12} md={6} key={`result-card-${index}-${result.simulationId}`}>
             <Card sx={{ height: '100%' }}>
               <CardContent>
                 <Typography variant="h6" color="primary" gutterBottom>
@@ -192,7 +192,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                   </TableHead>
                   <TableBody>
                     {resultsArray.map((result, idx) => (
-                      <TableRow key={idx}>
+                      <TableRow key={`summary-row-${idx}-${result.simulationId}`}>
                         <TableCell>{result.fileName || `Result ${idx+1}`}</TableCell>
                         <TableCell align="right">{result.totalEnergyUse ? result.totalEnergyUse.toFixed(1) : '0.0'}</TableCell>
                         <TableCell align="right">{result.heatingDemand ? result.heatingDemand.toFixed(1) : '0.0'}</TableCell>
@@ -244,7 +244,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                     </TableHead>
                     <TableBody>
                       {Object.entries(resultsArray[0].energy_use).map(([endUse, values]: [string, any], idx) => (
-                        <TableRow key={idx}>
+                        <TableRow key={`energy-row-${idx}-${endUse}`}>
                           <TableCell>{endUse}</TableCell>
                           <TableCell align="right">{values.electricity?.toFixed(1) || '0.0'}</TableCell>
                           <TableCell align="right">{values.district_heating?.toFixed(1) || '0.0'}</TableCell>

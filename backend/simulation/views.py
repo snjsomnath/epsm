@@ -36,7 +36,12 @@ def parse_idf(request):
             'zones': []
         }
         
-        for file in files:
+        # Use dictionaries to track unique items by name to avoid duplicates
+        materials_dict = {}
+        constructions_dict = {}
+        zones_dict = {}
+        
+        for file_index, file in enumerate(files):
             print("Processing file:", file.name)
             content = file.read().decode('utf-8')
             parser = IdfParser(content)
@@ -44,26 +49,52 @@ def parse_idf(request):
             
             # Add database comparison for materials
             for material in file_data['materials']:
+                material_name = material['name']
                 material['existsInDatabase'] = Material.objects.filter(
-                    name__iexact=material['name']
+                    name__iexact=material_name
                 ).exists()
                 
                 if not material['existsInDatabase']:
                     material['source'] = f"Extracted from {file.name}"
+                
+                # Generate a unique key for this material
+                material['uniqueKey'] = f"{material_name}_{file_index}_{file.name}"
+                
+                # Only add if not already added (or replace with the current one)
+                if material_name not in materials_dict:
+                    materials_dict[material_name] = material
             
             # Add database comparison for constructions
             for construction in file_data['constructions']:
+                construction_name = construction['name']
                 construction['existsInDatabase'] = Construction.objects.filter(
-                    name__iexact=construction['name']
+                    name__iexact=construction_name
                 ).exists()
                 
                 if not construction['existsInDatabase']:
                     construction['source'] = f"Extracted from {file.name}"
+                
+                # Generate a unique key for this construction
+                construction['uniqueKey'] = f"{construction_name}_{file_index}_{file.name}"
+                
+                # Only add if not already added (or replace with the current one)
+                if construction_name not in constructions_dict:
+                    constructions_dict[construction_name] = construction
             
-            # Merge data from all files
-            parsed_data['materials'].extend(file_data['materials'])
-            parsed_data['constructions'].extend(file_data['constructions'])
-            parsed_data['zones'].extend(file_data['zones'])
+            # Add zones with unique names
+            for zone in file_data['zones']:
+                zone_name = zone['name']
+                
+                # Generate a unique key for this zone
+                zone['uniqueKey'] = f"{zone_name}_{file_index}_{file.name}"
+                
+                if zone_name not in zones_dict:
+                    zones_dict[zone_name] = zone
+        
+        # Convert dictionaries to lists for the response
+        parsed_data['materials'] = list(materials_dict.values())
+        parsed_data['constructions'] = list(constructions_dict.values())
+        parsed_data['zones'] = list(zones_dict.values())
 
         return JsonResponse(parsed_data)
 
@@ -92,6 +123,8 @@ def add_components(request):
         
         if component_type == 'material':
             for comp in components:
+                # Clean up any non-database fields like uniqueKey
+                # but preserve all the required material properties
                 material = Material(
                     name=comp['name'],
                     thickness_m=comp['properties']['thickness'],
@@ -102,6 +135,8 @@ def add_components(request):
                     thermal_absorptance=comp['properties'].get('thermalAbsorptance', 0.9),
                     solar_absorptance=comp['properties'].get('solarAbsorptance', 0.7),
                     visible_absorptance=comp['properties'].get('visibleAbsorptance', 0.7),
+                    gwp_kgco2e_per_m2=0.0,  # Default values for required fields
+                    cost_sek_per_m2=0.0,    # Default values for required fields
                     author=request.user,
                     source=comp.get('source', '')
                 )
@@ -110,9 +145,14 @@ def add_components(request):
         
         elif component_type == 'construction':
             for comp in components:
+                # Clean up any non-database fields but preserve construction properties
                 construction = Construction(
                     name=comp['name'],
                     element_type=comp['type'],
+                    u_value_w_m2k=0.0,      # Default values for required fields
+                    gwp_kgco2e_per_m2=0.0,  # Default values for required fields
+                    cost_sek_per_m2=0.0,    # Default values for required fields
+                    is_window=comp['type'] == 'window',
                     author=request.user,
                     source=comp.get('source', '')
                 )
@@ -120,11 +160,15 @@ def add_components(request):
                 
                 # Add layers
                 for i, layer_name in enumerate(comp['properties']['layers']):
-                    material = Material.objects.get(name=layer_name)
-                    construction.layers.create(
-                        material=material,
-                        layer_order=i + 1
-                    )
+                    try:
+                        material = Material.objects.get(name=layer_name)
+                        construction.layers.create(
+                            material=material,
+                            layer_order=i + 1
+                        )
+                    except Material.DoesNotExist:
+                        # Log the error but continue with other layers
+                        print(f"Warning: Material '{layer_name}' not found in database")
                 
                 added_components.append(construction.id)
 
@@ -134,6 +178,9 @@ def add_components(request):
         })
 
     except Exception as e:
+        print(f"Error in add_components: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({
             'error': str(e)
         }, status=500)
@@ -165,10 +212,11 @@ def run_simulation(request):
             user=user,  # Can be None now
             name=f"Simulation {Simulation.objects.count() + 1}",
             description="Baseline simulation",
-            status='pending'
+            status='pending',
+            file_count=len(idf_files)  # Track how many files are being simulated
         )
         
-        print(f"Created simulation with ID: {simulation.id}")
+        print(f"Created simulation with ID: {simulation.id} for {len(idf_files)} IDF files")
         
         # Ensure media directories exist
         media_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_files', str(simulation.id))
@@ -189,7 +237,8 @@ def run_simulation(request):
             SimulationFile.objects.create(
                 simulation=simulation,
                 file=file_path,
-                file_type='idf'
+                file_type='idf',
+                original_name=idf_file.name  # Store original filename for reference
             )
         
         # Save weather file
@@ -206,7 +255,8 @@ def run_simulation(request):
         SimulationFile.objects.create(
             simulation=simulation,
             file=weather_path,
-            file_type='weather'
+            file_type='weather',
+            original_name=weather_file.name  # Store original filename for reference
         )
         
         # Update status
@@ -236,7 +286,8 @@ def run_simulation(request):
         
         return JsonResponse({
             'simulation_id': simulation.id,
-            'message': 'Simulation started successfully'
+            'message': 'Simulation started successfully',
+            'file_count': len(idf_files)
         })
         
     except Exception as e:
@@ -247,6 +298,7 @@ def run_simulation(request):
             'error': str(e)
         }, status=500)
 
+@csrf_exempt
 @api_view(['GET'])
 @permission_classes([AllowAny])  # For testing; change to IsAuthenticated in production
 def simulation_status(request, simulation_id):
@@ -254,21 +306,20 @@ def simulation_status(request, simulation_id):
     try:
         simulation = Simulation.objects.get(id=simulation_id)
         
-        # Calculate approximate progress if running
-        progress = 0
         if simulation.status == 'running':
             # For demo, generate a progress based on time elapsed
             from django.utils import timezone
             elapsed = (timezone.now() - simulation.updated_at).total_seconds()
-            # Assume a simulation takes about 5 seconds for demo
             progress = min(int((elapsed / 5) * 100), 99)
         elif simulation.status == 'completed':
             progress = 100
+        else:
+            progress = 0
         
         return JsonResponse({
             'status': simulation.status,
             'progress': progress,
-            'error_message': simulation.error_message
+            'simulationId': simulation_id
         })
         
     except Simulation.DoesNotExist:
@@ -280,33 +331,21 @@ def simulation_status(request, simulation_id):
             'error': str(e)
         }, status=500)
 
+@csrf_exempt
 @api_view(['GET'])
 @permission_classes([AllowAny])  # For testing; change to IsAuthenticated in production
 def simulation_results(request, simulation_id):
     """Get the results of a completed simulation."""
+    # Helper function to safely get file name
     try:
         simulation = Simulation.objects.get(id=simulation_id)
-        
-        # Helper function to safely get file name
-        def get_safe_filename(file_field):
-            if file_field and hasattr(file_field, 'file') and hasattr(file_field.file, 'name'):
-                return os.path.basename(file_field.file.name)
-            return "unknown.idf"
-        
-        # Get IDF file name safely
-        idf_file = simulation.files.filter(file_type='idf').first()
-        file_name = get_safe_filename(idf_file) if idf_file else "unknown.idf"
         
         if simulation.status != 'completed':
             return JsonResponse({
                 'error': 'Simulation not yet completed',
                 'status': simulation.status,
                 'simulationId': simulation_id,
-                'fileName': file_name,
-                'totalEnergyUse': 0.0,
-                'heatingDemand': 0.0,
-                'coolingDemand': 0.0,
-                'runTime': 0.0
+                'results': []
             }, status=400)
         
         # Handle results directly rather than trying to access files
@@ -314,35 +353,20 @@ def simulation_results(request, simulation_id):
             from .services import parse_simulation_results
             results = parse_simulation_results(simulation)
             
-            # Ensure we don't include any FieldFile objects
-            clean_results = {}
-            if isinstance(results, dict):
-                for key, value in results.items():
-                    # Convert FieldFile objects to strings
-                    if hasattr(value, 'name') and callable(getattr(value, 'read', None)):
-                        clean_results[key] = value.name
-                    else:
-                        clean_results[key] = value
-                
-                # Add simulation ID if not present
-                if 'simulationId' not in clean_results:
-                    clean_results['simulationId'] = simulation_id
-                
-                # Add filename if not present
-                if 'fileName' not in clean_results:
-                    clean_results['fileName'] = file_name
-            else:
-                clean_results = {
-                    'error': 'Invalid results format',
-                    'simulationId': simulation_id,
-                    'fileName': file_name,
-                    'totalEnergyUse': 0.0,
-                    'heatingDemand': 0.0,
-                    'coolingDemand': 0.0,
-                    'runTime': 0.0
-                }
+            # If results is not a list but simulation has multiple files,
+            # wrap it in a list for consistent handling
+            if not isinstance(results, list) and simulation.file_count > 1:
+                results = [results]
             
-            return JsonResponse(clean_results)
+            # Ensure we add simulation ID to each result
+            if isinstance(results, list):
+                for result in results:
+                    if isinstance(result, dict):
+                        result['simulationId'] = simulation_id
+            elif isinstance(results, dict):
+                results['simulationId'] = simulation_id
+            
+            return JsonResponse(results, safe=False)  # Use safe=False to allow returning a list
         except Exception as e:
             import traceback
             print(f"Error in simulation_results: {str(e)}")
@@ -350,11 +374,7 @@ def simulation_results(request, simulation_id):
             return JsonResponse({
                 'error': f"Error retrieving simulation results: {str(e)}",
                 'simulationId': simulation_id,
-                'fileName': file_name,
-                'totalEnergyUse': 0.0,
-                'heatingDemand': 0.0,
-                'coolingDemand': 0.0,
-                'runTime': 0.0
+                'results': []
             }, status=500)
         
     except Simulation.DoesNotExist:
@@ -369,11 +389,7 @@ def simulation_results(request, simulation_id):
         return JsonResponse({
             'error': str(e),
             'simulationId': simulation_id,
-            'fileName': "unknown.idf",
-            'totalEnergyUse': 0.0,
-            'heatingDemand': 0.0,
-            'coolingDemand': 0.0,
-            'runTime': 0.0
+            'results': []
         }, status=500)
 
 @api_view(['GET'])
