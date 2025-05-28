@@ -28,7 +28,7 @@ function App() {
                 <Route path="baseline" element={<BaselinePage />} />
                 <Route path="scenario" element={<ScenarioPage />} />
                 <Route path="simulation" element={<SimulationPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/\" replace />} />
               </Route>
             </Routes>
           </DatabaseProvider>
