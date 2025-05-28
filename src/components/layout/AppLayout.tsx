@@ -17,7 +17,10 @@ import {
   MenuItem,
   Divider,
   Container,
-  CircularProgress
+  CircularProgress,
+  Stack,
+  Tooltip,
+  Chip
 } from '@mui/material';
 import { 
   Database,
@@ -29,10 +32,15 @@ import {
   LogOut,
   Menu as MenuIcon,
   BarChart2,
-  FileDown
+  FileDown,
+  Cpu,
+  MemoryStick,
+  HardDrive,
+  Activity as ActivityIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import axios from 'axios';
 
 const drawerWidth = 280;
 
@@ -54,6 +62,7 @@ const AppLayout = () => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [systemResources, setSystemResources] = useState<any>(null);
 
   useEffect(() => {
     // Add a small delay to prevent flash of content
@@ -66,6 +75,27 @@ const AppLayout = () => {
 
     return () => clearTimeout(timer);
   }, [isAuthenticated, navigate]);
+
+  // Fetch system resources when menu opens
+  useEffect(() => {
+    if (anchorEl) {
+      const fetchSystemResources = async () => {
+        try {
+          const response = await axios.get('http://localhost:8000/api/simulation/system-resources/');
+          setSystemResources(response.data);
+        } catch (error) {
+          console.error('Failed to fetch system resources:', error);
+          setSystemResources({
+            error: 'Failed to fetch system resources',
+            cpu: { usage_percent: 0 },
+            memory: { usage_percent: 0 },
+            disk: { usage_percent: 0 }
+          });
+        }
+      };
+      fetchSystemResources();
+    }
+  }, [anchorEl]);
 
   if (isLoading) {
     return (
@@ -161,6 +191,7 @@ const AppLayout = () => {
                 overflow: 'visible',
                 filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
                 mt: 1.5,
+                minWidth: 350,
                 '& .MuiAvatar-root': {
                   width: 32,
                   height: 32,
@@ -175,12 +206,68 @@ const AppLayout = () => {
                 Signed in as
               </Typography>
             </MenuItem>
-            <MenuItem>
-              <Typography variant="body2">
-                {user?.email}
-              </Typography>
-            </MenuItem>
+            
             <Divider />
+            
+            {systemResources && (
+              <>
+                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Cpu size={16} />
+                    <Typography variant="body2">CPU Usage:</Typography>
+                    <Chip 
+                      size="small"
+                      label={`${Math.round(systemResources.cpu?.usage_percent || 0)}%`}
+                      color={systemResources.cpu?.usage_percent > 80 ? 'error' : 
+                             systemResources.cpu?.usage_percent > 60 ? 'warning' : 'success'}
+                    />
+                  </Stack>
+                </MenuItem>
+
+                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <MemoryStick size={16} />
+                    <Typography variant="body2">Memory:</Typography>
+                    <Chip 
+                      size="small"
+                      label={`${Math.round(systemResources.memory?.usage_percent || 0)}%`}
+                      color={systemResources.memory?.usage_percent > 80 ? 'error' : 
+                             systemResources.memory?.usage_percent > 60 ? 'warning' : 'success'}
+                    />
+                  </Stack>
+                </MenuItem>
+
+                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <HardDrive size={16} />
+                    <Typography variant="body2">Disk:</Typography>
+                    <Chip 
+                      size="small"
+                      label={`${Math.round(systemResources.disk?.usage_percent || 0)}%`}
+                      color={systemResources.disk?.usage_percent > 80 ? 'error' : 
+                             systemResources.disk?.usage_percent > 60 ? 'warning' : 'success'}
+                    />
+                  </Stack>
+                </MenuItem>
+
+                {systemResources.energyplus && (
+                  <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <ActivityIcon size={16} />
+                      <Typography variant="body2">EnergyPlus:</Typography>
+                      <Chip 
+                        size="small"
+                        label={systemResources.energyplus.version || 'Not Found'}
+                        color={systemResources.energyplus.exists ? 'success' : 'error'}
+                      />
+                    </Stack>
+                  </MenuItem>
+                )}
+              </>
+            )}
+
+            <Divider />
+
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
                 <LogOut size={20} />
