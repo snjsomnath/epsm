@@ -198,5 +198,5 @@ This project is funded by the Swedish Energy Agency under Project ID P2024-04053
 ## 📞 Contact
 
 For questions and support, please contact:
-- Alexander Hollberg (Principal Investigator)
-- Email: alexander.hollberg@chalmers.se
+- Sanjay Somanath (Lead Developer)
+- Email: sanjay.somanath@chalmers.se
