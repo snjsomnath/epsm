@@ -1,3 +1,4 @@
+import React from 'react';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { 
@@ -185,8 +186,6 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
       throw err;
     }
   };
-
-  // Update the addConstruction function to ensure constructions are properly refreshed
 
   const handleAddConstruction = async (
     construction: ConstructionInsert,
