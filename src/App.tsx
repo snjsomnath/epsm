@@ -4,6 +4,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { DatabaseProvider } from './context/DatabaseContext';
+import { SimulationProvider } from './context/SimulationContext';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './components/auth/LoginPage';
 import HomePage from './components/home/HomePage';
@@ -20,17 +21,19 @@ function App() {
       <Router>
         <AuthProvider>
           <DatabaseProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<AppLayout />}>
-                <Route index element={<HomePage />} />
-                <Route path="database/*" element={<DatabasePage />} />
-                <Route path="baseline" element={<BaselinePage />} />
-                <Route path="scenario" element={<ScenarioPage />} />
-                <Route path="simulation" element={<SimulationPage />} />
-                <Route path="*" element={<Navigate to="/\" replace />} />
-              </Route>
-            </Routes>
+            <SimulationProvider>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/" element={<AppLayout />}>
+                  <Route index element={<HomePage />} />
+                  <Route path="database/*" element={<DatabasePage />} />
+                  <Route path="baseline" element={<BaselinePage />} />
+                  <Route path="scenario" element={<ScenarioPage />} />
+                  <Route path="simulation" element={<SimulationPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+            </SimulationProvider>
           </DatabaseProvider>
         </AuthProvider>
       </Router>
