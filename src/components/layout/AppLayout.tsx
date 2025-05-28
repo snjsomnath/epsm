@@ -35,11 +35,13 @@ import {
   FileDown,
   Cpu,
   MemoryStick,
-  HardDrive
+  HardDrive,
+  Info
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useDatabase } from '../../context/DatabaseContext';
+import AboutDialog from '../about/AboutDialog';
 import axios from 'axios';
 
 const drawerWidth = 280;
@@ -64,6 +66,7 @@ const AppLayout = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [systemResources, setSystemResources] = useState<any>(null);
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
   const [dbStats, setDbStats] = useState({
     materials: 0,
     constructions: 0,
@@ -190,6 +193,14 @@ const AppLayout = () => {
             EnergyPlus Simulation Manager
           </Typography>
           
+          <IconButton 
+            color="inherit" 
+            onClick={() => setAboutDialogOpen(true)} 
+            sx={{ mr: 2 }}
+          >
+            <Info size={20} />
+          </IconButton>
+
           <IconButton color="inherit" onClick={toggleTheme} sx={{ mr: 2 }}>
             {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
           </IconButton>
@@ -411,12 +422,45 @@ const AppLayout = () => {
           bgcolor: 'background.default',
           p: 3,
           mt: 8,
+          pb: 10,
+          position: 'relative'
         }}
       >
         <Container maxWidth="xl" sx={{ height: '100%' }}>
           <Outlet />
         </Container>
+
+        <Box
+          component="footer"
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            bgcolor: 'background.paper',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            py: 1,
+            px: 3,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            zIndex: (theme) => theme.zIndex.drawer - 1
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            EPSM v0.1 Beta
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            © 2025 Chalmers University of Technology. All rights reserved.
+          </Typography>
+        </Box>
       </Box>
+
+      <AboutDialog 
+        open={aboutDialogOpen} 
+        onClose={() => setAboutDialogOpen(false)} 
+      />
     </Box>
   );
 };
