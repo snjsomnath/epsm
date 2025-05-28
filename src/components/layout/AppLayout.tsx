@@ -435,7 +435,7 @@ const AppLayout = () => {
           sx={{
             position: 'fixed',
             bottom: 0,
-            left: 0,
+            left: open ? drawerWidth : 73,
             right: 0,
             bgcolor: 'background.paper',
             borderTop: '1px solid',
@@ -445,7 +445,11 @@ const AppLayout = () => {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            zIndex: (theme) => theme.zIndex.drawer - 1
+            zIndex: (theme) => theme.zIndex.drawer - 1,
+            transition: theme => theme.transitions.create(['left'], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
           }}
         >
           <Typography variant="body2" color="text.secondary">
