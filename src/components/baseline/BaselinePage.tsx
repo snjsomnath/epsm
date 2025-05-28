@@ -89,110 +89,177 @@ const BaselinePage = () => {
       // Use the correct backend URL
       const backendUrl = 'http://localhost:8000'; // Update this to your Django backend URL
       
-      // Start the simulation and get simulation ID
-      const response = await fetch(`${backendUrl}/api/simulation/run/`, {
-        method: 'POST',
-        body: formData,
-        // Don't include credentials if CORS is an issue during development
-        // credentials: 'include'
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Server error response:", errorText);
-        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-      }
-      
-      // Parse the JSON response safely
-      let data;
+      // Check if backend is reachable first - use an existing endpoint
       try {
-        data = await response.json();
-      } catch (jsonError) {
-        console.error("Failed to parse JSON response:", jsonError);
-        throw new Error("Invalid server response format");
-      }
-      
-      const simulation_id = data.simulation_id;
-      
-      if (!simulation_id) {
-        throw new Error('No simulation ID returned from server');
-      }
-      
-      console.log("Simulation started with ID:", simulation_id);
-      
-      // Poll for simulation status
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/status/`);
-          
-          if (!statusResponse.ok) {
-            clearInterval(pollInterval);
-            throw new Error(`Server responded with ${statusResponse.status}: ${statusResponse.statusText}`);
-          }
-          
-          const statusData = await statusResponse.json();
-          
-          // Update progress
-          setProgress(statusData.progress);
-          
-          // Check if simulation is complete
-          if (statusData.status === 'completed') {
-            clearInterval(pollInterval);
-            
-            try {
-              // Fetch simulation results
-              const resultsResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/results/`);
-              
-              if (!resultsResponse.ok) {
-                console.error(`Error fetching results: ${resultsResponse.status}`);
-                // Instead of throwing an error, we'll use mock results
-                setSimulationResults({
-                  summary: {
-                    total_site_energy: 100,
-                    energy_use_intensity: 40
-                  },
-                  energy_use: {
-                    Electricity: 65,
-                    NaturalGas: 35
-                  },
-                  zones: [
-                    { name: 'Default Zone', area: 100, volume: 300, peak_load: 4.5 }
-                  ]
-                });
-              } else {
-                const resultsData = await resultsResponse.json();
-                setSimulationResults(resultsData);
-              }
-              
-              setSimulationComplete(true);
-              setSimulating(false);
-              setTabIndex(0); // Switch to Results tab (now it's the only tab, so index is 0)
-            } catch (resultError) {
-              console.error("Error fetching results:", resultError);
-              // Use mock results on error
-              setSimulationResults({
-                summary: { total_site_energy: 0, energy_use_intensity: 0 },
-                energy_use: {},
-                zones: [],
-                error: "Could not load simulation results"
-              });
-              setSimulationComplete(true);
-              setSimulating(false);
-            }
-          } else if (statusData.status === 'failed') {
-            clearInterval(pollInterval);
-            throw new Error(statusData.error_message || 'Simulation failed');
-          }
-        } catch (err) {
-          clearInterval(pollInterval);
-          throw err;
+        // Try to access the system-resources endpoint which is defined in urls.py
+        const pingResponse = await fetch(`${backendUrl}/api/simulation/system-resources/`, { 
+          method: 'GET',
+          // Add a short timeout to quickly detect if server is unreachable
+          signal: AbortSignal.timeout(3000) 
+        });
+        
+        if (!pingResponse.ok) {
+          throw new Error(`Server responded with ${pingResponse.status}: ${pingResponse.statusText}`);
         }
-      }, 2000); // Poll every 2 seconds
+        
+        // Log success if ping was successful
+        console.log("Backend connection successful, server is running");
+      } catch (connectionError) {
+        console.error("Backend connection error:", connectionError);
+        throw new Error(
+          "Cannot connect to the simulation server. Please ensure the Django backend is running at " + 
+          backendUrl + " and try again."
+        );
+      }
+      
+      // Start the simulation and get simulation ID
+      try {
+        const response = await fetch(`${backendUrl}/api/simulation/run/`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Server error response:", errorText);
+          throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+        }
+        
+        // Parse the JSON response safely
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error("Failed to parse JSON response:", jsonError);
+          throw new Error("Invalid server response format");
+        }
+        
+        const simulation_id = data.simulation_id;
+        
+        if (!simulation_id) {
+          throw new Error('No simulation ID returned from server');
+        }
+        
+        console.log("Simulation started with ID:", simulation_id);
+        
+        // Poll for simulation status
+        const pollInterval = setInterval(async () => {
+          try {
+            const statusResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/status/`);
+            
+            if (!statusResponse.ok) {
+              clearInterval(pollInterval);
+              throw new Error(`Server responded with ${statusResponse.status}: ${statusResponse.statusText}`);
+            }
+            
+            const statusData = await statusResponse.json();
+            
+            // Update progress
+            setProgress(statusData.progress);
+            
+            // Check if simulation is complete
+            if (statusData.status === 'completed') {
+              clearInterval(pollInterval);
+              
+              try {
+                // Fetch simulation results
+                const resultsResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/results/`);
+                
+                if (!resultsResponse.ok) {
+                  console.error(`Error fetching results: ${resultsResponse.status}`);
+                  // If we can't fetch the results, we'll set an error in the simulationResults
+                  setSimulationResults({
+                    error: `Failed to fetch results: ${resultsResponse.statusText}`,
+                    simulationId: simulation_id,
+                    fileName: uploadedFiles[0]?.name || "Unknown file",
+                    totalEnergyUse: 0,
+                    heatingDemand: 0,
+                    coolingDemand: 0,
+                    runTime: 0
+                  });
+                } else {
+                  try {
+                    const resultsData = await resultsResponse.json();
+                    // Add the simulation ID to the results for reference
+                    if (Array.isArray(resultsData)) {
+                      resultsData.forEach(result => {
+                        result.simulationId = simulation_id;
+                        // Ensure required fields exist
+                        if (!result.fileName && uploadedFiles.length > 0) {
+                          result.fileName = uploadedFiles[0].name;
+                        }
+                      });
+                    } else {
+                      resultsData.simulationId = simulation_id;
+                      // Ensure required fields exist
+                      if (!resultsData.fileName && uploadedFiles.length > 0) {
+                        resultsData.fileName = uploadedFiles[0].name;
+                      }
+                    }
+                    console.log("Received simulation results:", resultsData);
+                    setSimulationResults(resultsData);
+                  } catch (jsonError) {
+                    console.error("Error parsing results JSON:", jsonError);
+                    setSimulationResults({
+                      error: `Error parsing results: ${jsonError.message}`,
+                      simulationId: simulation_id,
+                      fileName: uploadedFiles[0]?.name || "Unknown file",
+                      totalEnergyUse: 0,
+                      heatingDemand: 0,
+                      coolingDemand: 0,
+                      runTime: 0
+                    });
+                  }
+                }
+                
+                setSimulationComplete(true);
+                setSimulating(false);
+                setTabIndex(0); // Switch to Results tab
+              } catch (resultError) {
+                console.error("Error fetching results:", resultError);
+                setSimulationResults({
+                  error: `Error fetching results: ${resultError.message}`,
+                  simulationId: simulation_id
+                });
+                setSimulationComplete(true);
+                setSimulating(false);
+              }
+            } else if (statusData.status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error(statusData.error_message || 'Simulation failed');
+            }
+          } catch (err) {
+            clearInterval(pollInterval);
+            throw err;
+          }
+        }, 2000); // Poll every 2 seconds
+        
+      } catch (fetchError) {
+        console.error("Error sending simulation request:", fetchError);
+        if (fetchError.message.includes("Failed to fetch")) {
+          throw new Error("Connection to the simulation server failed. Please check if the server is running.");
+        } else {
+          throw fetchError;
+        }
+      }
       
     } catch (err) {
       setSimulating(false);
       setParseError(err instanceof Error ? err.message : 'An error occurred during simulation');
       console.error("Simulation error:", err);
+      
+      // Show a more user-friendly error dialog when connection fails
+      if (err instanceof Error && 
+         (err.message.includes("Failed to fetch") || 
+          err.message.includes("Cannot connect") || 
+          err.message.includes("Connection to the simulation server failed"))) {
+        setParseError(
+          "Could not connect to the simulation server. Please ensure that:\n" +
+          "1. The Django server is running (python manage.py runserver)\n" +
+          "2. The server is running on http://localhost:8000\n" +
+          "3. There are no firewall or network issues blocking the connection"
+        );
+      }
     }
   };
 

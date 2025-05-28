@@ -34,3 +34,7 @@ __pycache__/
 .ipynb_checkpoints
 # Python egg files
 *.egg
+
+# Folder called media backend\media
+media/
+

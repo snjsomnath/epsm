@@ -2,29 +2,40 @@ import os
 import re
 import json
 import tempfile
+import pathlib
 from pathlib import Path
 from django.conf import settings
 from .models import Simulation, SimulationFile
 from eppy.modeleditor import IDF
+from bs4 import BeautifulSoup
 
 class EnergyPlusSimulator:
     def __init__(self, simulation: Simulation):
         self.simulation = simulation
         self.ep_path = settings.ENERGYPLUS_PATH
         
-        # Make sure the main simulation results directory exists
-        if not hasattr(settings, 'SIMULATION_RESULTS_DIR'):
-            settings.SIMULATION_RESULTS_DIR = os.path.join(settings.MEDIA_ROOT, 'simulation_results')
+        # Ensure we're using media_root for all storage
+        self.media_root = Path(settings.MEDIA_ROOT)
         
-        # Create the results directory if it doesn't exist
-        os.makedirs(settings.SIMULATION_RESULTS_DIR, exist_ok=True)
+        # Create directories inside MEDIA_ROOT
+        self.simulation_results_dir = self.media_root / 'simulation_results'
+        self.simulation_files_dir = self.media_root / 'simulation_files'
         
-        # Define and create the specific simulation results directory
-        self.results_dir = Path(settings.SIMULATION_RESULTS_DIR) / str(simulation.id)
+        # Create the directories if they don't exist
+        self.simulation_results_dir.mkdir(parents=True, exist_ok=True)
+        self.simulation_files_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Define and create the specific simulation results directory with run number
+        self.run_id = str(simulation.id)
+        self.results_dir = self.simulation_results_dir / self.run_id
+        self.files_dir = self.simulation_files_dir / self.run_id
+        
         self.results_dir.mkdir(parents=True, exist_ok=True)
+        self.files_dir.mkdir(parents=True, exist_ok=True)
         
         # Log the paths for debugging
         print(f"Simulation {simulation.id} results will be saved to: {self.results_dir}")
+        print(f"Simulation {simulation.id} files will be saved to: {self.files_dir}")
 
     def run_simulation(self):
         try:
@@ -219,13 +230,15 @@ class EnergyPlusSimulator:
                 output_file = Path(output_file)
             
             # Get the HTML file path
-            html_path = output_file.with_suffix('.html')
+            html_path = output_file.with_suffix('.htm')
+            log_path = self.results_dir / 'run_output.log'
             print(f"Looking for HTML results at: {html_path}")
+            print(f"Looking for log file at: {log_path}")
             
             if html_path.exists():
                 print(f"Found HTML results file: {html_path}")
                 # Extract results from HTML
-                results = parse_html_results(html_path)
+                results = parse_html_with_table_lookup(html_path, log_path, self.simulation.files.filter(file_type='idf'))
                 
                 # Save parsed results as a JSON file
                 json_path = output_file.with_suffix('.json')
@@ -234,13 +247,27 @@ class EnergyPlusSimulator:
                 with open(json_path, 'w') as f:
                     json.dump(results, f)
                 
-                # Store the relative path to the results file
-                rel_path = os.path.relpath(json_path, settings.MEDIA_ROOT)
-                print(f"Storing results file path: {rel_path}")
-                
-                # Update the simulation record with the results file path
-                self.simulation.results_file = rel_path
-                self.simulation.save()
+                # Store only the relative path from MEDIA_ROOT
+                try:
+                    # Make sure to compute a valid relative path from MEDIA_ROOT
+                    rel_path = str(json_path.relative_to(self.media_root))
+                    print(f"Storing results file path relative to MEDIA_ROOT: {rel_path}")
+                    
+                    # Store as a valid relative path
+                    self.simulation.results_file = rel_path
+                    self.simulation.save()
+                except ValueError:
+                    # If the path is not relative to MEDIA_ROOT, try to copy the file to a proper location
+                    proper_results_path = self.results_dir / 'output.json'
+                    import shutil
+                    shutil.copy2(json_path, proper_results_path)
+                    
+                    # Now store the relative path to the copied file
+                    rel_path = str(proper_results_path.relative_to(self.media_root))
+                    print(f"Copied results to proper location, storing path: {rel_path}")
+                    
+                    self.simulation.results_file = rel_path
+                    self.simulation.save()
                 
                 print(f"Successfully processed and saved results for simulation {self.simulation.id}")
             else:
@@ -255,7 +282,8 @@ class EnergyPlusSimulator:
                         'zones': []
                     }, f)
                 
-                rel_path = os.path.relpath(json_path, settings.MEDIA_ROOT)
+                # Store the proper relative path
+                rel_path = str(json_path.relative_to(self.media_root))
                 self.simulation.results_file = rel_path
                 self.simulation.save()
                 
@@ -269,70 +297,206 @@ class EnergyPlusSimulator:
             self.simulation.save()
             raise
 
-def parse_html_results(html_path):
-    """Parse EnergyPlus HTML output file to extract simulation results."""
+def parse_html_with_table_lookup(html_path, log_path, idf_files):
+    """Parse EnergyPlus HTML output and log to extract structured results."""
     try:
         with open(html_path, 'r', encoding='utf-8') as f:
-            html_content = f.read()
+            soup = BeautifulSoup(f, 'html.parser')
         
-        # Extract Annual Energy Use
+        with open(log_path, 'r', encoding='utf-8') as f:
+            log_content = f.read()
+
+        def get_value_from_table(table_title, row_label, col_index=1):
+            """Locate a table by title and return value at row_label and column index."""
+            table_header = soup.find('b', string=table_title)
+            if not table_header:
+                return None
+            table = table_header.find_next('table')
+            for row in table.find_all('tr'):
+                cells = row.find_all('td')
+                if cells and row_label in cells[0].text.strip():
+                    try:
+                        return float(cells[col_index].text.strip())
+                    except ValueError:
+                        return None
+            return None
+
+        # Extract building name and file info
+        building_name = soup.find('p', string=lambda s: s and 'Building:' in s)
+        building_name = building_name.b.text if building_name and building_name.b else "Unknown Building"
+        
+        file_name = idf_files.first().file.name if idf_files.exists() else "unknown.idf"
+        file_name = os.path.basename(file_name)
+
+        # Extract values from tables
+        total_energy_use = get_value_from_table("Site and Source Energy", "Total Site Energy", 2)  # kWh/m²
+        total_area = get_value_from_table("Building Area", "Total Building Area")  # m²
+        heating_kwh = get_value_from_table("End Uses", "Heating", 12)
+        cooling_kwh = get_value_from_table("End Uses", "Cooling", 12)
+        lighting_kwh = get_value_from_table("End Uses", "Interior Lighting", 1)
+        equipment_kwh = get_value_from_table("End Uses", "Interior Equipment", 1)
+
+        if not total_area:
+            total_area = 1.0  # fallback to avoid division by zero
+
+        # Normalize values by area
+        heating_demand = heating_kwh / total_area if heating_kwh else 0.0
+        cooling_demand = cooling_kwh / total_area if cooling_kwh else 0.0
+        lighting_intensity = lighting_kwh / total_area if lighting_kwh else 0.0
+        equipment_intensity = equipment_kwh / total_area if equipment_kwh else 0.0
+
+        # Extract run time in seconds from log
+        runtime_match = re.search(r'EnergyPlus Run Time=(\d+)hr\s+(\d+)min\s+([\d\.]+)sec', log_content)
+        if runtime_match:
+            hr, minute, sec = map(float, runtime_match.groups())
+            runtime_seconds = hr * 3600 + minute * 60 + sec
+        else:
+            runtime_seconds = 0.0
+
+        # Extract energy use breakdown by end use
         energy_use = {}
-        energy_pattern = r'<td>(\w+)</td>\s*<td>[\d\.]+</td>\s*<td>([\d\.]+)</td>'
-        energy_matches = re.findall(energy_pattern, html_content)
-        for match in energy_matches:
-            energy_use[match[0]] = float(match[1])
-        
-        # Extract Zone Information
+        table_header = soup.find('b', string="End Uses")
+        if table_header:
+            table = table_header.find_next('table')
+            for row in table.find_all('tr'):
+                cells = row.find_all('td')
+                if len(cells) > 1:
+                    end_use = cells[0].text.strip()
+                    if end_use and end_use not in ["", "&nbsp;", "Total End Uses"]:
+                        # Get values for electricity and district heating
+                        electricity = cells[1].text.strip()
+                        district_heating = cells[12].text.strip()
+                        try:
+                            electricity = float(electricity) if electricity else 0.0
+                            district_heating = float(district_heating) if district_heating else 0.0
+                            energy_use[end_use] = {
+                                "electricity": electricity,
+                                "district_heating": district_heating,
+                                "total": electricity + district_heating
+                            }
+                        except ValueError:
+                            pass
+
+        # Extract zone information
         zones = []
-        zone_pattern = r'<td>([^<]+)</td>\s*<td>([\d\.]+)</td>\s*<td>([\d\.]+)</td>\s*<td>([\d\.]+)</td>'
-        zone_matches = re.findall(zone_pattern, html_content)
-        for match in zone_matches:
-            zones.append({
-                'name': match[0],
-                'area': float(match[1]),
-                'volume': float(match[2]),
-                'peak_load': float(match[3])
-            })
-        
-        # Extract Summary Statistics
-        total_energy = re.search(r'Total Site Energy\s*</td>\s*<td>\s*([\d\.]+)\s*</td>', html_content)
-        total_energy_value = float(total_energy.group(1)) if total_energy else 0
-        
-        eui = re.search(r'Energy Per Total Building Area\s*</td>\s*<td>\s*([\d\.]+)\s*</td>', html_content)
-        eui_value = float(eui.group(1)) if eui else 0
-        
-        # Combine all results
-        results = {
-            'summary': {
-                'total_site_energy': total_energy_value,
-                'energy_use_intensity': eui_value
-            },
-            'energy_use': energy_use,
-            'zones': zones
+        zone_table_header = soup.find('b', string="Zone Summary")
+        if zone_table_header:
+            table = zone_table_header.find_next('table')
+            for row in table.find_all('tr'):
+                cells = row.find_all('td')
+                if len(cells) > 3 and "Total" not in cells[0].text.strip():
+                    try:
+                        zone_name = cells[0].text.strip()
+                        area = float(cells[1].text.strip())
+                        volume = float(cells[3].text.strip())
+                        zones.append({
+                            "name": zone_name,
+                            "area": area,
+                            "volume": volume
+                        })
+                    except (ValueError, IndexError):
+                        pass
+
+        # Combine results into a structured output
+        result = {
+            "building": building_name,
+            "fileName": file_name,
+            "totalEnergyUse": round(total_energy_use, 1) if total_energy_use else 0.0,
+            "heatingDemand": round(heating_demand, 1),
+            "coolingDemand": round(cooling_demand, 1),
+            "lightingDemand": round(lighting_intensity, 1),
+            "equipmentDemand": round(equipment_intensity, 1),
+            "runTime": round(runtime_seconds, 1),
+            "totalArea": total_area,
+            "energy_use": energy_use,
+            "zones": zones,
+            "status": "success"
         }
-        
-        return results
+
+        return result
+
     except Exception as e:
-        print(f"Error parsing HTML results: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
-            'error': f"Failed to parse results: {str(e)}",
-            'summary': {},
-            'energy_use': {},
-            'zones': []
+            "error": str(e),
+            "fileName": idf_files.first().file.name if idf_files.exists() else "unknown.idf",
+            "totalEnergyUse": 0.0,
+            "heatingDemand": 0.0,
+            "coolingDemand": 0.0,
+            "lightingDemand": 0.0,
+            "equipmentDemand": 0.0,
+            "runTime": 0.0,
+            "energy_use": {},
+            "zones": [],
+            "status": "error"
         }
 
 def parse_simulation_results(simulation):
     """Retrieve parsed simulation results."""
     if simulation.results_file:
         try:
-            results_path = Path(settings.MEDIA_ROOT) / simulation.results_file
+            # Ensure we interpret the path correctly
+            media_root = Path(settings.MEDIA_ROOT)
+            
+            # Handle FieldFile object properly by accessing its path or name attribute
+            if hasattr(simulation.results_file, 'path'):
+                results_path = Path(simulation.results_file.path)
+            elif hasattr(simulation.results_file, 'name'):
+                results_path = media_root / simulation.results_file.name
+            else:
+                # If it's already a string or PathLike object
+                results_path = media_root / str(simulation.results_file)
+            
+            print(f"Looking for results file at: {results_path}")
+            
+            # Check if the file exists
+            if not results_path.exists():
+                # Try alternative paths if the standard path doesn't exist
+                alternative_paths = [
+                    # Try the absolute path stored in the DB
+                    Path(str(simulation.results_file)),
+                    # Try looking in the backend directory
+                    Path(settings.BASE_DIR) / 'simulation_results' / str(simulation.id) / 'output.json'
+                ]
+                
+                for alt_path in alternative_paths:
+                    print(f"Checking alternative path: {alt_path}")
+                    if alt_path.exists():
+                        results_path = alt_path
+                        print(f"Found results at alternative path: {results_path}")
+                        break
+            
+            if not results_path.exists():
+                raise FileNotFoundError(f"Results file not found at {results_path} or any alternative locations")
+                
+            print(f"Opening results file from: {results_path}")
+            
             with open(results_path, 'r') as f:
-                return json.load(f)
+                result_data = json.load(f)
+                # Add simulation ID to the results for frontend reference
+                if isinstance(result_data, dict):
+                    result_data['simulationId'] = simulation.id
+                return result_data
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {
-                'error': f"Failed to read results: {str(e)}"
+                'error': f"Failed to read results: {str(e)}",
+                'simulationId': simulation.id,
+                'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
+                'totalEnergyUse': 0.0,
+                'heatingDemand': 0.0,
+                'coolingDemand': 0.0,
+                'runTime': 0.0
             }
     else:
         return {
-            'error': "No results file available"
+            'error': "No results file available",
+            'simulationId': simulation.id,
+            'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
+            'totalEnergyUse': 0.0,
+            'heatingDemand': 0.0,
+            'coolingDemand': 0.0,
+            'runTime': 0.0
         }
