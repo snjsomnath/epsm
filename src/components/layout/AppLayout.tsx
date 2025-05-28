@@ -17,10 +17,10 @@ import {
   MenuItem,
   Divider,
   Container,
-  CircularProgress,
   Stack,
   Tooltip,
-  Chip
+  Chip,
+  CircularProgress
 } from '@mui/material';
 import { 
   Database,
@@ -36,10 +36,12 @@ import {
   Cpu,
   MemoryStick,
   HardDrive,
-  Activity as ActivityIcon
+  Activity as ActivityIcon,
+  Database as DatabaseIcon
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useDatabase } from '../../context/DatabaseContext';
 import axios from 'axios';
 
 const drawerWidth = 280;
@@ -59,10 +61,17 @@ const AppLayout = () => {
   const location = useLocation();
   const { isAuthenticated, user, signOut } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { materials, constructions, constructionSets, error: dbError } = useDatabase();
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [systemResources, setSystemResources] = useState<any>(null);
+  const [dbStats, setDbStats] = useState({
+    materials: 0,
+    constructions: 0,
+    sets: 0,
+    lastUpdate: null as string | null
+  });
 
   useEffect(() => {
     // Add a small delay to prevent flash of content
@@ -75,6 +84,16 @@ const AppLayout = () => {
 
     return () => clearTimeout(timer);
   }, [isAuthenticated, navigate]);
+
+  // Update database stats when data changes
+  useEffect(() => {
+    setDbStats({
+      materials: materials.length,
+      constructions: constructions.length,
+      sets: constructionSets.length,
+      lastUpdate: new Date().toLocaleString()
+    });
+  }, [materials, constructions, constructionSets]);
 
   // Fetch system resources when menu opens
   useEffect(() => {
@@ -206,7 +225,44 @@ const AppLayout = () => {
                 Signed in as
               </Typography>
             </MenuItem>
-            
+            <MenuItem>
+              <Typography variant="body2">
+                {user?.email}
+              </Typography>
+            </MenuItem>
+
+            <Divider />
+
+            {/* Database Status */}
+            <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <DatabaseIcon size={16} />
+                <Typography variant="body2">Database Status:</Typography>
+                <Chip 
+                  size="small"
+                  label={dbError ? 'Error' : 'Connected'}
+                  color={dbError ? 'error' : 'success'}
+                />
+              </Stack>
+            </MenuItem>
+
+            <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+              <Typography variant="body2">
+                • {dbStats.materials} materials
+              </Typography>
+              <Typography variant="body2">
+                • {dbStats.constructions} constructions
+              </Typography>
+              <Typography variant="body2">
+                • {dbStats.sets} construction sets
+              </Typography>
+              {dbStats.lastUpdate && (
+                <Typography variant="caption" color="text.secondary">
+                  Last updated: {dbStats.lastUpdate}
+                </Typography>
+              )}
+            </MenuItem>
+
             <Divider />
             
             {systemResources && (
