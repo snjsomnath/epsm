@@ -186,8 +186,6 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     }
   };
 
-  // Update the addConstruction function to ensure constructions are properly refreshed
-
   const handleAddConstruction = async (
     construction: ConstructionInsert,
     layers: Omit<LayerInsert, 'construction_id'>[]
