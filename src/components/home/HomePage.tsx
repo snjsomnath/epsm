@@ -17,12 +17,17 @@ import {
   Stack,
   Divider,
   Chip,
-  Avatar
+  Avatar,
+  CircularProgress,
+  LinearProgress,
+  Tooltip
 } from '@mui/material';
-import { Database, Home, FlaskConical, Activity, BarChart } from 'lucide-react';
+// Fix the import for Lucide icons
+import { Database, Home, FlaskConical, Activity, BarChart, Cpu, HardDrive, MemoryStick } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import axios from 'axios';
 
 const steps: Step[] = [
   {
@@ -60,6 +65,10 @@ const HomePage = () => {
     constructions: 0,
     lastUpdate: null as string | null
   });
+  
+  // New state for system resources
+  const [systemResources, setSystemResources] = useState<any>(null);
+  const [loadingResources, setLoadingResources] = useState(false);
 
   useEffect(() => {
     if (showTourNextTime) {
@@ -122,6 +131,58 @@ const HomePage = () => {
     // Set up periodic check every 30 seconds
     const interval = setInterval(checkDatabase, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch system resources
+  useEffect(() => {
+    const fetchSystemResources = async () => {
+      setLoadingResources(true);
+      try {
+        // Use the full URL for development
+        // In development, we'll use the direct backend URL
+        // In production, we can use the relative path
+        const isDev = process.env.NODE_ENV === 'development';
+        const baseUrl = isDev ? 'http://localhost:8000' : '';
+        const response = await axios.get(`${baseUrl}/api/simulation/system-resources/`);
+        setSystemResources(response.data);
+      } catch (error) {
+        console.error('Failed to fetch system resources:', error);
+        // Use fallback data with error information for UI
+        setSystemResources({
+          error: error.message || 'Connection error',
+          cpu: {
+            logical_cores: '?',
+            physical_cores: '?',
+            usage_percent: 0
+          },
+          memory: {
+            total_gb: '?',
+            available_gb: '?',
+            usage_percent: 0
+          },
+          disk: {
+            total_gb: '?',
+            free_gb: '?',
+            usage_percent: 0
+          },
+          energyplus: {
+            exists: false,
+            version: "Unknown",
+            error: "Connection error"
+          },
+          platform: {
+            system: "Unknown",
+            release: "Unknown",
+            python: "Unknown"
+          }
+        });
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    // Fetch once on component mount
+    fetchSystemResources();
   }, []);
 
   const handleTourCallback = (data: CallBackProps) => {
@@ -279,7 +340,9 @@ const HomePage = () => {
                 <Typography variant="h6" gutterBottom>
                   System Status
                 </Typography>
+                
                 <List dense>
+                  {/* User and Authentication Information */}
                   <ListItem>
                     <ListItemText 
                       primary={
@@ -308,31 +371,32 @@ const HomePage = () => {
                           secondary={user.email}
                         />
                       </ListItem>
-                      <ListItem>
-                        <ListItemText 
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              Database Connection
-                              <Chip 
-                                size="small"
-                                color={dbConnected ? "success" : "error"}
-                                label={dbConnected ? "Connected" : "Disconnected"}
-                              />
-                            </Box>
-                          }
-                          secondary={
-                            dbConnected ? 
-                              `${dbStats.materials} materials, ${dbStats.constructions} constructions` :
-                              "Check your connection"
-                          }
-                        />
-                      </ListItem>
                     </>
                   )}
+                  
+                  <Divider sx={{ my: 1 }} />
+                  
+                  {/* Database Information */}
                   <ListItem>
+                    <ListItemIcon>
+                      <Database size={20} />
+                    </ListItemIcon>
                     <ListItemText 
-                      primary="EnergyPlus" 
-                      secondary="Version 23.2.0"
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          Database Connection
+                          <Chip 
+                            size="small"
+                            color={dbConnected ? "success" : "error"}
+                            label={dbConnected ? "Connected" : "Disconnected"}
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        dbConnected ? 
+                          `${dbStats.materials} materials, ${dbStats.constructions} constructions` :
+                          "Check your connection"
+                      }
                     />
                   </ListItem>
                   <ListItem>
@@ -341,6 +405,145 @@ const HomePage = () => {
                       secondary={dbStats.lastUpdate || "No updates yet"}
                     />
                   </ListItem>
+                  
+                  <Divider sx={{ my: 1 }} />
+                  
+                  {/* System Resources Section */}
+                  {loadingResources && <LinearProgress />}
+                  
+                  {/* EnergyPlus Status */}
+                  {systemResources?.energyplus && (
+                    <ListItem>
+                      <ListItemIcon>
+                        <FlaskConical size={20} />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary="EnergyPlus" 
+                        secondary={
+                          systemResources.energyplus.exists ? 
+                            `Version ${systemResources.energyplus.version} (Installed)` : 
+                            "Not found or not configured"
+                        }
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {/* Hardware Resources */}
+                  {systemResources && !systemResources.error && systemResources.cpu && (
+                    <>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Cpu size={20} />
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              CPU Usage
+                              <Tooltip title={`${systemResources.cpu.usage_percent || 0}% used`}>
+                                <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                  <CircularProgress
+                                    variant="determinate"
+                                    value={systemResources.cpu.usage_percent || 0}
+                                    size={24}
+                                    thickness={5}
+                                    color={(systemResources.cpu.usage_percent || 0) > 80 ? "error" : 
+                                          (systemResources.cpu.usage_percent || 0) > 60 ? "warning" : "success"}
+                                  />
+                                </Box>
+                              </Tooltip>
+                            </Box>
+                          }
+                          secondary={`${systemResources.cpu.physical_cores || 0} physical / ${systemResources.cpu.logical_cores || 0} logical cores`}
+                        />
+                      </ListItem>
+                      
+                      {systemResources.memory && (
+                        <ListItem>
+                          <ListItemIcon>
+                            <MemoryStick size={20} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                Memory
+                                <Tooltip title={`${systemResources.memory.usage_percent || 0}% used`}>
+                                  <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                    <CircularProgress
+                                      variant="determinate"
+                                      value={systemResources.memory.usage_percent || 0}
+                                      size={24}
+                                      thickness={5}
+                                      color={(systemResources.memory.usage_percent || 0) > 80 ? "error" : 
+                                            (systemResources.memory.usage_percent || 0) > 60 ? "warning" : "success"}
+                                    />
+                                  </Box>
+                                </Tooltip>
+                              </Box>
+                            }
+                            secondary={`${systemResources.memory.available_gb || 0} GB free of ${systemResources.memory.total_gb || 0} GB`}
+                          />
+                        </ListItem>
+                      )}
+                      
+                      {systemResources.disk && (
+                        <ListItem>
+                          <ListItemIcon>
+                            <HardDrive size={20} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                Disk Space
+                                <Tooltip title={`${systemResources.disk.usage_percent || 0}% used`}>
+                                  <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                    <CircularProgress
+                                      variant="determinate"
+                                      value={systemResources.disk.usage_percent || 0}
+                                      size={24}
+                                      thickness={5}
+                                      color={(systemResources.disk.usage_percent || 0) > 80 ? "error" : 
+                                            (systemResources.disk.usage_percent || 0) > 60 ? "warning" : "success"}
+                                    />
+                                  </Box>
+                                </Tooltip>
+                              </Box>
+                            }
+                            secondary={`${systemResources.disk.free_gb || 0} GB free of ${systemResources.disk.total_gb || 0} GB`}
+                          />
+                        </ListItem>
+                      )}
+                      
+                      {systemResources.platform && (
+                        <ListItem>
+                          <ListItemIcon>
+                            <Activity size={20} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="System"
+                            secondary={`${systemResources.platform.system || ''} ${systemResources.platform.release || ''} (Python ${systemResources.platform.python || ''})`}
+                          />
+                        </ListItem>
+                      )}
+                    </>
+                  )}
+                  
+                  {systemResources?.error && (
+                    <ListItem>
+                      <ListItemText 
+                        primary="System Resources Error"
+                        secondary={systemResources.error}
+                      />
+                    </ListItem>
+                  )}
+                  
+                  {!systemResources && !loadingResources && (
+                    <ListItem>
+                      <ListItemText 
+                        primary="System Resources"
+                        secondary="No data available"
+                      />
+                    </ListItem>
+                  )}
                 </List>
               </CardContent>
             </Card>

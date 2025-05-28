@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Make sure this is the first endpoint for easier debugging
+    path('system-resources/', views.system_resources, name='system_resources'),
+    
     # New simulation endpoints
     path('run/', views.run_simulation, name='run_simulation'),
     path('<int:simulation_id>/status/', views.simulation_status, name='simulation_status'),
