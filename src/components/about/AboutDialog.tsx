@@ -11,7 +11,7 @@ import {
   IconButton,
   useTheme
 } from '@mui/material';
-import { X, Brain, User, Users, Landmark, Coins } from 'lucide-react';
+import { X, Brain, User, Users, Landmark, Coins, Target, Search, ExternalLink, Clock } from 'lucide-react';
 
 interface AboutDialogProps {
   open: boolean;
@@ -21,9 +21,35 @@ interface AboutDialogProps {
 const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
   const theme = useTheme();
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  const Section = ({ 
+    title, 
+    icon, 
+    children 
+  }: { 
+    title: string; 
+    icon?: React.ReactNode;
+    children: React.ReactNode 
+  }) => (
     <Box sx={{ mb: 4 }}>
-      <Typography variant="h6" gutterBottom color="primary" sx={{ fontWeight: 600 }}>
+      <Typography 
+        variant="h6" 
+        gutterBottom 
+        color="primary" 
+        sx={{ 
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          '&::after': {
+            content: '""',
+            flexGrow: 1,
+            height: '1px',
+            bgcolor: 'divider',
+            ml: 2
+          }
+        }}
+      >
+        {icon}
         {title}
       </Typography>
       {children}
@@ -37,11 +63,15 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
       maxWidth="md"
       fullWidth
       PaperProps={{
+        elevation: 24,
         sx: {
           borderRadius: 2,
           backgroundImage: theme.palette.mode === 'dark'
-            ? 'linear-gradient(to bottom right, rgba(255,255,255,0.05), rgba(255,255,255,0.02))'
-            : 'linear-gradient(to bottom right, rgba(255,255,255,1), rgba(255,255,255,0.9))'
+            ? 'linear-gradient(45deg, rgba(30,30,30,1), rgba(40,40,40,1))'
+            : 'linear-gradient(45deg, rgba(255,255,255,1), rgba(250,250,250,1))',
+          boxShadow: theme.palette.mode === 'dark'
+            ? '0 8px 32px rgba(0,0,0,0.4)'
+            : '0 8px 32px rgba(0,0,0,0.1)'
         }
       }}
     >
@@ -49,23 +79,61 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center',
-        pb: 1
+        pb: 1,
+        borderBottom: '1px solid',
+        borderColor: 'divider'
       }}>
-        <Typography variant="h5" component="span" sx={{ fontWeight: 700 }}>
+        <Typography 
+          variant="h5" 
+          component="span" 
+          sx={{ 
+            fontWeight: 700,
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(45deg, #90caf9 30%, #42a5f5 90%)'
+              : 'linear-gradient(45deg, #1976d2 30%, #42a5f5 90%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}
+        >
           About EPSM
         </Typography>
-        <IconButton onClick={onClose} size="small">
+        <IconButton 
+          onClick={onClose} 
+          size="small"
+          sx={{
+            '&:hover': {
+              bgcolor: theme.palette.mode === 'dark'
+                ? 'rgba(255,255,255,0.1)'
+                : 'rgba(0,0,0,0.1)'
+            }
+          }}
+        >
           <X size={20} />
         </IconButton>
       </DialogTitle>
 
       <DialogContent>
-        <Typography variant="subtitle1" paragraph color="text.secondary">
+        <Typography 
+          variant="subtitle1" 
+          paragraph 
+          color="text.secondary"
+          sx={{ 
+            borderLeft: '4px solid',
+            borderColor: 'primary.main',
+            pl: 2,
+            py: 1,
+            bgcolor: theme.palette.mode === 'dark'
+              ? 'rgba(255,255,255,0.05)'
+              : 'rgba(25,118,210,0.05)',
+            borderRadius: '0 4px 4px 0',
+            mt: 2
+          }}
+        >
           EnergyPlus Simulation Manager (EPSM) is a user-friendly, web-based platform designed to simplify, 
           automate, and scale building energy simulation workflows.
         </Typography>
 
-        <Section title="🎯 Project Background">
+        <Section title="Project Background" icon={<Target size={20} />}>
           <Typography variant="body1" paragraph>
             Sweden's property sector faces critical challenges:
           </Typography>
@@ -84,7 +152,7 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
           </Stack>
         </Section>
 
-        <Section title="🔍 What EPSM Offers">
+        <Section title="What EPSM Offers" icon={<Search size={20} />}>
           <Stack spacing={2}>
             <Box>
               <Typography variant="subtitle2" gutterBottom>Interactive component database</Typography>
@@ -119,7 +187,7 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
           </Stack>
         </Section>
 
-        <Section title="👥 Project Team">
+        <Section title="Project Team" icon={<Users size={20} />}>
           <Stack spacing={2}>
             <Box>
               <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -165,7 +233,7 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
           </Stack>
         </Section>
 
-        <Section title="🤝 Collaborating Partners">
+        <Section title="Collaborating Partners" icon={<Users size={20} />}>
           <Stack spacing={1}>
             <Typography variant="body1">• Lindholmen Science Park AB – Gothenburg, Sweden</Typography>
             <Typography variant="body1">• Sinom AB – Göteborg, Sweden</Typography>
@@ -173,7 +241,7 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
           </Stack>
         </Section>
 
-        <Section title="💰 Funding">
+        <Section title="Funding" icon={<Coins size={20} />}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Landmark size={24} />
             <Box>
@@ -185,18 +253,42 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
 
         <Divider sx={{ my: 3 }} />
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mt: 2
+        }}>
           <Link 
             href="https://www.chalmers.se/en/projects/Pages/12229.aspx" 
             target="_blank"
             rel="noopener noreferrer"
-            sx={{ textDecoration: 'none' }}
+            sx={{ 
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              color: 'primary.main',
+              '&:hover': {
+                color: 'primary.dark'
+              }
+            }}
           >
-            <Typography variant="body2" color="primary">
-              📎 Chalmers Research Project – 12229
+            <ExternalLink size={16} />
+            <Typography variant="body2">
+              Chalmers Research Project – 12229
             </Typography>
           </Link>
-          <Typography variant="caption" color="text.secondary">
+          <Typography 
+            variant="caption" 
+            color="text.secondary"
+            sx={{ 
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5
+            }}
+          >
+            <Clock size={14} />
             Last updated: 6 May 2025
           </Typography>
         </Box>
