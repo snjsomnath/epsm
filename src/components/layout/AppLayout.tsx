@@ -23,10 +23,10 @@ import {
   CircularProgress
 } from '@mui/material';
 import { 
-  Database,
+  Database as DatabaseIcon,
   Home,
   FlaskConical,
-  Activity,
+  Activity as ActivityIcon,
   Sun,
   Moon,
   LogOut,
@@ -35,9 +35,7 @@ import {
   FileDown,
   Cpu,
   MemoryStick,
-  HardDrive,
-  Activity as ActivityIcon,
-  Database as DatabaseIcon
+  HardDrive
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -48,10 +46,10 @@ const drawerWidth = 280;
 
 const navItems = [
   { text: 'Home', icon: <Home size={24} />, path: '/' },
-  { text: 'Database', icon: <Database size={24} />, path: '/database' },
+  { text: 'Database', icon: <DatabaseIcon size={24} />, path: '/database' },
   { text: 'Baseline', icon: <Home size={24} />, path: '/baseline' },
   { text: 'Scenario Setup', icon: <FlaskConical size={24} />, path: '/scenario' },
-  { text: 'Simulation Runner', icon: <Activity size={24} />, path: '/simulation' },
+  { text: 'Simulation Runner', icon: <ActivityIcon size={24} />, path: '/simulation' },
   { text: 'Results', icon: <BarChart2 size={24} />, path: '/results', disabled: true },
   { text: 'Export', icon: <FileDown size={24} />, path: '/export', disabled: true },
 ];
@@ -87,33 +85,38 @@ const AppLayout = () => {
 
   // Update database stats when data changes
   useEffect(() => {
-    setDbStats({
-      materials: materials.length,
-      constructions: constructions.length,
-      sets: constructionSets.length,
-      lastUpdate: new Date().toLocaleString()
-    });
+    if (materials && constructions && constructionSets) {
+      setDbStats({
+        materials: materials.length,
+        constructions: constructions.length,
+        sets: constructionSets.length,
+        lastUpdate: new Date().toLocaleString()
+      });
+    }
   }, [materials, constructions, constructionSets]);
 
   // Fetch system resources when menu opens
   useEffect(() => {
-    if (anchorEl) {
-      const fetchSystemResources = async () => {
-        try {
-          const response = await axios.get('http://localhost:8000/api/simulation/system-resources/');
-          setSystemResources(response.data);
-        } catch (error) {
-          console.error('Failed to fetch system resources:', error);
-          setSystemResources({
-            error: 'Failed to fetch system resources',
-            cpu: { usage_percent: 0 },
-            memory: { usage_percent: 0 },
-            disk: { usage_percent: 0 }
-          });
-        }
-      };
-      fetchSystemResources();
-    }
+    const fetchSystemResources = async () => {
+      if (!anchorEl) return;
+      
+      try {
+        const response = await axios.get('http://localhost:8000/api/simulation/system-resources/');
+        setSystemResources(response.data);
+      } catch (error) {
+        console.error('Failed to fetch system resources:', error);
+        setSystemResources({
+          error: 'Failed to fetch system resources',
+          cpu: { usage_percent: 0 },
+          memory: { usage_percent: 0 },
+          disk: { usage_percent: 0 }
+        });
+      }
+    };
+
+    fetchSystemResources();
+    const interval = setInterval(fetchSystemResources, 5000);
+    return () => clearInterval(interval);
   }, [anchorEl]);
 
   if (isLoading) {
@@ -221,7 +224,7 @@ const AppLayout = () => {
             }}
           >
             <MenuItem>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="subtitle2" color="text.secondary">
                 Signed in as
               </Typography>
             </MenuItem>
@@ -244,27 +247,27 @@ const AppLayout = () => {
                   color={dbError ? 'error' : 'success'}
                 />
               </Stack>
-            </MenuItem>
-
-            <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-              <Typography variant="body2">
-                • {dbStats.materials} materials
-              </Typography>
-              <Typography variant="body2">
-                • {dbStats.constructions} constructions
-              </Typography>
-              <Typography variant="body2">
-                • {dbStats.sets} construction sets
-              </Typography>
-              {dbStats.lastUpdate && (
-                <Typography variant="caption" color="text.secondary">
-                  Last updated: {dbStats.lastUpdate}
+              <Stack spacing={0.5} sx={{ mt: 1, ml: 2 }}>
+                <Typography variant="body2">
+                  • {dbStats.materials} materials
                 </Typography>
-              )}
+                <Typography variant="body2">
+                  • {dbStats.constructions} constructions
+                </Typography>
+                <Typography variant="body2">
+                  • {dbStats.sets} construction sets
+                </Typography>
+                {dbStats.lastUpdate && (
+                  <Typography variant="caption" color="text.secondary">
+                    Last updated: {dbStats.lastUpdate}
+                  </Typography>
+                )}
+              </Stack>
             </MenuItem>
 
             <Divider />
             
+            {/* System Resources */}
             {systemResources && (
               <>
                 <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
