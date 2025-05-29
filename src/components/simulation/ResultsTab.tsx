@@ -125,7 +125,7 @@ const SimulationResultsView = () => {
       <Box role="tabpanel" hidden={tabValue !== 0}>
         {tabValue === 0 && (
           <Box>
-            <Typography variant="subtitle1" gutterBottom>
+            <Typography variant="subtitle1\" gutterBottom>
               Top 5 Performing Configurations
             </Typography>
             <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
@@ -147,7 +147,7 @@ const SimulationResultsView = () => {
                     <TableRow key={rank} sx={{ backgroundColor: rank === 1 ? 'rgba(25, 118, 210, 0.08)' : 'inherit' }}>
                       <TableCell>
                         {rank === 1 ? (
-                          <Chip size="small" label={rank} color="primary" />
+                          <Chip size="small\" label={rank} color="primary" />
                         ) : rank}
                       </TableCell>
                       <TableCell>External Insulation {rank}</TableCell>
