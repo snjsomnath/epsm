@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -6,24 +6,24 @@ import {
   Grid, 
   Card, 
   CardContent, 
-  CardActions,
   Button,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
+  TextField,
   Alert,
   LinearProgress,
-  Divider,
   Stack,
-  Chip,
+  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogContentText,
   DialogActions,
   IconButton,
-  Tooltip
+  Chip,
+  CircularProgress
 } from '@mui/material';
 import { 
   Play, 
@@ -33,19 +33,15 @@ import {
   Clock, 
   BarChart3, 
   Download, 
-  FileDown, 
-  CheckCircle2, 
-  TimerIcon,
-  Info
+  Info,
+  AlertCircle
 } from 'lucide-react';
 import SimulationResultsView from './SimulationResultsView';
 import { useDatabase } from '../../context/DatabaseContext';
-import type { Scenario } from '../../lib/database.types';
+import ReconnectingWebSocket from 'reconnecting-websocket';
 
-interface SimulationPageProps {}
-
-const SimulationPage = ({}: SimulationPageProps) => {
-  const { scenarios, loading } = useDatabase();
+const SimulationPage = () => {
+  const { scenarios } = useDatabase();
   const [selectedScenario, setSelectedScenario] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -54,12 +50,49 @@ const SimulationPage = ({}: SimulationPageProps) => {
   const [totalSimulations, setTotalSimulations] = useState(0);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [resourceStats, setResourceStats] = useState<any>(null);
+  const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
+
+  // Check backend availability
+  useEffect(() => {
+    const checkBackend = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/simulation/system-resources/');
+        setBackendAvailable(response.ok);
+      } catch (err) {
+        console.warn('Backend not available:', err);
+        setBackendAvailable(false);
+      }
+    };
+    checkBackend();
+  }, []);
+
+  // WebSocket connection for resource monitoring
+  useEffect(() => {
+    if (!backendAvailable) return;
+
+    const ws = new ReconnectingWebSocket('ws://localhost:8000/ws/system-resources/');
+    
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setResourceStats(data);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [backendAvailable]);
 
   const handleScenarioChange = (event: any) => {
     const scenarioId = event.target.value;
     setSelectedScenario(scenarioId);
     
-    // Find scenario for setting total simulations
     const scenario = scenarios.find(s => s.id === scenarioId);
     if (scenario) {
       setTotalSimulations(scenario.total_simulations);
@@ -67,47 +100,99 @@ const SimulationPage = ({}: SimulationPageProps) => {
       setTotalSimulations(0);
     }
     
-    // Reset simulation state
     setIsRunning(false);
     setIsPaused(false);
     setProgress(0);
     setCompletedSimulations(0);
     setIsComplete(false);
+    setResults([]);
   };
 
-  const handleOpenConfirmDialog = () => {
-    setConfirmDialogOpen(true);
+  const handleStartSimulation = async () => {
+    if (!backendAvailable) {
+      // Use dummy data for development
+      simulateDummyProgress();
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsRunning(true);
+      setProgress(0);
+      setCompletedSimulations(0);
+
+      // Start simulation on backend
+      const response = await fetch('http://localhost:8000/api/simulation/run/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scenario_id: selectedScenario,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const simulationId = data.simulation_id;
+
+      // Poll for progress
+      const pollInterval = setInterval(async () => {
+        const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+        const statusData = await statusResponse.json();
+
+        setProgress(statusData.progress);
+        setCompletedSimulations(Math.floor((statusData.progress / 100) * totalSimulations));
+
+        if (statusData.status === 'completed') {
+          clearInterval(pollInterval);
+          const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+          const resultsData = await resultsResponse.json();
+          setResults(resultsData);
+          setIsComplete(true);
+          setIsRunning(false);
+        } else if (statusData.status === 'failed') {
+          clearInterval(pollInterval);
+          throw new Error(statusData.error || 'Simulation failed');
+        }
+      }, 1000);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run simulation');
+      setIsRunning(false);
+    }
   };
 
-  const handleCloseConfirmDialog = () => {
-    setConfirmDialogOpen(false);
-  };
-
-  const handleStartSimulation = () => {
-    setConfirmDialogOpen(false);
+  const simulateDummyProgress = () => {
     setIsRunning(true);
-    setIsPaused(false);
     setProgress(0);
     setCompletedSimulations(0);
-    setIsComplete(false);
-    
-    // Simulate progress with a timer
-    const timer = setInterval(() => {
-      setProgress(oldProgress => {
-        const increment = Math.random() * 2;
-        const newProgress = Math.min(oldProgress + increment, 100);
-        
-        // Update completed simulations based on progress
-        const newCompleted = Math.floor((newProgress / 100) * totalSimulations);
-        setCompletedSimulations(newCompleted);
-        
-        if (newProgress === 100) {
-          clearInterval(timer);
-          setIsRunning(false);
+
+    const interval = setInterval(() => {
+      setProgress(prev => {
+        const next = prev + (Math.random() * 5);
+        if (next >= 100) {
+          clearInterval(interval);
           setIsComplete(true);
+          setIsRunning(false);
+          // Generate dummy results
+          setResults([
+            {
+              fileName: 'simulation_1.idf',
+              totalEnergyUse: 150.5,
+              heatingDemand: 80.2,
+              coolingDemand: 45.3,
+              runTime: 12.5
+            },
+            // Add more dummy results as needed
+          ]);
+          return 100;
         }
-        
-        return newProgress;
+        setCompletedSimulations(Math.floor((next / 100) * totalSimulations));
+        return next;
       });
     }, 500);
   };
@@ -127,22 +212,6 @@ const SimulationPage = ({}: SimulationPageProps) => {
     setIsPaused(false);
   };
 
-  // Calculate ETA in minutes based on progress
-  const calculateETA = () => {
-    if (progress === 0) return '--';
-    const percentageComplete = progress / 100;
-    const estimatedTotalTime = (1 / percentageComplete) * (Date.now() - startTime) / 1000 / 60;
-    const remainingTime = estimatedTotalTime * (1 - percentageComplete);
-    return remainingTime.toFixed(1);
-  };
-
-  // Simulated start time (would be set when simulation actually starts)
-  const startTime = Date.now() - 60000; // 1 minute ago for demo purposes
-
-  // Calculate approximate hardware usage
-  const cpuUsage = isRunning ? 75 + Math.random() * 20 : 5;
-  const memoryUsage = isRunning ? 60 + Math.random() * 15 : 10;
-
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -151,27 +220,38 @@ const SimulationPage = ({}: SimulationPageProps) => {
       <Typography variant="body1" paragraph>
         Run and monitor batch simulations for your saved scenarios.
       </Typography>
+
+      {!backendAvailable && (
+        <Alert 
+          severity="warning" 
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit\" size="small\" onClick={() => window.location.reload()}>
+              Retry Connection
+            </Button>
+          }
+        >
+          Backend server not available. Running in development mode with dummy data.
+        </Alert>
+      )}
       
       <Grid container spacing={3}>
+        {/* Control Panel */}
         <Grid item xs={12} md={5}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Simulation Control
               </Typography>
-              <Divider sx={{ mb: 3 }} />
               
-              {loading ? (
-                <Alert severity="info">Loading scenarios...</Alert>
-              ) : scenarios.length === 0 ? (
-                <Alert severity="warning">
-                  No scenarios available. Please create a scenario first on the Scenario Setup page.
+              {scenarios.length === 0 ? (
+                <Alert severity="info">
+                  No scenarios available. Create a scenario first on the Scenario Setup page.
                 </Alert>
               ) : (
                 <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel id="scenario-select-label">Select Scenario</InputLabel>
+                  <InputLabel>Select Scenario</InputLabel>
                   <Select
-                    labelId="scenario-select-label"
                     value={selectedScenario}
                     label="Select Scenario"
                     onChange={handleScenarioChange}
@@ -213,7 +293,7 @@ const SimulationPage = ({}: SimulationPageProps) => {
                         color="primary" 
                         startIcon={<Play size={18} />}
                         fullWidth
-                        onClick={handleOpenConfirmDialog}
+                        onClick={() => setConfirmDialogOpen(true)}
                       >
                         Run Batch Simulation
                       </Button>
@@ -251,36 +331,27 @@ const SimulationPage = ({}: SimulationPageProps) => {
                         Stop
                       </Button>
                     )}
-                    
-                    {isComplete && (
-                      <Button 
-                        variant="contained" 
-                        color="success" 
-                        startIcon={<BarChart3 size={18} />}
-                        fullWidth
-                      >
-                        View Detailed Results
-                      </Button>
-                    )}
                   </Box>
                 </Box>
               )}
             </CardContent>
           </Card>
         </Grid>
-        
+
+        {/* Progress and Results */}
         <Grid item xs={12} md={7}>
-          <Paper sx={{ p: 3, height: '100%' }}>
+          <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
               Simulation Progress
             </Typography>
-            <Divider sx={{ mb: 3 }} />
             
-            {!selectedScenario ? (
-              <Alert severity="info">
-                Select a scenario to view simulation details.
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
               </Alert>
-            ) : (
+            )}
+            
+            {selectedScenario ? (
               <Box>
                 {(isRunning || isPaused || isComplete) && (
                   <Box sx={{ mb: 3 }}>
@@ -301,77 +372,47 @@ const SimulationPage = ({}: SimulationPageProps) => {
                     />
                   </Box>
                 )}
-                
-                <Grid container spacing={2} sx={{ mb: 3 }}>
-                  <Grid item xs={6} sm={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent sx={{ py: 2, px: 2, '&:last-child': { pb: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Cpu size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            CPU Usage
+
+                {/* Resource Monitoring */}
+                {resourceStats && (isRunning || isPaused) && (
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <Cpu size={18} style={{ marginRight: 8 }} />
+                            <Typography variant="body2" color="text.secondary">
+                              CPU Usage
+                            </Typography>
+                          </Box>
+                          <Typography variant="h6">
+                            {Math.round(resourceStats.cpu?.usage_percent || 0)}%
                           </Typography>
-                        </Box>
-                        <Typography variant="h6" sx={{ mt: 1 }}>
-                          {Math.round(cpuUsage)}%
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent sx={{ py: 2, px: 2, '&:last-child': { pb: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Clock size={20} style={{ marginRight: '8px', color: '#1976d2' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            Memory
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={6} sm={3}>
+                      <Card variant="outlined">
+                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <Clock size={18} style={{ marginRight: 8 }} />
+                            <Typography variant="body2" color="text.secondary">
+                              Memory
+                            </Typography>
+                          </Box>
+                          <Typography variant="h6">
+                            {Math.round(resourceStats.memory?.usage_percent || 0)}%
                           </Typography>
-                        </Box>
-                        <Typography variant="h6" sx={{ mt: 1 }}>
-                          {Math.round(memoryUsage)}%
-                        </Typography>
-                      </CardContent>
-                    </Card>
+                        </CardContent>
+                      </Card>
+                    </Grid>
                   </Grid>
-                  
-                  <Grid item xs={6} sm={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent sx={{ py: 2, px: 2, '&:last-child': { pb: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <CheckCircle2 size={20} style={{ marginRight: '8px', color: '#388e3c' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            Completed
-                          </Typography>
-                        </Box>
-                        <Typography variant="h6" sx={{ mt: 1 }}>
-                          {completedSimulations}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent sx={{ py: 2, px: 2, '&:last-child': { pb: 2 } }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <TimerIcon size={20} style={{ marginRight: '8px', color: '#f57c00' }} />
-                          <Typography variant="body2" color="text.secondary">
-                            ETA (min)
-                          </Typography>
-                        </Box>
-                        <Typography variant="h6" sx={{ mt: 1 }}>
-                          {isRunning ? calculateETA() : '--'}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-                
-                {isComplete && (
-                  <SimulationResultsView />
                 )}
-                
+
+                {isComplete && results.length > 0 && (
+                  <SimulationResultsView results={results} />
+                )}
+
                 {!isRunning && !isPaused && !isComplete && (
                   <Box sx={{ textAlign: 'center', p: 4 }}>
                     <Typography variant="body2" color="text.secondary">
@@ -380,15 +421,19 @@ const SimulationPage = ({}: SimulationPageProps) => {
                   </Box>
                 )}
               </Box>
+            ) : (
+              <Alert severity="info">
+                Select a scenario to view simulation details.
+              </Alert>
             )}
           </Paper>
         </Grid>
       </Grid>
-      
+
       {/* Confirmation Dialog */}
       <Dialog
         open={confirmDialogOpen}
-        onClose={handleCloseConfirmDialog}
+        onClose={() => setConfirmDialogOpen(false)}
       >
         <DialogTitle>
           Confirm Simulation
@@ -409,7 +454,7 @@ const SimulationPage = ({}: SimulationPageProps) => {
             </Typography>
             <Stack spacing={1}>
               <Typography variant="body2">
-                • CPU Cores: 8 of 8 available
+                • CPU Cores: {resourceStats?.cpu?.physical_cores || 8} of {resourceStats?.cpu?.logical_cores || 8} available
               </Typography>
               <Typography variant="body2">
                 • Parallel Simulations: 4
@@ -421,9 +466,12 @@ const SimulationPage = ({}: SimulationPageProps) => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseConfirmDialog}>Cancel</Button>
+          <Button onClick={() => setConfirmDialogOpen(false)}>Cancel</Button>
           <Button 
-            onClick={handleStartSimulation} 
+            onClick={() => {
+              setConfirmDialogOpen(false);
+              handleStartSimulation();
+            }} 
             variant="contained" 
             color="primary" 
             autoFocus
