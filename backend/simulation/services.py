@@ -348,8 +348,16 @@ def parse_html_with_table_lookup(html_path, log_path, idf_files):
         # Extract building name and file info
         building_name = soup.find('p', string=lambda s: s and 'Building:' in s)
         building_name = building_name.b.text if building_name and building_name.b else "Unknown Building"
-        
-        file_name = idf_files.first().file.name if idf_files.exists() else "unknown.idf"
+
+        # Fix: idf_files may be a list or a queryset
+        file_name = None
+        if hasattr(idf_files, "first") and callable(getattr(idf_files, "first", None)):
+            first_file = idf_files.first()
+            file_name = first_file.file.name if first_file else "unknown.idf"
+        elif isinstance(idf_files, list) and idf_files:
+            file_name = getattr(idf_files[0].file, "name", "unknown.idf")
+        else:
+            file_name = "unknown.idf"
         file_name = os.path.basename(file_name)
 
         # Extract values from tables
