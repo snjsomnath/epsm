@@ -329,7 +329,7 @@ const SimulationPage = () => {
             ) : (
               <Box>
                 {error && (
-                  <Alert severity="error" sx={{ mb: 3 }}>
+                  <Alert severity="error\" sx={{ mb: 3 }}>
                     {error}
                   </Alert>
                 )}
