@@ -79,16 +79,20 @@ const SimulationPage = () => {
   useEffect(() => {
     if (!backendAvailable) return;
 
-    // Use correct protocol depending on page context
+    // Always use backend port (8000) for WebSocket, not window.location.port
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsHost = window.location.hostname || 'localhost';
-    const wsPort = window.location.port || '8000';
+    const wsPort = '8000'; // <-- hardcoded backend port
     const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
+
+    // Debug: log the wsUrl
+    console.log("Connecting to WebSocket:", wsUrl);
 
     const ws = new ReconnectingWebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      console.log("WebSocket data:", data); // <-- add this line for debugging
       setResourceStats(data);
     };
 
@@ -126,7 +130,7 @@ const SimulationPage = () => {
     function connectWS() {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const wsHost = window.location.hostname || 'localhost';
-      const wsPort = window.location.port || '8000';
+      const wsPort = '8000'; // <-- hardcoded backend port
       const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
 
       ws = new ReconnectingWebSocket(wsUrl);
