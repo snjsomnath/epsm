@@ -34,7 +34,7 @@ function App() {
                   <Route path="simulation" element={<SimulationPage />} />
                   <Route path="results" element={<ResultsPage />} />
                   <Route path="export" element={<ExportPage />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Navigate to="/\" replace />} />
                 </Route>
               </Routes>
             </SimulationProvider>
