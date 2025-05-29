@@ -33,16 +33,12 @@ import {
   Menu as MenuIcon,
   BarChart2,
   FileDown,
-  Cpu,
-  MemoryStick,
-  HardDrive,
   Info
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useDatabase } from '../../context/DatabaseContext';
 import AboutDialog from '../about/AboutDialog';
-import axios from 'axios';
 
 const drawerWidth = 280;
 
@@ -52,8 +48,8 @@ const navItems = [
   { text: 'Baseline', icon: <Home size={24} />, path: '/baseline' },
   { text: 'Scenario Setup', icon: <FlaskConical size={24} />, path: '/scenario' },
   { text: 'Simulation Runner', icon: <ActivityIcon size={24} />, path: '/simulation' },
-  { text: 'Results', icon: <BarChart2 size={24} />, path: '/results', disabled: true },
-  { text: 'Export', icon: <FileDown size={24} />, path: '/export', disabled: true },
+  { text: 'Results', icon: <BarChart2 size={24} />, path: '/results' },
+  { text: 'Export', icon: <FileDown size={24} />, path: '/export' }
 ];
 
 const AppLayout = () => {
@@ -65,7 +61,6 @@ const AppLayout = () => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [systemResources, setSystemResources] = useState<any>(null);
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
   const [dbStats, setDbStats] = useState({
     materials: 0,
@@ -97,30 +92,6 @@ const AppLayout = () => {
       });
     }
   }, [materials, constructions, constructionSets]);
-
-  // Fetch system resources when menu opens
-  useEffect(() => {
-    const fetchSystemResources = async () => {
-      if (!anchorEl) return;
-      
-      try {
-        const response = await axios.get('http://localhost:8000/api/simulation/system-resources/');
-        setSystemResources(response.data);
-      } catch (error) {
-        console.error('Failed to fetch system resources:', error);
-        setSystemResources({
-          error: 'Failed to fetch system resources',
-          cpu: { usage_percent: 0 },
-          memory: { usage_percent: 0 },
-          disk: { usage_percent: 0 }
-        });
-      }
-    };
-
-    fetchSystemResources();
-    const interval = setInterval(fetchSystemResources, 5000);
-    return () => clearInterval(interval);
-  }, [anchorEl]);
 
   if (isLoading) {
     return (
@@ -156,10 +127,8 @@ const AppLayout = () => {
     await signOut();
   };
 
-  const handleNavigation = (path: string, disabled?: boolean) => {
-    if (!disabled) {
-      navigate(path);
-    }
+  const handleNavigation = (path: string) => {
+    navigate(path);
   };
 
   // Get user initials for avatar
@@ -277,66 +246,6 @@ const AppLayout = () => {
             </MenuItem>
 
             <Divider />
-            
-            {/* System Resources */}
-            {systemResources && (
-              <>
-                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Cpu size={16} />
-                    <Typography variant="body2">CPU Usage:</Typography>
-                    <Chip 
-                      size="small"
-                      label={`${Math.round(systemResources.cpu?.usage_percent || 0)}%`}
-                      color={systemResources.cpu?.usage_percent > 80 ? 'error' : 
-                             systemResources.cpu?.usage_percent > 60 ? 'warning' : 'success'}
-                    />
-                  </Stack>
-                </MenuItem>
-
-                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <MemoryStick size={16} />
-                    <Typography variant="body2">Memory:</Typography>
-                    <Chip 
-                      size="small"
-                      label={`${Math.round(systemResources.memory?.usage_percent || 0)}%`}
-                      color={systemResources.memory?.usage_percent > 80 ? 'error' : 
-                             systemResources.memory?.usage_percent > 60 ? 'warning' : 'success'}
-                    />
-                  </Stack>
-                </MenuItem>
-
-                <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <HardDrive size={16} />
-                    <Typography variant="body2">Disk:</Typography>
-                    <Chip 
-                      size="small"
-                      label={`${Math.round(systemResources.disk?.usage_percent || 0)}%`}
-                      color={systemResources.disk?.usage_percent > 80 ? 'error' : 
-                             systemResources.disk?.usage_percent > 60 ? 'warning' : 'success'}
-                    />
-                  </Stack>
-                </MenuItem>
-
-                {systemResources.energyplus && (
-                  <MenuItem sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <ActivityIcon size={16} />
-                      <Typography variant="body2">EnergyPlus:</Typography>
-                      <Chip 
-                        size="small"
-                        label={systemResources.energyplus.version || 'Not Found'}
-                        color={systemResources.energyplus.exists ? 'success' : 'error'}
-                      />
-                    </Stack>
-                  </MenuItem>
-                )}
-              </>
-            )}
-
-            <Divider />
 
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
@@ -379,8 +288,7 @@ const AppLayout = () => {
               <ListItem key={item.text} disablePadding>
                 <ListItemButton
                   selected={location.pathname === item.path}
-                  onClick={() => handleNavigation(item.path, item.disabled)}
-                  disabled={item.disabled}
+                  onClick={() => handleNavigation(item.path)}
                   sx={{
                     minHeight: 48,
                     px: 2.5,
