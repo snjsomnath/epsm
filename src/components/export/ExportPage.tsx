@@ -22,7 +22,7 @@ import {
   Download, 
   FileJson, 
   FileSpreadsheet, 
-  FilePdf, 
+  FileType2, 
   FileText,
   Check
 } from 'lucide-react';
@@ -54,7 +54,7 @@ const ExportPage = () => {
   const exportFormats = [
     { value: 'json', label: 'JSON', icon: <FileJson size={24} /> },
     { value: 'csv', label: 'CSV', icon: <FileSpreadsheet size={24} /> },
-    { value: 'pdf', label: 'PDF Report', icon: <FilePdf size={24} /> },
+    { value: 'pdf', label: 'PDF Report', icon: <FileType2 size={24} /> },
     { value: 'txt', label: 'Plain Text', icon: <FileText size={24} /> }
   ];
 
