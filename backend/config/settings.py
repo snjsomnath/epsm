@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'simulation',
     'database',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -92,6 +93,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.routing.application'
 
 DATABASES = {
     'default': {

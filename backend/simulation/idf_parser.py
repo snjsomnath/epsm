@@ -302,3 +302,109 @@ class IdfParser:
         
         # Default to wall
         return "wall"
+
+    def insert_construction_set(self, construction_set: dict):
+        """
+        Insert a construction set (wall, window, floor, roof) into the IDF.
+        construction_set: {
+            "wall": {"name": ..., "layers": [...]},
+            "window": {"name": ..., "layers": [...]},
+            "floor": {"name": ..., "layers": [...]},
+            "roof": {"name": ..., "layers": [...]}
+        }
+        Ensures all referenced materials and constructions are present in the IDF,
+        and assigns the correct construction to each surface.
+        """
+        # Helper to add material if not present
+        def ensure_material(material_name, material_props):
+            if not any(mat.Name == material_name for mat in self.idf.idfobjects["MATERIAL"]):
+                self.idf.newidfobject(
+                    "MATERIAL",
+                    Name=material_name,
+                    Roughness=material_props.get("roughness", "MediumRough"),
+                    Thickness=material_props.get("thickness", 0.2),
+                    Conductivity=material_props.get("conductivity", 0.5),
+                    Density=material_props.get("density", 800),
+                    Specific_Heat=material_props.get("specificHeat", 900),
+                    Thermal_Absorptance=material_props.get("thermalAbsorptance", 0.9),
+                    Solar_Absorptance=material_props.get("solarAbsorptance", 0.7),
+                    Visible_Absorptance=material_props.get("visibleAbsorptance", 0.7)
+                )
+
+        # Helper to add construction if not present
+        def ensure_construction(construction_name, layers):
+            if not any(const.Name == construction_name for const in self.idf.idfobjects["CONSTRUCTION"]):
+                kwargs = {"Name": construction_name}
+                for i, layer in enumerate(layers):
+                    kwargs[f"Layer_{i+1}"] = layer
+                self.idf.newidfobject("CONSTRUCTION", **kwargs)
+
+        # Insert all materials and constructions for each type
+        for ctype in ["wall", "window", "floor", "roof"]:
+            cdata = construction_set.get(ctype)
+            if not cdata:
+                continue
+            cname = cdata["name"]
+            layers = cdata["layers"]
+            # Ensure all materials for this construction exist
+            for mat in layers:
+                mat_props = {}
+                if mat in self.materials:
+                    m = self.materials[mat]
+                    mat_props = {
+                        "roughness": getattr(m, "roughness", "MediumRough"),
+                        "thickness": getattr(m, "thickness", 0.2),
+                        "conductivity": getattr(m, "conductivity", 0.5),
+                        "density": getattr(m, "density", 800),
+                        "specificHeat": getattr(m, "specific_heat", 900),
+                        "thermalAbsorptance": getattr(m, "thermal_absorptance", 0.9),
+                        "solarAbsorptance": getattr(m, "solar_absorptance", 0.7),
+                        "visibleAbsorptance": getattr(m, "visible_absorptance", 0.7),
+                    }
+                ensure_material(mat, mat_props)
+            ensure_construction(cname, layers)
+
+        # Assign constructions to surfaces
+        surface_map = {
+            "wall": ["WALL", "WALL:EXTERIOR", "WALL:INTERIOR"],
+            "roof": ["ROOF", "ROOFCEILING", "CEILING"],
+            "floor": ["FLOOR"],
+        }
+        # Assign for BUILDINGSURFACE:DETAILED
+        for surface in self.idf.idfobjects["BUILDINGSURFACE:DETAILED"]:
+            surface_type = getattr(surface, "Surface_Type", "").upper()
+            assigned = False
+            for ctype, types in surface_map.items():
+                if surface_type in types:
+                    cdata = construction_set.get(ctype)
+                    if cdata:
+                        surface.Construction_Name = cdata["name"]
+                        assigned = True
+                        break
+            # If not assigned and it's a window, handle fenestration
+        # Assign for FENESTRATIONSURFACE:DETAILED (windows)
+        if "window" in construction_set:
+            window_name = construction_set["window"]["name"]
+            for fen in self.idf.idfobjects.get("FENESTRATIONSURFACE:DETAILED", []):
+                fen.Fenestration_Type = getattr(fen, "Fenestration_Type", "Window")
+                fen.Construction_Name = window_name
+
+def generate_parametric_idfs(base_idf_content: str, construction_sets: list) -> list:
+    """
+    Given a base IDF content string and a list of construction sets,
+    generate a list of IDF content strings, each with a different construction set assigned.
+    Returns a list of (idf_content, construction_set) tuples.
+    """
+    parametric_idfs = []
+    for construction_set in construction_sets:
+        parser = IdfParser(base_idf_content)
+        parser.insert_construction_set(construction_set)
+        # Save the modified IDF to a string
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".idf", mode="w", encoding="utf-8") as tmp:
+            parser.idf.saveas(tmp.name)
+            tmp.close()
+            with open(tmp.name, "r", encoding="utf-8") as f:
+                idf_content = f.read()
+            os.remove(tmp.name)
+        parametric_idfs.append((idf_content, construction_set))
+    return parametric_idfs
