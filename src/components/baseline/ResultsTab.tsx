@@ -15,9 +15,13 @@ import {
   Divider,
   Chip,
   Alert,
-  Stack
+  Stack,
+  Grid,
+  Card,
+  CardContent,
+  CardActions
 } from '@mui/material';
-import { BarChart3, Download, FileDown } from 'lucide-react';
+import { BarChart3, Download, FileDown, FileText } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -122,6 +126,154 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
           display: true,
           text: 'Energy Use (kWh)'
         }
+      }
+    }
+  };
+
+  const indicatorConfigs = [
+    {
+      key: 'totalEnergyUse',
+      label: 'Total Energy Use (kWh/m²)',
+      color: 'rgba(54, 162, 235, 0.8)',
+      borderColor: 'rgba(54, 162, 235, 1)'
+    },
+    {
+      key: 'heatingDemand',
+      label: 'Heating (kWh/m²)',
+      color: 'rgba(255, 99, 132, 0.8)',
+      borderColor: 'rgba(255, 99, 132, 1)'
+    },
+    {
+      key: 'coolingDemand',
+      label: 'Cooling (kWh/m²)',
+      color: 'rgba(75, 192, 192, 0.8)',
+      borderColor: 'rgba(75, 192, 192, 1)'
+    },
+    {
+      key: 'lightingDemand',
+      label: 'Lighting (kWh/m²)',
+      color: 'rgba(255, 206, 86, 0.8)',
+      borderColor: 'rgba(255, 206, 86, 1)'
+    },
+    {
+      key: 'equipmentDemand',
+      label: 'Equipment (kWh/m²)',
+      color: 'rgba(153, 102, 255, 0.8)',
+      borderColor: 'rgba(153, 102, 255, 1)'
+    }
+  ];
+
+  // Helper to build chart data for each indicator
+  const buildIndicatorChartData = (indicatorKey: string, label: string, color: string, borderColor: string) => {
+    return {
+      labels: resultsArray.map(r => r.fileName || 'Result'),
+      datasets: [
+        {
+          label,
+          data: resultsArray.map(r => r[indicatorKey] ?? 0),
+          backgroundColor: color,
+          borderColor: borderColor,
+          borderWidth: 1,
+        }
+      ]
+    };
+  };
+
+  const indicatorChartOptions = (label: string) => ({
+    indexAxis: 'y' as const,
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: { display: true, text: label }
+    },
+    scales: {
+      x: {
+        beginAtZero: true,
+        title: { display: true, text: label }
+      },
+      y: {
+        title: { display: false }
+      }
+    }
+  });
+
+  // Helper to build a stacked bar chart where each indicator is a group and each IDF is a stack
+  const buildStackedBarChartData = () => {
+    return {
+      labels: indicatorConfigs.map(ind => ind.label),
+      datasets: resultsArray.map((result, idx) => ({
+        label: result.fileName || `Result ${idx+1}`,
+        data: indicatorConfigs.map(ind => result[ind.key] ?? 0),
+        backgroundColor: fileColors[idx % fileColors.length],
+        borderColor: fileColors[idx % fileColors.length].replace('0.8', '1'),
+        borderWidth: 1,
+        stack: 'Stack 0'
+      }))
+    };
+  };
+
+  // Helper to generate a color for each file
+  const fileColors = [
+    'rgba(54, 162, 235, 0.8)',
+    'rgba(255, 99, 132, 0.8)',
+    'rgba(75, 192, 192, 0.8)',
+    'rgba(255, 206, 86, 0.8)',
+    'rgba(153, 102, 255, 0.8)',
+    'rgba(255, 159, 64, 0.8)',
+    'rgba(100, 100, 100, 0.8)'
+  ];
+
+  // Helper to build grouped bar chart data: indicators on x, bars per file
+  const buildGroupedBarChartData = () => {
+    return {
+      labels: indicatorConfigs.map(ind => ind.label),
+      datasets: resultsArray.map((result, idx) => ({
+        label: result.fileName || `Result ${idx+1}`,
+        data: indicatorConfigs.map(ind => result[ind.key] ?? 0),
+        backgroundColor: fileColors[idx % fileColors.length],
+        borderColor: fileColors[idx % fileColors.length].replace('0.8', '1'),
+        borderWidth: 1
+      }))
+    };
+  };
+
+  const groupedBarChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' as const },
+      title: { display: true, text: 'Compare IDFs by Indicator' }
+    },
+    scales: {
+      x: {
+        stacked: false,
+        title: { display: false }
+      },
+      y: {
+        stacked: false,
+        title: { display: true, text: 'kWh/m²' }
+      }
+    }
+  };
+
+  // Add this definition if you still need stackedBarChartOptions for legacy code,
+  // or remove all references to stackedBarChartOptions if you only want the grouped bar chart.
+  const stackedBarChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' as const },
+      title: { display: true, text: 'Key Performance Indicators by File' }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        title: { display: false }
+      },
+      y: {
+        stacked: true,
+        title: { display: true, text: 'kWh/m²' }
       }
     }
   };
@@ -251,7 +403,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
         <Box sx={{ p: 3 }}>
           {tabValue === 0 && (
             <Box>
-              <Typography variant="subtitle1\" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom>
                 Simulation Summary
               </Typography>
               <TableContainer>
@@ -281,7 +433,29 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 </Table>
               </TableContainer>
               
-              {chartData && (
+              {/* Only show the stacked bar chart for multiple results */}
+              {resultsArray.length > 1 && (
+                <Box sx={{ height: 400, mt: 4 }}>
+                  <Bar
+                    data={buildStackedBarChartData()}
+                    options={{
+                      ...groupedBarChartOptions,
+                      plugins: {
+                        ...groupedBarChartOptions.plugins,
+                        title: { display: true, text: 'Stacked Comparison: IDFs per Indicator' }
+                      },
+                      scales: {
+                        ...groupedBarChartOptions.scales,
+                        x: { ...groupedBarChartOptions.scales.x, stacked: true },
+                        y: { ...groupedBarChartOptions.scales.y, stacked: true }
+                      }
+                    }}
+                  />
+                </Box>
+              )}
+
+              {/* Only show the single IDF chart if only one result */}
+              {resultsArray.length === 1 && chartData && (
                 <Box sx={{ height: '400px', mt: 4 }}>
                   <Bar data={chartData} options={chartOptions} />
                 </Box>
