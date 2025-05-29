@@ -4,13 +4,15 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 class SystemResourceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        print(f"New WebSocket connection from {self.scope.get('client', 'unknown')}")
         await self.accept()
-        # Optionally send a hello message for debugging
+        # Send a simple initial message that requires no dependencies
         await self.send(text_data=json.dumps({"message": "connected"}))
         self.keep_running = True
         self.send_task = asyncio.create_task(self.send_resource_updates())
 
     async def disconnect(self, close_code):
+        print(f"WebSocket disconnecting, code: {close_code}")
         self.keep_running = False
         if hasattr(self, "send_task"):
             self.send_task.cancel()
@@ -24,15 +26,26 @@ class SystemResourceConsumer(AsyncWebsocketConsumer):
         pass
 
     async def send_resource_updates(self):
-        # Import here to avoid AppRegistryNotReady error
-        from .services import get_resource_utilisation
         try:
+            # Import here to avoid AppRegistryNotReady error
+            from .services import get_resource_utilisation
+            
             while self.keep_running:
-                data = get_resource_utilisation()
-                await self.send(text_data=json.dumps(data))
+                try:
+                    data = get_resource_utilisation()
+                    await self.send(text_data=json.dumps(data))
+                except Exception as e:
+                    print(f"Error getting resource data: {e}")
+                    # Send minimal data if full data collection fails
+                    await self.send(text_data=json.dumps({
+                        "cpu": {"usage_percent": 0},
+                        "memory": {"usage_percent": 0}
+                    }))
+                
                 await asyncio.sleep(1)  # Send update every second
         except asyncio.CancelledError:
+            # Expected on disconnect, no need to do anything
             pass
         except Exception as e:
-            # Optionally log the error
+            print(f"Unexpected error in send_resource_updates: {e}")
             await self.close()
