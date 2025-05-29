@@ -1,48 +1,82 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { 
+  Box, 
+  Typography, 
+  Card, 
+  CardContent,
+  Button,
+  Tabs,
+  Tab,
+  Stack,
+  Alert,
+  Paper,
+  Divider
+} from '@mui/material';
 import { Play } from 'lucide-react';
 
 const SimulationPage = () => {
   const navigate = useNavigate();
+  const [tabValue, setTabValue] = useState(0);
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
 
   return (
-    <div className="container mx-auto p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Simulation</CardTitle>
-          <CardDescription>
-            Run and manage your building energy simulations
-          </CardDescription>
-        </CardHeader>
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Simulation Runner
+      </Typography>
+      <Typography variant="body1" paragraph>
+        Run and manage your building energy simulations
+      </Typography>
+
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Tabs defaultValue="active" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="active">Active Simulations</TabsTrigger>
-              <TabsTrigger value="history">Simulation History</TabsTrigger>
-            </TabsList>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs value={tabValue} onChange={handleTabChange}>
+              <Tab label="Active Simulations" />
+              <Tab label="Simulation History" />
+            </Tabs>
+          </Box>
 
-            <TabsContent value="active" className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">Active Simulations</h3>
-                <Button onClick={() => navigate('/baseline')}>
-                  <Play className="mr-2 h-4 w-4" />
-                  New Simulation
-                </Button>
-              </div>
-              {/* Active simulations list will go here */}
-            </TabsContent>
+          <Box sx={{ p: 2 }}>
+            {tabValue === 0 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography variant="h6">
+                    Active Simulations
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<Play size={18} />}
+                    onClick={() => navigate('/baseline')}
+                  >
+                    New Simulation
+                  </Button>
+                </Box>
 
-            <TabsContent value="history" className="space-y-4">
-              <h3 className="text-lg font-semibold">Simulation History</h3>
-              {/* Simulation history list will go here */}
-            </TabsContent>
-          </Tabs>
+                <Alert severity="info">
+                  No active simulations. Start a new simulation to see it here.
+                </Alert>
+              </Box>
+            )}
+
+            {tabValue === 1 && (
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  Simulation History
+                </Typography>
+                <Alert severity="info">
+                  Your completed simulations will appear here.
+                </Alert>
+              </Box>
+            )}
+          </Box>
         </CardContent>
       </Card>
-    </div>
+    </Box>
   );
 };
 
