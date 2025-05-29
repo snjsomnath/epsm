@@ -73,8 +73,14 @@ const SimulationPage = () => {
   useEffect(() => {
     if (!backendAvailable) return;
 
-    const ws = new ReconnectingWebSocket('ws://localhost:8000/ws/system-resources/');
-    
+    // Use correct protocol depending on page context
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsHost = window.location.hostname || 'localhost';
+    const wsPort = window.location.port || '8000';
+    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
+
+    const ws = new ReconnectingWebSocket(wsUrl);
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       setResourceStats(data);
@@ -127,13 +133,15 @@ const SimulationPage = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          scenario_id: selectedScenario,
-        }),
+        // Only send scenario_id if it is not empty
+        body: JSON.stringify(
+          selectedScenario ? { scenario_id: selectedScenario } : {}
+        ),
       });
 
       if (!response.ok) {
-        throw new Error(`Server error: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
