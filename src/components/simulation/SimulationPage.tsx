@@ -36,7 +36,8 @@ import {
   Info,
   AlertCircle,
   FileText,
-  Upload
+  Upload,
+  Check
 } from 'lucide-react';
 import SimulationResultsView from './SimulationResultsView';
 import { useDatabase } from '../../context/DatabaseContext';
@@ -389,12 +390,11 @@ const SimulationPage = () => {
     setLocalIdfFiles(files);
     
     try {
-      // Still update the context for app-wide state
+      // Update the context with the new files (not as a function)
       if (typeof updateUploadedFiles === 'function') {
-        updateUploadedFiles(() => {
-          console.log('Updating files through context');
-          return files;
-        });
+        // Pass the files directly rather than using a callback function
+        updateUploadedFiles(files);
+        console.log('Updated files through context:', files);
       } else {
         console.error('updateUploadedFiles function not found in context');
       }
@@ -523,104 +523,206 @@ const SimulationPage = () => {
 
               {/* Files Section */}
               <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Simulation Files:
+                <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <FileText size={16} />
+                  Simulation Files
                 </Typography>
                 <Stack spacing={1}>
-                  {uploadedFiles.map((file, index) => (
-                    <Chip
-                      key={index}
-                      label={file.name}
-                      color="primary"
-                      variant="outlined"
-                      icon={<FileText size={16} />}
-                    />
-                  ))}
-                  {weatherFile && (
-                    <Chip
-                      label={weatherFile.name}
-                      color="secondary"
-                      variant="outlined"
-                      icon={<FileText size={16} />}
-                    />
+                  {(localIdfFiles.length > 0 || uploadedFiles.length > 0) ? (
+                    <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>IDF Files ({localIdfFiles.length || uploadedFiles.length}):</strong>
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        {(localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).map((file, index) => (
+                          <Chip
+                            key={index}
+                            label={file.name}
+                            color="primary"
+                            variant="outlined"
+                            size="small"
+                            onDelete={() => {
+                              const newFiles = (localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).filter((_, i) => i !== index);
+                              setLocalIdfFiles(newFiles);
+                              updateUploadedFiles(newFiles);
+                            }}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : (
+                    <Alert severity="info" icon={<Upload size={18} />}>
+                      No IDF files selected. Upload files to continue.
+                    </Alert>
                   )}
-                  {(!uploadedFiles.length || !weatherFile) && (
-                    <Button
-                      variant="outlined"
-                      startIcon={<Upload size={18} />}
-                      onClick={() => setUploadDialogOpen(true)}
-                    >
-                      Upload Required Files
-                    </Button>
+
+                  {weatherFile ? (
+                    <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                      <Typography variant="body2" gutterBottom>
+                        <strong>Weather File:</strong>
+                      </Typography>
+                      <Chip
+                        label={weatherFile.name}
+                        color="secondary"
+                        variant="outlined"
+                        size="small"
+                        onDelete={() => setWeatherFile(null)}
+                      />
+                    </Box>
+                  ) : (
+                    <Alert severity="info" icon={<Upload size={18} />}>
+                      No weather file selected. Upload an EPW file to continue.
+                    </Alert>
                   )}
+
+                  <Button
+                    variant="outlined"
+                    startIcon={<Upload size={18} />}
+                    onClick={() => setUploadDialogOpen(true)}
+                    fullWidth
+                  >
+                    {uploadedFiles.length === 0 && !weatherFile 
+                      ? "Upload Files"
+                      : "Modify Files"}
+                  </Button>
                 </Stack>
               </Box>
-              
+
+              {/* Simulation Details Section */}
               {selectedScenario && (
                 <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Scenario Details:
+                  <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Info size={16} />
+                    Simulation Details
                   </Typography>
-                  <Box sx={{ backgroundColor: 'background.default', p: 2, borderRadius: 1, mb: 3 }}>
-                    <Typography variant="body2" paragraph>
-                      {scenarios.find(s => s.id === selectedScenario)?.description || "No description available"}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Total Simulations:</strong> {totalSimulations}
-                    </Typography>
-                    <Typography variant="body2">
-                      <strong>Estimated Time:</strong> {Math.ceil(totalSimulations * 0.5)} minutes
-                    </Typography>
+                  <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1, mb: 3 }}>
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Description:
+                        </Typography>
+                        <Typography variant="body2">
+                          {scenarios.find(s => s.id === selectedScenario)?.description || "No description available"}
+                        </Typography>
+                      </Box>
+                      
+                      <Divider />
+                      
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Base IDF Files:
+                          </Typography>
+                          <Typography variant="h6">
+                            {uploadedFiles.length}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Construction Variants:
+                          </Typography>
+                          <Typography variant="h6">
+                            {scenarios.find(s => s.id === selectedScenario)?.scenario_constructions?.length || 0}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="body2" color="text.secondary">
+                            Total Simulations:
+                          </Typography>
+                          <Typography variant="h6" color="primary.main">
+                            {totalSimulations} simulations
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            ({uploadedFiles.length} files × {scenarios.find(s => s.id === selectedScenario)?.scenario_constructions?.length || 0} variants)
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </Stack>
                   </Box>
                   
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-                    {!isRunning && !isPaused && !isComplete && (
-                      <Button 
-                        variant="contained" 
-                        color="primary" 
-                        startIcon={<Play size={18} />}
-                        fullWidth
-                        onClick={() => setConfirmDialogOpen(true)}
-                      >
-                        Run Batch Simulation
-                      </Button>
-                    )}
-                    
-                    {isRunning && (
-                      <Button 
-                        variant="outlined" 
-                        color="primary" 
-                        startIcon={<Pause size={18} />}
-                        onClick={handlePauseSimulation}
-                      >
-                        Pause
-                      </Button>
-                    )}
-                    
-                    {isPaused && (
-                      <Button 
-                        variant="contained" 
-                        color="primary" 
-                        startIcon={<Play size={18} />}
-                        onClick={handleResumeSimulation}
-                      >
-                        Resume
-                      </Button>
-                    )}
-                    
-                    {(isRunning || isPaused) && (
-                      <Button 
-                        variant="outlined" 
-                        color="error" 
-                        startIcon={<StopCircle size={18} />}
-                        onClick={handleStopSimulation}
-                      >
-                        Stop
-                      </Button>
-                    )}
-                  </Box>
+                  {/* Progress Section */}
+                  {(isRunning || isPaused || isComplete) && (
+                    <Box sx={{ mb: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                        <Stack spacing={0.5}>
+                          <Typography variant="body2">
+                            Completed: {completedSimulations} of {totalSimulations}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Progress: {Math.round(progress)}%
+                          </Typography>
+                        </Stack>
+                        <Chip 
+                          size="small" 
+                          label={isComplete ? "Complete" : isPaused ? "Paused" : "Running"} 
+                          color={isComplete ? "success" : isPaused ? "warning" : "primary"}
+                          icon={isComplete ? <Check size={16} /> : isPaused ? <Pause size={16} /> : <Play size={16} />}
+                        />
+                      </Box>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={progress} 
+                        sx={{ 
+                          height: 8, 
+                          borderRadius: 4,
+                          bgcolor: 'background.default',
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 4
+                          }
+                        }}
+                      />
+                    </Box>
+                  )}
                 </Box>
               )}
+              
+              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+                {!isRunning && !isPaused && !isComplete && (
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    startIcon={<Play size={18} />}
+                    fullWidth
+                    onClick={() => setConfirmDialogOpen(true)}
+                  >
+                    Run Batch Simulation
+                  </Button>
+                )}
+                
+                {isRunning && (
+                  <Button 
+                    variant="outlined" 
+                    color="primary" 
+                    startIcon={<Pause size={18} />}
+                    onClick={handlePauseSimulation}
+                  >
+                    Pause
+                  </Button>
+                )
+                }
+                
+                {isPaused && (
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    startIcon={<Play size={18} />}
+                    onClick={handleResumeSimulation}
+                  >
+                    Resume
+                  </Button>
+                )}
+                
+                {(isRunning || isPaused) && (
+                  <Button 
+                    variant="outlined" 
+                    color="error" 
+                    startIcon={<StopCircle size={18} />}
+                    onClick={handleStopSimulation}
+                  >
+                    Stop
+                  </Button>
+                )}
+              </Box>
             </CardContent>
           </Card>
         </Grid>
