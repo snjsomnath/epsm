@@ -1,40 +1,129 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Typography, 
-  Grid, 
-  Card, 
-  CardContent, 
-  CardActions,
-  Button,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
+  Paper, 
+  Tabs, 
+  Tab, 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
   TableRow,
-  Alert,
-  Tabs,
-  Tab,
+  Button,
   Divider,
-  CircularProgress
+  Chip,
+  Alert,
+  Stack
 } from '@mui/material';
-import { Download, FileText, BarChart } from 'lucide-react';
+import { BarChart3, Download, FileDown } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 interface ResultsTabProps {
   uploadedFiles: File[];
   simulationComplete: boolean;
-  simulationResults: any; // This will come from the simulation endpoint
+  simulationResults: any;
 }
 
 const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: ResultsTabProps) => {
   const [tabValue, setTabValue] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+  };
+
+  // Format energy use data for the chart
+  const formatEnergyUseData = (energyUse: any) => {
+    if (!energyUse) return null;
+
+    const categories = Object.keys(energyUse).filter(key => 
+      energyUse[key].total > 0 // Only show categories with non-zero values
+    );
+
+    const electricityData = categories.map(cat => energyUse[cat].electricity || 0);
+    const districtHeatingData = categories.map(cat => energyUse[cat].district_heating || 0);
+
+    return {
+      labels: categories,
+      datasets: [
+        {
+          label: 'Electricity',
+          data: electricityData,
+          backgroundColor: 'rgba(54, 162, 235, 0.8)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1,
+          stack: 'Stack 0',
+        },
+        {
+          label: 'District Heating',
+          data: districtHeatingData,
+          backgroundColor: 'rgba(255, 99, 132, 0.8)',
+          borderColor: 'rgba(255, 99, 132, 1)',
+          borderWidth: 1,
+          stack: 'Stack 0',
+        }
+      ]
+    };
+  };
+
+  // Chart options
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Energy Use by End Use (kWh)',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context: any) {
+            const value = context.raw;
+            return `${context.dataset.label}: ${value.toLocaleString()} kWh`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        stacked: true,
+        ticks: {
+          autoSkip: false,
+          maxRotation: 45,
+          minRotation: 45
+        }
+      },
+      y: {
+        stacked: true,
+        title: {
+          display: true,
+          text: 'Energy Use (kWh)'
+        }
+      }
+    }
   };
 
   if (uploadedFiles.length === 0) {
@@ -53,22 +142,6 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     );
   }
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mt: 2 }}>
-        {error}
-      </Alert>
-    );
-  }
-
   if (!simulationResults) {
     return (
       <Alert severity="warning" sx={{ mt: 2 }}>
@@ -81,6 +154,9 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
   const resultsArray = Array.isArray(simulationResults) 
     ? simulationResults 
     : [simulationResults];
+
+  // Get chart data from the first result (if multiple files)
+  const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
 
   return (
     <Box>
@@ -175,7 +251,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
         <Box sx={{ p: 3 }}>
           {tabValue === 0 && (
             <Box>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1\" gutterBottom>
                 Simulation Summary
               </Typography>
               <TableContainer>
@@ -205,24 +281,11 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 </Table>
               </TableContainer>
               
-              <Box sx={{ textAlign: 'center', p: 4 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  {resultsArray.length > 0 ? (
-                    'Energy use breakdown for selected simulation'
-                  ) : (
-                    'No data available for visualization'
-                  )}
-                </Typography>
-                {resultsArray.length > 0 ? (
-                  <div>
-                    {/* Here you would implement a chart using a library like recharts */}
-                    {/* For now we'll just use the placeholder */}
-                    <BarChart size={100} style={{ color: '#9e9e9e' }} />
-                  </div>
-                ) : (
-                  <BarChart size={100} style={{ color: '#9e9e9e' }} />
-                )}
-              </Box>
+              {chartData && (
+                <Box sx={{ height: '400px', mt: 4 }}>
+                  <Bar data={chartData} options={chartOptions} />
+                </Box>
+              )}
             </Box>
           )}
           
