@@ -101,6 +101,79 @@ const SimulationPage = () => {
     };
   }, [backendAvailable]);
 
+  // Dynamically update totalSimulations based on IDFs and construction variants
+  useEffect(() => {
+    // Try to get number of variants from parsedData or scenario
+    let numVariants = 1;
+    if (parsedData && parsedData.constructionVariants) {
+      numVariants = parsedData.constructionVariants.length;
+    } else if (selectedScenario) {
+      const scenario = scenarios.find(s => s.id === selectedScenario);
+      if (scenario && scenario.total_variants) {
+        numVariants = scenario.total_variants;
+      }
+    }
+    setTotalSimulations((uploadedFiles.length || 0) * numVariants);
+  }, [uploadedFiles, parsedData, selectedScenario, scenarios]);
+
+  // Fix: WebSocket should only be created once and cleaned up properly
+  useEffect(() => {
+    if (!backendAvailable) return;
+
+    let ws: ReconnectingWebSocket | null = null;
+    let wsTimeout: NodeJS.Timeout | null = null;
+
+    function connectWS() {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsHost = window.location.hostname || 'localhost';
+      const wsPort = window.location.port || '8000';
+      const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
+
+      ws = new ReconnectingWebSocket(wsUrl);
+
+      ws.onopen = () => {
+        // Optionally clear error state
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setResourceStats(data);
+        } catch (e) {
+          // Ignore parse errors
+        }
+      };
+
+      ws.onerror = (error) => {
+        // Optionally set error state
+        // console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        // Optionally try to reconnect after a delay
+        if (wsTimeout) clearTimeout(wsTimeout);
+        wsTimeout = setTimeout(connectWS, 5000);
+      };
+    }
+
+    connectWS();
+
+    return () => {
+      if (ws) ws.close();
+      if (wsTimeout) clearTimeout(wsTimeout);
+    };
+  }, [backendAvailable]);
+
+  // Fix: Reset isComplete and results on scenario or file change
+  useEffect(() => {
+    setIsComplete(false);
+    setResults([]);
+    setProgress(0);
+    setCompletedSimulations(0);
+    setIsRunning(false);
+    setIsPaused(false);
+  }, [selectedScenario, uploadedFiles, weatherFile]);
+
   const handleScenarioChange = (event: any) => {
     const scenarioId = event.target.value;
     setSelectedScenario(scenarioId);
@@ -127,7 +200,6 @@ const SimulationPage = () => {
     }
 
     if (!backendAvailable) {
-      // Use dummy data for development
       simulateDummyProgress();
       return;
     }
@@ -135,6 +207,7 @@ const SimulationPage = () => {
     try {
       setError(null);
       setIsRunning(true);
+      setIsComplete(false);
       setProgress(0);
       setCompletedSimulations(0);
 
@@ -143,18 +216,13 @@ const SimulationPage = () => {
         formData.append('idf_files', file);
       });
       formData.append('weather_file', weatherFile);
-      formData.append('scenario_id', selectedScenario);
+      if (selectedScenario) {
+        formData.append('scenario_id', selectedScenario);
+      }
 
-      // Start simulation on backend
       const response = await fetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Only send scenario_id if it is not empty
-        body: JSON.stringify(
-          selectedScenario ? { scenario_id: selectedScenario } : {}
-        ),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -165,26 +233,38 @@ const SimulationPage = () => {
       const data = await response.json();
       const simulationId = data.simulation_id;
 
-      // Poll for progress
-      const pollInterval = setInterval(async () => {
-        const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
-        const statusData = await statusResponse.json();
+      // Use a slower polling interval to avoid 429 errors (Too Many Requests)
+      let pollInterval: NodeJS.Timeout;
+      let stopped = false;
+      pollInterval = setInterval(async () => {
+        if (stopped) return;
+        try {
+          const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+          if (statusResponse.status === 429) {
+            return;
+          }
+          const statusData = await statusResponse.json();
 
-        setProgress(statusData.progress);
-        setCompletedSimulations(Math.floor((statusData.progress / 100) * totalSimulations));
+          setProgress(statusData.progress ?? 0);
+          setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
 
-        if (statusData.status === 'completed') {
-          clearInterval(pollInterval);
-          const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
-          const resultsData = await resultsResponse.json();
-          setResults(resultsData);
-          setIsComplete(true);
-          setIsRunning(false);
-        } else if (statusData.status === 'failed') {
-          clearInterval(pollInterval);
-          throw new Error(statusData.error || 'Simulation failed');
+          if (statusData.status === 'completed') {
+            clearInterval(pollInterval);
+            stopped = true;
+            const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+            const resultsData = await resultsResponse.json();
+            setResults(resultsData);
+            setIsComplete(true);
+            setIsRunning(false);
+          } else if (statusData.status === 'failed') {
+            clearInterval(pollInterval);
+            stopped = true;
+            throw new Error(statusData.error || 'Simulation failed');
+          }
+        } catch (err) {
+          // Optionally handle fetch errors here (network, etc)
         }
-      }, 1000);
+      }, 2000);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run simulation');
@@ -437,7 +517,7 @@ const SimulationPage = () => {
                     </Box>
                     <LinearProgress 
                       variant="determinate" 
-                      value={progress} 
+                      value={progress || 0} // Always provide a value, fallback to 0
                       sx={{ height: 8, borderRadius: 4 }}
                     />
                   </Box>
