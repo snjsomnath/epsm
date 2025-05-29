@@ -11,7 +11,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  TextField,
   Alert,
   LinearProgress,
   Stack,
@@ -226,7 +225,7 @@ const SimulationPage = () => {
           severity="warning" 
           sx={{ mb: 2 }}
           action={
-            <Button color="inherit\" size="small\" onClick={() => window.location.reload()}>
+            <Button color="inherit" size="small" onClick={() => window.location.reload()}>
               Retry Connection
             </Button>
           }
