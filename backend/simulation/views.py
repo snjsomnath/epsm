@@ -14,6 +14,8 @@ import threading
 import traceback
 from django.conf import settings
 from .utils import get_system_resources
+from pathlib import Path
+import sqlite3
 
 @csrf_exempt
 @api_view(['POST'])
@@ -420,3 +422,43 @@ def system_resources(request):
         }, status=500)
         response["Access-Control-Allow-Origin"] = "*"
         return response
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def parallel_simulation_results(request, simulation_id):
+    """
+    Fetch simulation results from the SQLite file for parallel/batch simulations.
+    """
+    try:
+        # Locate the SQLite file
+        media_root = Path(settings.MEDIA_ROOT)
+        sqlite_path = media_root / 'simulation_results' / str(simulation_id) / 'batch_results.db'
+        if not sqlite_path.exists():
+            return JsonResponse({
+                'error': f'SQLite results file not found for simulation {simulation_id}'
+            }, status=404)
+
+        # Connect and fetch all results
+        conn = sqlite3.connect(str(sqlite_path))
+        c = conn.cursor()
+        c.execute('SELECT * FROM simulation_results')
+        columns = [desc[0] for desc in c.description]
+        rows = c.fetchall()
+        results = []
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            # Parse raw_json if present
+            if 'raw_json' in row_dict and row_dict['raw_json']:
+                try:
+                    row_dict['parsed'] = json.loads(row_dict['raw_json'])
+                except Exception:
+                    row_dict['parsed'] = None
+            results.append(row_dict)
+        conn.close()
+        return JsonResponse(results, safe=False)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)

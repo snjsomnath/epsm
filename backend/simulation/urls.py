@@ -9,6 +9,7 @@ urlpatterns = [
     path('run/', views.run_simulation, name='run_simulation'),
     path('<int:simulation_id>/status/', views.simulation_status, name='simulation_status'),
     path('<int:simulation_id>/results/', views.simulation_results, name='simulation_results'),
+    path('<int:simulation_id>/parallel-results/', views.parallel_simulation_results, name='parallel_simulation_results'),
 
     # Existing endpoints
     path('parse/idf/', views.parse_idf, name='parse_idf'),
