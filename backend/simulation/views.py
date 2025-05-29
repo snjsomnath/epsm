@@ -16,12 +16,29 @@ from django.conf import settings
 from .utils import get_system_resources
 from pathlib import Path
 import sqlite3
+import time
+from threading import Lock
+
+# Add a simple in-memory rate limiter for parse_idf endpoint
+_parse_idf_last_call = 0
+_parse_idf_lock = Lock()
+_PARSE_IDF_MIN_INTERVAL = 1.0  # seconds
 
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def parse_idf(request):
     """Parse uploaded IDF files and compare with database."""
+    global _parse_idf_last_call
+    with _parse_idf_lock:
+        now = time.time()
+        if now - _parse_idf_last_call < _PARSE_IDF_MIN_INTERVAL:
+            return JsonResponse(
+                {'error': 'Too Many Requests: Please wait before retrying.'},
+                status=429
+            )
+        _parse_idf_last_call = now
+
     try:
         print("FILES:", request.FILES)
         files = request.FILES.getlist('files')
@@ -430,12 +447,19 @@ def parallel_simulation_results(request, simulation_id):
     Fetch simulation results from the SQLite file for parallel/batch simulations.
     """
     try:
-        # Locate the SQLite file
+        # Try both possible locations for batch_results.db
         media_root = Path(settings.MEDIA_ROOT)
-        sqlite_path = media_root / 'simulation_results' / str(simulation_id) / 'batch_results.db'
+        sim_results_dir = media_root / 'simulation_results' / str(simulation_id)
+        sqlite_path = sim_results_dir / 'batch_results.db'
+        # Fallback: also check for batch_results.db in subfolders (e.g. variant folders)
+        if not sqlite_path.exists():
+            # Search recursively for batch_results.db
+            found = list(sim_results_dir.rglob('batch_results.db'))
+            if found:
+                sqlite_path = found[0]
         if not sqlite_path.exists():
             return JsonResponse({
-                'error': f'SQLite results file not found for simulation {simulation_id}'
+                'error': f'SQLite results file not found for simulation {simulation_id} in {sim_results_dir}'
             }, status=404)
 
         # Connect and fetch all results

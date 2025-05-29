@@ -129,7 +129,90 @@ class EnergyPlusSimulator:
                     logs.append((idf_file, {"error": str(e)}))
         return logs
 
-    def run_simulation(self, parallel=False, max_workers=4, batch_mode=False):
+    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, energyplus_exe, results_dir, max_workers=4):
+        """
+        For each base IDF and each construction set, generate a new IDF with the construction set inserted,
+        store it in a subfolder, and run all in parallel.
+        """
+        from .idf_parser import IdfParser
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        generated_idf_paths = []
+        variant_map = []
+
+        # Generate all variant IDFs and store them in organized folders
+        for idf_idx, idf_file in enumerate(base_idf_files):
+            with open(idf_file.file.path, "r", encoding="utf-8") as f:
+                base_content = f.read()
+            for variant_idx, construction_set in enumerate(construction_sets):
+                parser = IdfParser(base_content)
+                parser.insert_construction_set(construction_set)
+                # Use a unique subfolder for each variant+idf
+                variant_dir = results_dir / f"variant_{variant_idx+1}_idf_{idf_idx+1}"
+                variant_dir.mkdir(parents=True, exist_ok=True)
+                idf_name = f"idf_{idf_idx+1}_variant_{variant_idx+1}.idf"
+                idf_path = variant_dir / idf_name
+                parser.idf.saveas(str(idf_path))
+                generated_idf_paths.append(idf_path)
+                variant_map.append({
+                    "idf_file": idf_file,
+                    "variant_idx": variant_idx,
+                    "idf_idx": idf_idx,
+                    "construction_set": construction_set,
+                    "idf_path": idf_path,
+                    "variant_dir": variant_dir
+                })
+
+        # Run all generated IDFs in parallel
+        logs = []
+        results = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {}
+            for entry in variant_map:
+                future = executor.submit(
+                    self.run_single_simulation,
+                    type("FakeFile", (), {"file": type("F", (), {"path": str(entry["idf_path"]), "name": str(entry["idf_path"].name)})})(),
+                    weather_file,
+                    energyplus_exe,
+                    str(entry["variant_dir"])
+                )
+                future_map[future] = entry
+            for future in as_completed(future_map):
+                entry = future_map[future]
+                try:
+                    log = future.result()
+                    logs.append(log)
+                    output_file = Path(entry["variant_dir"]) / "output"
+                    file_results = self.process_file_results(output_file, entry["idf_file"])
+                    if file_results:
+                        file_results["variant_idx"] = entry["variant_idx"]
+                        file_results["idf_idx"] = entry["idf_idx"]
+                        file_results["construction_set"] = entry["construction_set"]
+                        results.append(file_results)
+                except Exception as e:
+                    results.append({"error": str(e), "variant_idx": entry["variant_idx"], "idf_idx": entry["idf_idx"]})
+
+        # Save all results to SQLite in the root of the simulation results dir
+        sqlite_path = results_dir / 'batch_results.db'
+        print(f"Saving batch results to: {sqlite_path}")
+        self.save_results_to_sqlite(sqlite_path, results, job_info={
+            "simulation_id": self.simulation.id,
+            "run_id": self.run_id
+        })
+
+        # Save combined results as JSON
+        combined_results_path = results_dir / 'combined_results.json'
+        with open(combined_results_path, 'w') as f:
+            json.dump(results, f)
+
+        rel_path = str(combined_results_path.relative_to(self.media_root))
+        self.simulation.results_file = rel_path
+        self.simulation.status = 'completed'
+        self.simulation.save()
+
+        print(f"Batch parametric simulation completed: {len(results)} results")
+
+    def run_simulation(self, parallel=False, max_workers=4, batch_mode=False, construction_sets=None):
         # ...existing code up to idf_files and weather_file extraction...
         try:
             self.simulation.status = 'running'
@@ -141,10 +224,14 @@ class EnergyPlusSimulator:
             if not idf_files or not weather_file:
                 raise ValueError("Missing required simulation files")
 
-            print(f"Starting simulation for {idf_files.count()} IDF files")
-            print(f"Using weather file: {weather_file.file.path}")
-
             energyplus_exe = settings.ENERGYPLUS_EXE if hasattr(settings, 'ENERGYPLUS_EXE') else os.path.join(self.ep_path, 'energyplus.exe')
+
+            # Batch parametric mode: run all variants for all IDFs
+            if batch_mode and construction_sets:
+                self.run_batch_parametric_simulation(
+                    idf_files, construction_sets, weather_file, energyplus_exe, self.results_dir, max_workers=max_workers
+                )
+                return
 
             if not os.path.exists(energyplus_exe):
                 print(f"ERROR: EnergyPlus executable not found at: {energyplus_exe}")
