@@ -22,7 +22,8 @@ import {
   DialogActions,
   IconButton,
   Chip,
-  CircularProgress
+  CircularProgress,
+  Divider
 } from '@mui/material';
 import { 
   Play, 
@@ -33,14 +34,18 @@ import {
   BarChart3, 
   Download, 
   Info,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Upload
 } from 'lucide-react';
 import SimulationResultsView from './SimulationResultsView';
 import { useDatabase } from '../../context/DatabaseContext';
+import { useSimulation } from '../../context/SimulationContext';
 import ReconnectingWebSocket from 'reconnecting-websocket';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
+  const { uploadedFiles, parsedData } = useSimulation();
   const [selectedScenario, setSelectedScenario] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -53,6 +58,8 @@ const SimulationPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [resourceStats, setResourceStats] = useState<any>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
+  const [weatherFile, setWeatherFile] = useState<File | null>(null);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   // Check backend availability
   useEffect(() => {
@@ -108,6 +115,11 @@ const SimulationPage = () => {
   };
 
   const handleStartSimulation = async () => {
+    if (!uploadedFiles.length || !weatherFile) {
+      setUploadDialogOpen(true);
+      return;
+    }
+
     if (!backendAvailable) {
       // Use dummy data for development
       simulateDummyProgress();
@@ -120,15 +132,17 @@ const SimulationPage = () => {
       setProgress(0);
       setCompletedSimulations(0);
 
+      const formData = new FormData();
+      uploadedFiles.forEach(file => {
+        formData.append('idf_files', file);
+      });
+      formData.append('weather_file', weatherFile);
+      formData.append('scenario_id', selectedScenario);
+
       // Start simulation on backend
       const response = await fetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          scenario_id: selectedScenario,
-        }),
+        body: formData
       });
 
       if (!response.ok) {
@@ -211,6 +225,15 @@ const SimulationPage = () => {
     setIsPaused(false);
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files[0]) {
+      if (files[0].name.endsWith('.epw')) {
+        setWeatherFile(files[0]);
+      }
+    }
+  };
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -225,7 +248,7 @@ const SimulationPage = () => {
           severity="warning" 
           sx={{ mb: 2 }}
           action={
-            <Button color="inherit\" size="small\" onClick={() => window.location.reload()}>
+            <Button color="inherit" size="small" onClick={() => window.location.reload()}>
               Retry Connection
             </Button>
           }
@@ -267,6 +290,41 @@ const SimulationPage = () => {
                   </Select>
                 </FormControl>
               )}
+
+              {/* Files Section */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Simulation Files:
+                </Typography>
+                <Stack spacing={1}>
+                  {uploadedFiles.map((file, index) => (
+                    <Chip
+                      key={index}
+                      label={file.name}
+                      color="primary"
+                      variant="outlined"
+                      icon={<FileText size={16} />}
+                    />
+                  ))}
+                  {weatherFile && (
+                    <Chip
+                      label={weatherFile.name}
+                      color="secondary"
+                      variant="outlined"
+                      icon={<FileText size={16} />}
+                    />
+                  )}
+                  {(!uploadedFiles.length || !weatherFile) && (
+                    <Button
+                      variant="outlined"
+                      startIcon={<Upload size={18} />}
+                      onClick={() => setUploadDialogOpen(true)}
+                    >
+                      Upload Required Files
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
               
               {selectedScenario && (
                 <Box>
@@ -428,6 +486,76 @@ const SimulationPage = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* File Upload Dialog */}
+      <Dialog
+        open={uploadDialogOpen}
+        onClose={() => setUploadDialogOpen(false)}
+      >
+        <DialogTitle>Upload Required Files</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Please upload the required files to run the simulation.
+          </DialogContentText>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              IDF Files:
+            </Typography>
+            {uploadedFiles.length > 0 ? (
+              <Stack spacing={1}>
+                {uploadedFiles.map((file, index) => (
+                  <Chip
+                    key={index}
+                    label={file.name}
+                    color="primary"
+                    variant="outlined"
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <Alert severity="warning">
+                No IDF files selected. Please go to the Baseline page to upload IDF files.
+              </Alert>
+            )}
+          </Box>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Weather File (EPW):
+            </Typography>
+            {weatherFile ? (
+              <Chip
+                label={weatherFile.name}
+                color="secondary"
+                variant="outlined"
+              />
+            ) : (
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<Upload size={18} />}
+              >
+                Upload EPW File
+                <input
+                  type="file"
+                  hidden
+                  accept=".epw"
+                  onChange={handleFileUpload}
+                />
+              </Button>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => setUploadDialogOpen(false)}
+            disabled={!uploadedFiles.length || !weatherFile}
+          >
+            Continue
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Confirmation Dialog */}
       <Dialog
