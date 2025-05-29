@@ -52,10 +52,13 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts';
+import IdfUploadArea from '../baseline/IdfUploadArea';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData } = useSimulation();
+  const { uploadedFiles, parsedData, updateUploadedFiles } = useSimulation();
+  // Add local state to track files for immediate UI feedback
+  const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -378,15 +381,75 @@ const SimulationPage = () => {
     setIsPaused(false);
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files[0]) {
-      if (files[0].name.endsWith('.epw')) {
-        setWeatherFile(files[0]);
+  // Replace the handleIdfFilesSelected with a new version that updates both context and local state
+  const handleIdfFilesSelected = (files: File[]) => {
+    console.log(`Selected ${files.length} IDF files`);
+    
+    // Update local state immediately for UI feedback
+    setLocalIdfFiles(files);
+    
+    try {
+      // Still update the context for app-wide state
+      if (typeof updateUploadedFiles === 'function') {
+        updateUploadedFiles(() => {
+          console.log('Updating files through context');
+          return files;
+        });
+      } else {
+        console.error('updateUploadedFiles function not found in context');
       }
+    } catch (error) {
+      console.error('Error processing IDF files:', error);
     }
   };
 
+  // Add a useEffect to monitor uploadedFiles changes
+  useEffect(() => {
+    console.log('uploadedFiles state changed:', uploadedFiles);
+  }, [uploadedFiles]);
+
+  // Add a useEffect to monitor weatherFile changes
+  useEffect(() => {
+    console.log('weatherFile state changed:', weatherFile);
+  }, [weatherFile]);
+
+  // Improve the EPW file upload handler
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      console.log('EPW file selected:', files[0].name);
+      if (files[0].name.toLowerCase().endsWith('.epw')) {
+        setWeatherFile(files[0]);
+      } else {
+        console.warn('Invalid file type. Please select an EPW file.');
+        // Optionally show an error message to the user
+      }
+    }
+  };
+  
+  // Add a function to handle EPW file drag & drop
+  const [isDragging, setIsDragging] = useState(false);
+  
+  const handleEpwDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleEpwDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleEpwDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    
+    const files = event.dataTransfer.files;
+    if (files.length > 0 && files[0].name.toLowerCase().endsWith('.epw')) {
+      setWeatherFile(files[0]);
+    }
+  };
+
+  // Then in the Dialog component, replace the IDF upload section with:
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -891,68 +954,93 @@ const SimulationPage = () => {
       <Dialog
         open={uploadDialogOpen}
         onClose={() => setUploadDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
       >
         <DialogTitle>Upload Required Files</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Please upload the required files to run the simulation.
           </DialogContentText>
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              IDF Files:
-            </Typography>
-            {uploadedFiles.length > 0 ? (
-              <Stack spacing={1}>
-                {uploadedFiles.map((file, index) => (
-                  <Chip
-                    key={index}
-                    label={file.name}
-                    color="primary"
-                    variant="outlined"
-                  />
-                ))}
-              </Stack>
-            ) : (
-              <Alert severity="warning">
-                No IDF files selected. Please go to the Baseline page to upload IDF files.
-              </Alert>
-            )}
-          </Box>
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Weather File (EPW):
-            </Typography>
-            {weatherFile ? (
-              <Chip
-                label={weatherFile.name}
-                color="secondary"
-                variant="outlined"
-              />
-            ) : (
-              <Button
-                variant="outlined"
-                component="label"
-                startIcon={<Upload size={18} />}
+          
+          <Grid container spacing={2} sx={{ mt: 2 }}>
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" gutterBottom>
+                IDF Files:
+              </Typography>
+              {/* Use the IdfUploadArea component instead of our custom implementation */}
+              <IdfUploadArea onFilesUploaded={handleIdfFilesSelected} />
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" gutterBottom>
+                Weather File (EPW):
+              </Typography>
+              <Box
+                component={Paper}
+                sx={{
+                  p: 2,
+                  border: '2px dashed',
+                  borderColor: isDragging ? 'secondary.main' : 'divider',
+                  backgroundColor: isDragging ? 'action.hover' : 'background.paper',
+                  transition: 'all 0.2s ease-in-out',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                }}
+                onClick={() => document.getElementById('epw-file-input')?.click()}
+                onDragOver={handleEpwDragOver}
+                onDragLeave={handleEpwDragLeave}
+                onDrop={handleEpwDrop}
               >
-                Upload EPW File
                 <input
+                  id="epw-file-input"
                   type="file"
-                  hidden
                   accept=".epw"
+                  hidden
                   onChange={handleFileUpload}
                 />
-              </Button>
-            )}
-          </Box>
+                <FileText 
+                  size={30} 
+                  style={{ marginBottom: '8px', color: weatherFile ? '#f50057' : '#9e9e9e' }} 
+                />
+                <Typography variant="subtitle1" gutterBottom>
+                  {weatherFile 
+                    ? `Selected: ${weatherFile.name}` 
+                    : 'Drop EPW weather file here'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  or click to browse
+                </Typography>
+              </Box>
+              
+              {weatherFile && (
+                <Stack spacing={1} sx={{ mt: 2 }}>
+                  <Chip
+                    label={weatherFile.name}
+                    onDelete={() => setWeatherFile(null)}
+                    color="secondary"
+                    variant="outlined"
+                  />
+                </Stack>
+              )}
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
+          {/* Add logs before rendering the button to check conditions */}
+          {console.log('Button conditions:', { 
+            uploadedFilesLength: uploadedFiles.length, 
+            hasWeatherFile: !!weatherFile,
+            isDisabled: !uploadedFiles.length || !weatherFile
+          })}
           <Button
             variant="contained"
             onClick={() => setUploadDialogOpen(false)}
-            disabled={!uploadedFiles.length || !weatherFile}
+            // Use local state for the disabled condition
+            disabled={localIdfFiles.length === 0 || !weatherFile}
           >
-            Continue
+            Continue {localIdfFiles.length > 0 && weatherFile ? '' : '(Upload Both File Types)'}
           </Button>
         </DialogActions>
       </Dialog>
