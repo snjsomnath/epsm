@@ -8,6 +8,7 @@ from django.conf import settings
 from .models import Simulation, SimulationFile
 from eppy.modeleditor import IDF
 from bs4 import BeautifulSoup
+import psutil
 
 import concurrent.futures
 import sqlite3
@@ -543,8 +544,6 @@ def parse_html_with_table_lookup(html_path, log_path, idf_files):
             "totalEnergyUse": 0.0,
             "heatingDemand": 0.0,
             "coolingDemand": 0.0,
-            "lightingDemand": 0.0,
-            "equipmentDemand": 0.0,
             "runTime": 0.0,
             "energy_use": {},
             "zones": [],
@@ -682,4 +681,51 @@ def get_resource_utilisation():
     """
     from .utils import get_system_resources
     return get_system_resources()
+
+def get_resource_utilisation():
+    """Get current system resource utilization"""
+    # CPU stats
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    cpu_count_physical = psutil.cpu_count(logical=False)
+    cpu_count_logical = psutil.cpu_count(logical=True)
+    
+    # Memory stats
+    memory = psutil.virtual_memory()
+    memory_total_gb = memory.total / (1024 * 1024 * 1024)
+    memory_used_gb = memory.used / (1024 * 1024 * 1024)
+    
+    # Disk stats
+    disk = psutil.disk_usage('/')
+    disk_total_gb = disk.total / (1024 * 1024 * 1024)
+    disk_used_gb = disk.used / (1024 * 1024 * 1024)
+    
+    # Network stats (requires 2 measurements)
+    net1 = psutil.net_io_counters()
+    import time
+    time.sleep(0.1)  # Small delay to measure rate
+    net2 = psutil.net_io_counters()
+    bytes_sent_per_sec = (net2.bytes_sent - net1.bytes_sent) / 0.1
+    bytes_recv_per_sec = (net2.bytes_recv - net1.bytes_recv) / 0.1
+    
+    return {
+        'cpu': {
+            'usage_percent': cpu_percent,
+            'physical_cores': cpu_count_physical,
+            'logical_cores': cpu_count_logical,
+        },
+        'memory': {
+            'total_gb': memory_total_gb,
+            'used_gb': memory_used_gb,
+            'usage_percent': memory.percent,
+        },
+        'disk': {
+            'total_gb': disk_total_gb,
+            'used_gb': disk_used_gb,
+            'usage_percent': disk.percent,
+        },
+        'network': {
+            'bytes_sent_per_sec': bytes_sent_per_sec,
+            'bytes_recv_per_sec': bytes_recv_per_sec,
+        }
+    }
 
