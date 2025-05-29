@@ -251,7 +251,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
         <Box sx={{ p: 3 }}>
           {tabValue === 0 && (
             <Box>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="subtitle1\" gutterBottom>
                 Simulation Summary
               </Typography>
               <TableContainer>
