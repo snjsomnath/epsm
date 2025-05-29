@@ -1,135 +1,211 @@
 import React, { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Paper, 
-  Tabs, 
-  Tab, 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableContainer, 
-  TableHead, 
+import {
+  Box,
+  Typography,
+  Paper,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
   TableRow,
   Button,
-  Divider,
+  Alert,
+  Stack,
   Chip
 } from '@mui/material';
-import { BarChart3, Download, FileDown } from 'lucide-react';
+import { Download, FileDown, BarChart3 } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
 
-const SimulationResultsView = () => {
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+interface SimulationResultsViewProps {
+  results: any[];
+}
+
+const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [tabValue, setTabValue] = useState(0);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
+  // Format data for chart
+  const chartData = {
+    labels: results.map(r => r.fileName),
+    datasets: [
+      {
+        label: 'Total Energy Use',
+        data: results.map(r => r.totalEnergyUse),
+        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+      },
+      {
+        label: 'Heating Demand',
+        data: results.map(r => r.heatingDemand),
+        backgroundColor: 'rgba(255, 99, 132, 0.8)',
+      },
+      {
+        label: 'Cooling Demand',
+        data: results.map(r => r.coolingDemand),
+        backgroundColor: 'rgba(75, 192, 192, 0.8)',
+      }
+    ]
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Energy Performance Comparison'
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Energy (kWh/m²)'
+        }
+      }
+    }
+  };
+
   return (
     <Box>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+      <Paper sx={{ mt: 3 }}>
         <Tabs value={tabValue} onChange={handleTabChange}>
           <Tab label="Summary" />
-          <Tab label="Energy Savings" />
-          <Tab label="Cost Impact" />
-          <Tab label="GWP Reduction" />
+          <Tab label="Details" />
+          <Tab label="Raw Data" />
         </Tabs>
-      </Box>
-      
-      <Box role="tabpanel" hidden={tabValue !== 0}>
-        {tabValue === 0 && (
-          <Box>
-            <Typography variant="subtitle1" gutterBottom>
-              Top 5 Performing Configurations
-            </Typography>
-            <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Rank</TableCell>
-                    <TableCell>Wall</TableCell>
-                    <TableCell>Roof</TableCell>
-                    <TableCell>Floor</TableCell>
-                    <TableCell>Window</TableCell>
-                    <TableCell>Energy Savings</TableCell>
-                    <TableCell>Cost (SEK/m²)</TableCell>
-                    <TableCell>GWP (kg CO₂e/m²)</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {[1, 2, 3, 4, 5].map((rank) => (
-                    <TableRow key={rank} sx={{ backgroundColor: rank === 1 ? 'rgba(25, 118, 210, 0.08)' : 'inherit' }}>
-                      <TableCell>
-                        {rank === 1 ? (
-                          <Chip size="small" label={rank} color="primary" />
-                        ) : rank}
-                      </TableCell>
-                      <TableCell>External Insulation {rank}</TableCell>
-                      <TableCell>Attic Insulation {rank}</TableCell>
-                      <TableCell>Floor Insulation {6-rank}</TableCell>
-                      <TableCell>Triple Glazing {rank}</TableCell>
-                      <TableCell>{(70 - rank * 5).toFixed(1)}%</TableCell>
-                      <TableCell>{(800 + rank * 100).toFixed(0)}</TableCell>
-                      <TableCell>{(120 - rank * 10).toFixed(1)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                Energy use summary chart would appear here
-                <BarChart3 size={80} style={{ display: 'block', margin: '10px auto', color: '#9e9e9e' }} />
+
+        <Box sx={{ p: 3 }}>
+          {tabValue === 0 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Simulation Results Summary
               </Typography>
+              
+              <Box sx={{ height: '400px', mb: 4 }}>
+                <Bar data={chartData} options={chartOptions} />
+              </Box>
+
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>File</TableCell>
+                      <TableCell align="right">Total Energy (kWh/m²)</TableCell>
+                      <TableCell align="right">Heating (kWh/m²)</TableCell>
+                      <TableCell align="right">Cooling (kWh/m²)</TableCell>
+                      <TableCell align="right">Runtime (s)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {results.map((result, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{result.fileName}</TableCell>
+                        <TableCell align="right">{result.totalEnergyUse.toFixed(1)}</TableCell>
+                        <TableCell align="right">{result.heatingDemand.toFixed(1)}</TableCell>
+                        <TableCell align="right">{result.coolingDemand.toFixed(1)}</TableCell>
+                        <TableCell align="right">{result.runTime.toFixed(1)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
-            
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              <Button 
-                variant="outlined" 
-                startIcon={<FileDown size={18} />}
-                sx={{ mr: 1 }}
-              >
-                Export CSV
-              </Button>
-              <Button 
-                variant="contained" 
-                startIcon={<Download size={18} />}
-              >
-                Download Report
-              </Button>
+          )}
+
+          {tabValue === 1 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Detailed Results
+              </Typography>
+              <Stack spacing={2}>
+                {results.map((result, index) => (
+                  <Paper key={index} variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      {result.fileName}
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Building: {result.building}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Area: {result.totalArea.toFixed(1)} m²
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          Status: <Chip size="small" label={result.status} color="success" />
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Runtime: {result.runTime.toFixed(1)} seconds
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+              </Stack>
             </Box>
-          </Box>
-        )}
-      </Box>
-      
-      <Box role="tabpanel" hidden={tabValue !== 1}>
-        {tabValue === 1 && (
-          <Box sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="body1">
-              Energy savings analysis would be displayed here.
-            </Typography>
-          </Box>
-        )}
-      </Box>
-      
-      <Box role="tabpanel" hidden={tabValue !== 2}>
-        {tabValue === 2 && (
-          <Box sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="body1">
-              Cost impact analysis would be displayed here.
-            </Typography>
-          </Box>
-        )}
-      </Box>
-      
-      <Box role="tabpanel" hidden={tabValue !== 3}>
-        {tabValue === 3 && (
-          <Box sx={{ p: 2, textAlign: 'center' }}>
-            <Typography variant="body1">
-              GWP reduction analysis would be displayed here.
-            </Typography>
-          </Box>
-        )}
+          )}
+
+          {tabValue === 2 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Raw Data
+              </Typography>
+              <Paper sx={{ p: 2, maxHeight: '500px', overflow: 'auto' }}>
+                <pre>{JSON.stringify(results, null, 2)}</pre>
+              </Paper>
+            </Box>
+          )}
+        </Box>
+      </Paper>
+
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<FileDown />}
+          onClick={() => {
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'simulation-results.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        >
+          Export Results
+        </Button>
       </Box>
     </Box>
   );
