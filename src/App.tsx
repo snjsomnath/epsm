@@ -12,6 +12,8 @@ import DatabasePage from './components/database/DatabasePage';
 import BaselinePage from './components/baseline/BaselinePage';
 import ScenarioPage from './components/scenario/ScenarioPage';
 import SimulationPage from './components/simulation/SimulationPage';
+import ResultsPage from './components/results/ResultsPage';
+import ExportPage from './components/export/ExportPage';
 import './App.css';
 
 function App() {
@@ -30,7 +32,9 @@ function App() {
                   <Route path="baseline" element={<BaselinePage />} />
                   <Route path="scenario" element={<ScenarioPage />} />
                   <Route path="simulation" element={<SimulationPage />} />
-                  <Route path="*" element={<Navigate to="/\" replace />} />
+                  <Route path="results" element={<ResultsPage />} />
+                  <Route path="export" element={<ExportPage />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
               </Routes>
             </SimulationProvider>
