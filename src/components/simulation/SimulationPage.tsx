@@ -166,12 +166,14 @@ const SimulationPage = () => {
       numVariants = parsedData.constructionVariants.length;
     } else if (selectedScenario) {
       const scenario = scenarios.find(s => s.id === selectedScenario);
-      if (scenario && scenario.total_variants) {
-        numVariants = scenario.total_variants;
-      }
+      // Use total_simulations instead of total_variants
+      numVariants = scenario?.total_simulations || 1;
     }
-    setTotalSimulations((uploadedFiles.length || 0) * numVariants);
-  }, [uploadedFiles, parsedData, selectedScenario, scenarios]);
+    
+    // Use localIdfFiles.length when it's available, otherwise fall back to uploadedFiles.length
+    const fileCount = localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length;
+    setTotalSimulations(fileCount * numVariants);
+  }, [uploadedFiles, localIdfFiles, parsedData, selectedScenario, scenarios]);
 
   // Fix: Reset isComplete and results on scenario or file change
   useEffect(() => {
@@ -242,12 +244,9 @@ const SimulationPage = () => {
     const scenarioId = event.target.value;
     setSelectedScenario(scenarioId);
     
-    const scenario = scenarios.find(s => s.id === scenarioId);
-    if (scenario) {
-      setTotalSimulations(scenario.total_simulations);
-    } else {
-      setTotalSimulations(0);
-    }
+    // Remove the direct setting of totalSimulations
+    // Let the useEffect handle calculating totalSimulations based on
+    // the selected scenario and current files
     
     setIsRunning(false);
     setIsPaused(false);
@@ -283,6 +282,12 @@ const SimulationPage = () => {
       if (selectedScenario) {
         formData.append('scenario_id', selectedScenario);
       }
+
+      // Add aditional params to formData for batch simulation
+      formData.append('parallel', 'true');  // Boolean as string
+      //formData.append('max_workers', '4');  // Let backend decide
+      formData.append('batch_mode', 'true'); // Boolean as string
+
 
       const response = await fetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
@@ -614,7 +619,7 @@ const SimulationPage = () => {
                             Base IDF Files:
                           </Typography>
                           <Typography variant="h6">
-                            {uploadedFiles.length}
+                            {localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length}
                           </Typography>
                         </Grid>
                         <Grid item xs={6}>
@@ -622,7 +627,11 @@ const SimulationPage = () => {
                             Construction Variants:
                           </Typography>
                           <Typography variant="h6">
-                            {scenarios.find(s => s.id === selectedScenario)?.scenario_constructions?.length || 0}
+                            {(() => {
+                              const scenario = scenarios.find(s => s.id === selectedScenario);
+                              // Use total_simulations instead of total_variants
+                              return scenario?.total_simulations || 1;
+                            })()}
                           </Typography>
                         </Grid>
                         <Grid item xs={12}>
@@ -633,7 +642,11 @@ const SimulationPage = () => {
                             {totalSimulations} simulations
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            ({uploadedFiles.length} files × {scenarios.find(s => s.id === selectedScenario)?.scenario_constructions?.length || 0} variants)
+                            ({localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length} files × {(() => {
+                              const scenario = scenarios.find(s => s.id === selectedScenario);
+                              // Use total_simulations instead of total_variants
+                              return scenario?.total_simulations || 1;
+                            })()} variants)
                           </Typography>
                         </Grid>
                       </Grid>
