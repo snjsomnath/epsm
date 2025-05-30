@@ -257,7 +257,10 @@ const SimulationPage = () => {
   };
 
   const handleStartSimulation = async () => {
-    if (!uploadedFiles.length || !weatherFile) {
+    // Check localIdfFiles first, then fall back to uploadedFiles
+    const filesAvailable = localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles;
+    
+    if (filesAvailable.length === 0 || !weatherFile) {
       setUploadDialogOpen(true);
       return;
     }
@@ -275,7 +278,8 @@ const SimulationPage = () => {
       setCompletedSimulations(0);
 
       const formData = new FormData();
-      uploadedFiles.forEach(file => {
+      // Use the files we just checked for availability
+      filesAvailable.forEach(file => {
         formData.append('idf_files', file);
       });
       formData.append('weather_file', weatherFile);
