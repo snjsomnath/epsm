@@ -140,10 +140,11 @@ epsm/
 2. Start the Django backend:
    ```bash
    cd backend
-   python manage.py runserver
+   daphne -p 8000 config.asgi:application
    ```
 
 3. Access the application at [http://localhost:5173](http://localhost:5173)
+
 
 ### Production Deployment
 
