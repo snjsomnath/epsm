@@ -7,7 +7,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .idf_parser import IdfParser
-from database.models import Material, Construction
+#from database.models import Material, Construction
+from .supabase_client import check_material_exists, check_construction_exists
+
 from .services import EnergyPlusSimulator
 from .models import Simulation, SimulationFile
 import threading
@@ -69,10 +71,7 @@ def parse_idf(request):
             # Add database comparison for materials
             for material in file_data['materials']:
                 material_name = material['name']
-                material['existsInDatabase'] = Material.objects.filter(
-                    name__iexact=material_name
-                ).exists()
-                
+                material['existsInDatabase'] = check_material_exists(material_name)
                 if not material['existsInDatabase']:
                     material['source'] = f"Extracted from {file.name}"
                 
@@ -86,9 +85,8 @@ def parse_idf(request):
             # Add database comparison for constructions
             for construction in file_data['constructions']:
                 construction_name = construction['name']
-                construction['existsInDatabase'] = Construction.objects.filter(
-                    name__iexact=construction_name
-                ).exists()
+                construction['existsInDatabase'] = check_construction_exists(construction_name)
+
                 
                 if not construction['existsInDatabase']:
                     construction['source'] = f"Extracted from {file.name}"
@@ -118,10 +116,10 @@ def parse_idf(request):
         return JsonResponse(parsed_data)
 
     except Exception as e:
-        print("Exception in parse_idf:", str(e))
-        return JsonResponse({
-            'error': str(e)
-        }, status=500)
+        print(f"Exception in parse_idf: {e}")
+        import traceback
+        traceback.print_exc()  # This will print the full stack trace
+        return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
 @api_view(['POST'])
