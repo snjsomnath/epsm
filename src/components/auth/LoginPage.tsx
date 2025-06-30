@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -17,13 +16,12 @@ import {
   Stack,
   useTheme as useMuiTheme
 } from '@mui/material';
-import { Mail, Lock, Eye, EyeOff, Sun, Moon, Building2, BarChart2, Database } from 'lucide-react';
+import { Mail, Eye, EyeOff, Sun, Moon, Building2, BarChart2, Database } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import AuthTest from './AuthTest';
 
 const LoginPage = () => {
-  const navigate = useNavigate();
   const { signIn, error, clearError } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const muiTheme = useMuiTheme();
@@ -335,6 +333,26 @@ const LoginPage = () => {
                 </form>
 
                 <Divider sx={{ my: 3 }} />
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  size="large"
+                  onClick={handleDemoLogin}
+                  disabled={loading}
+                  sx={{ 
+                    mb: 2,
+                    py: 1.5,
+                    borderColor: muiTheme.palette.primary.main,
+                    color: muiTheme.palette.primary.main,
+                    '&:hover': {
+                      borderColor: muiTheme.palette.primary.dark,
+                      backgroundColor: muiTheme.palette.primary.main + '08',
+                    }
+                  }}
+                >
+                  Demo Login (demo@chalmers.se)
+                </Button>
 
                 <Typography variant="body2" align="center">
                   {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
