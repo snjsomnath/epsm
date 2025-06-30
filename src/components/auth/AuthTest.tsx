@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Alert } from '@mui/material';
 import { supabase } from '../../lib/supabase';
@@ -10,6 +11,12 @@ const AuthTest = () => {
   useEffect(() => {
     const testDatabaseAccess = async () => {
       try {
+        // Skip database test for demo user
+        if (user?.email === 'demo@chalmers.se') {
+          setDbTest('Demo mode: Database access simulated');
+          return;
+        }
+
         const { data, error } = await supabase
           .from('materials')
           .select('count')
@@ -28,7 +35,7 @@ const AuthTest = () => {
     if (isAuthenticated) {
       testDatabaseAccess();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user]);
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -47,7 +54,7 @@ const AuthTest = () => {
           <Typography variant="body2" sx={{ mb: 1 }}>
             Session Valid: {session ? "Yes" : "No"}
           </Typography>
-          <Alert severity={dbTest.includes('successful') ? "success" : "error"}>
+          <Alert severity={dbTest.includes('successful') || dbTest.includes('simulated') ? "success" : "error"}>
             {dbTest}
           </Alert>
         </>
