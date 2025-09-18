@@ -22,7 +22,7 @@ import {
   subscribeToConstructions,
   subscribeToConstructionSets,
   subscribeToScenarios
-} from '../lib/database';
+} from '../lib/database-browser';
 import type { 
   Material, 
   WindowGlazing, 
@@ -134,7 +134,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
 
   const handleAddMaterial = async (material: MaterialInsert) => {
     try {
-      console.log("DatabaseContext: Adding material to Supabase:", material);
+      console.log("DatabaseContext: Adding material via API:", material);
       const result = await createMaterial(material);
       console.log("DatabaseContext: Result from createMaterial:", result);
       

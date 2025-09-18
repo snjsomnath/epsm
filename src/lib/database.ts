@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { postgres } from './queryBuilder';
 import type { 
   ConstructionInsert, 
   LayerInsert,
@@ -14,251 +14,330 @@ import type {
 } from './database.types';
 
 // Material functions
-export const getMaterials = async (): Promise<Material[]> => {
+export async function getMaterials(): Promise<Material[]> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('materials')
       .select('*')
-      .order('name');
-    
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('Failed to fetch materials:', err);
-    throw err;
-  }
-};
+      .order('name')
+      .execute();
 
-export const createMaterial = async (material: MaterialInsert) => {
-  try {
-    console.log("database.ts: Creating material in Supabase:", material);
-    
-    // Ensure all required fields are present and have valid values
-    const validatedMaterial = {
-      ...material,
-      thickness_m: material.thickness_m || 0,
-      conductivity_w_mk: material.conductivity_w_mk || 0,
-      density_kg_m3: material.density_kg_m3 || 0,
-      specific_heat_j_kgk: material.specific_heat_j_kgk || 0,
-      roughness: material.roughness || 'MediumRough',
-      thermal_absorptance: material.thermal_absorptance ?? 0.9,
-      solar_absorptance: material.solar_absorptance ?? 0.7,
-      visible_absorptance: material.visible_absorptance ?? 0.7,
-      gwp_kgco2e_per_m2: material.gwp_kgco2e_per_m2 || 0,
-      cost_sek_per_m2: material.cost_sek_per_m2 || 0,
-      wall_allowed: material.wall_allowed ?? true,
-      roof_allowed: material.roof_allowed ?? true,
-      floor_allowed: material.floor_allowed ?? true,
-      window_layer_allowed: material.window_layer_allowed ?? false,
-    };
-    
-    const { data, error, status, statusText } = await supabase
-      .from('materials')
-      .insert([validatedMaterial])
-      .select();
-    
-    console.log("database.ts: Supabase response:", { data, error, status, statusText });
-    
-    if (error) {
-      console.error("database.ts: Supabase error:", error);
-      throw error;
+    if (result.error) {
+      console.error('Error fetching materials:', result.error);
+      throw result.error;
     }
-    
-    if (!data || data.length === 0) {
-      console.warn("database.ts: No data returned from Supabase insert");
-      return { data: null };
-    }
-    
-    return { data: data[0] };
-  } catch (err) {
-    console.error('database.ts: Failed to create material:', err);
-    return { error: err };
-  }
-};
 
-export const updateMaterial = async (id: string, material: Partial<MaterialInsert>) => {
+    return (result.data || []) as Material[];
+  } catch (error) {
+    console.error('Error in getMaterials:', error);
+    throw error;
+  }
+}export async function createMaterial(materialData: MaterialInsert): Promise<Material | null> {
   try {
-    const { data, error } = await supabase
+    console.log('Creating material with data:', materialData);
+    
+    const result = await postgres
       .from('materials')
-      .update(material)
+      .insert(materialData);
+
+    console.log('Create material result:', result);
+
+    if (result.error) {
+      console.error('Error creating material:', result.error);
+      throw result.error;
+    }
+
+    // Fetch the newly created record
+    const fetchResult = await postgres
+      .from('materials')
+      .select('*')
+      .eq('name', materialData.name)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching created material:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as Material[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in createMaterial:', error);
+    throw error;
+  }
+}
+
+export async function updateMaterial(id: string, updates: Partial<MaterialInsert>): Promise<Material | null> {
+  try {
+    const result = await postgres
+      .from('materials')
       .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to update material:', err);
-    throw err;
+      .update(updates);
+
+    if (result.error) {
+      console.error('Error updating material:', result.error);
+      throw result.error;
+    }
+
+    // After update, fetch the updated record
+    const fetchResult = await postgres
+      .from('materials')
+      .select('*')
+      .eq('id', id)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching updated material:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as Material[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in updateMaterial:', error);
+    throw error;
   }
-};
+}
 
 // Window Glazing functions
-export const getWindowGlazing = async (): Promise<WindowGlazing[]> => {
+export async function getWindowGlazing(): Promise<WindowGlazing[]> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('window_glazing')
       .select('*')
-      .order('name');
-    
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('Failed to fetch window glazing:', err);
-    throw err;
-  }
-};
+      .order('name')
+      .execute();
 
-export const createWindowGlazing = async (glazing: WindowGlazingInsert) => {
-  try {
-    const { data, error } = await supabase
-      .from('window_glazing')
-      .insert([glazing])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to create window glazing:', err);
-    throw err;
-  }
-};
+    if (result.error) {
+      console.error('Error fetching window glazing:', result.error);
+      throw result.error;
+    }
 
-export const updateWindowGlazing = async (id: string, glazing: Partial<WindowGlazingInsert>) => {
+    return (result.data || []) as WindowGlazing[];
+  } catch (error) {
+    console.error('Error in getWindowGlazing:', error);
+    throw error;
+  }
+}
+
+export async function createWindowGlazing(glazingData: WindowGlazingInsert): Promise<WindowGlazing | null> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('window_glazing')
-      .update(glazing)
+      .insert(glazingData);
+
+    if (result.error) {
+      console.error('Error creating window glazing:', result.error);
+      throw result.error;
+    }
+
+    // Fetch the newly created record
+    const fetchResult = await postgres
+      .from('window_glazing')
+      .select('*')
+      .eq('name', glazingData.name)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching created window glazing:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as WindowGlazing[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in createWindowGlazing:', error);
+    throw error;
+  }
+}
+
+export async function updateWindowGlazing(id: string, updates: Partial<WindowGlazingInsert>): Promise<WindowGlazing | null> {
+  try {
+    const result = await postgres
+      .from('window_glazing')
       .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to update window glazing:', err);
-    throw err;
+      .update(updates);
+
+    if (result.error) {
+      console.error('Error updating window glazing:', result.error);
+      throw result.error;
+    }
+
+    // Fetch the updated record
+    const fetchResult = await postgres
+      .from('window_glazing')
+      .select('*')
+      .eq('id', id)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching updated window glazing:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as WindowGlazing[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in updateWindowGlazing:', error);
+    throw error;
   }
-};
+}
 
 // Construction functions
-export const getConstructions = async (): Promise<Construction[]> => {
+export async function getConstructions(): Promise<Construction[]> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('constructions')
-      .select(`
-        *,
-        layers (
-          *,
-          material:materials(*),
-          glazing:window_glazing(*)
-        )
-      `)
-      .order('name');
-    
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('Failed to fetch constructions:', err);
-    throw err;
+      .select('*')
+      .order('name')
+      .execute();
+
+    if (result.error) {
+      console.error('Error fetching constructions:', result.error);
+      throw result.error;
+    }
+
+    return (result.data || []) as Construction[];
+  } catch (error) {
+    console.error('Error in getConstructions:', error);
+    throw error;
   }
-};
+}
 
 // Construction Sets functions
-export const getConstructionSets = async (): Promise<ConstructionSet[]> => {
+export async function getConstructionSets(): Promise<ConstructionSet[]> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('construction_sets')
-      .select(`
-        *,
-        wall_construction:constructions!construction_sets_wall_construction_id_fkey(*),
-        roof_construction:constructions!construction_sets_roof_construction_id_fkey(*),
-        floor_construction:constructions!construction_sets_floor_construction_id_fkey(*),
-        window_construction:constructions!construction_sets_window_construction_id_fkey(*)
-      `)
-      .order('name');
-    
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('Failed to fetch construction sets:', err);
-    throw err;
-  }
-};
+      .select('*')
+      .order('name')
+      .execute();
 
-export const createConstructionSet = async (constructionSet: ConstructionSetInsert) => {
-  try {
-    const { data, error } = await supabase
-      .from('construction_sets')
-      .insert([constructionSet])
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to create construction set:', err);
-    throw err;
-  }
-};
+    if (result.error) {
+      console.error('Error fetching construction sets:', result.error);
+      throw result.error;
+    }
 
-export const updateConstructionSet = async (id: string, constructionSet: Partial<ConstructionSetInsert>) => {
+    return (result.data || []) as ConstructionSet[];
+  } catch (error) {
+    console.error('Error in getConstructionSets:', error);
+    throw error;
+  }
+}
+
+export async function createConstructionSet(constructionSetData: ConstructionSetInsert): Promise<ConstructionSet | null> {
   try {
-    const { data, error } = await supabase
+    const result = await postgres
       .from('construction_sets')
-      .update(constructionSet)
+      .insert(constructionSetData);
+
+    if (result.error) {
+      console.error('Error creating construction set:', result.error);
+      throw result.error;
+    }
+
+    // Fetch the newly created record
+    const fetchResult = await postgres
+      .from('construction_sets')
+      .select('*')
+      .eq('name', constructionSetData.name)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching created construction set:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as ConstructionSet[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in createConstructionSet:', error);
+    throw error;
+  }
+}
+
+export async function updateConstructionSet(id: string, updates: Partial<ConstructionSetInsert>): Promise<ConstructionSet | null> {
+  try {
+    const result = await postgres
+      .from('construction_sets')
       .eq('id', id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    console.error('Failed to update construction set:', err);
-    throw err;
-  }
-};
+      .update(updates);
 
-export const deleteConstructionSet = async (id: string) => {
-  try {
-    const { error } = await supabase
+    if (result.error) {
+      console.error('Error updating construction set:', result.error);
+      throw result.error;
+    }
+
+    // Fetch the updated record
+    const fetchResult = await postgres
       .from('construction_sets')
-      .delete()
-      .eq('id', id);
-    
-    if (error) throw error;
-  } catch (err) {
-    console.error('Failed to delete construction set:', err);
-    throw err;
+      .select('*')
+      .eq('id', id)
+      .execute();
+
+    if (fetchResult.error) {
+      console.error('Error fetching updated construction set:', fetchResult.error);
+      throw fetchResult.error;
+    }
+
+    const data = fetchResult.data as ConstructionSet[];
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    console.error('Error in updateConstructionSet:', error);
+    throw error;
   }
-};
+}
+
+export async function deleteConstructionSet(id: string): Promise<void> {
+  try {
+    const result = await postgres
+      .from('construction_sets')
+      .eq('id', id)
+      .delete();
+
+    if (result.error) {
+      console.error('Error deleting construction set:', result.error);
+      throw result.error;
+    }
+  } catch (error) {
+    console.error('Error in deleteConstructionSet:', error);
+    throw error;
+  }
+}
 
 export const createConstruction = async (
   construction: ConstructionInsert,
   layers: Omit<LayerInsert, 'construction_id'>[]
 ) => {
   try {
-    console.log("database.ts: Creating construction in Supabase:", construction);
+    console.log("database.ts: Creating construction in PostgreSQL:", construction);
     
     // First create the construction
-    const { data: constructionData, error: constructionError, status, statusText } = await supabase
+    const constructionResult = await postgres
       .from('constructions')
-      .insert([construction])
-      .select()
-      .single();
+      .insert(construction);
     
-    console.log("database.ts: Supabase construction response:", { constructionData, constructionError, status, statusText });
+    console.log("database.ts: PostgreSQL construction response:", constructionResult);
     
-    if (constructionError) {
-      console.error("database.ts: Supabase construction error:", constructionError);
-      throw constructionError;
+    if (constructionResult.error) {
+      console.error("database.ts: PostgreSQL construction error:", constructionResult.error);
+      throw constructionResult.error;
     }
 
-    if (!constructionData) {
-      console.warn("database.ts: No data returned from Supabase construction insert");
-      throw new Error("No data returned from construction insert");
+    // Fetch the created construction
+    const fetchResult = await postgres
+      .from('constructions')
+      .select('*')
+      .eq('name', construction.name)
+      .execute();
+
+    if (fetchResult.error || !fetchResult.data || fetchResult.data.length === 0) {
+      console.error("database.ts: Failed to fetch created construction");
+      throw new Error("Failed to fetch created construction");
     }
+
+    const constructionData = (fetchResult.data as Construction[])[0];
+    console.log("database.ts: Created construction data:", constructionData);
 
     // Then add the layers
     if (layers.length > 0) {
@@ -269,15 +348,15 @@ export const createConstruction = async (
         construction_id: constructionData.id
       }));
 
-      const { data: layersData, error: layersError } = await supabase
+      const layersResult = await postgres
         .from('layers')
         .insert(constructionLayers);
       
-      console.log("database.ts: Supabase layers response:", { layersData, layersError });
+      console.log("database.ts: PostgreSQL layers response:", layersResult);
       
-      if (layersError) {
-        console.error("database.ts: Supabase layers error:", layersError);
-        throw layersError;
+      if (layersResult.error) {
+        console.error("database.ts: PostgreSQL layers error:", layersResult.error);
+        throw layersResult.error;
       }
     }
 
@@ -295,22 +374,20 @@ export const updateConstruction = async (
 ) => {
   try {
     // Update construction
-    const { data: constructionData, error: constructionError } = await supabase
+    const constructionResult = await postgres
       .from('constructions')
-      .update(construction)
       .eq('id', id)
-      .select()
-      .single();
+      .update(construction);
     
-    if (constructionError) throw constructionError;
+    if (constructionResult.error) throw constructionResult.error;
 
     // Delete existing layers
-    const { error: deleteError } = await supabase
+    const deleteResult = await postgres
       .from('layers')
-      .delete()
-      .eq('construction_id', id);
+      .eq('construction_id', id)
+      .delete();
     
-    if (deleteError) throw deleteError;
+    if (deleteResult.error) throw deleteResult.error;
 
     // Add new layers
     if (layers.length > 0) {
@@ -319,14 +396,24 @@ export const updateConstruction = async (
         construction_id: id
       }));
 
-      const { error: layersError } = await supabase
+      const layersResult = await postgres
         .from('layers')
         .insert(constructionLayers);
       
-      if (layersError) throw layersError;
+      if (layersResult.error) throw layersResult.error;
     }
 
-    return constructionData;
+    // Fetch the updated construction
+    const fetchResult = await postgres
+      .from('constructions')
+      .select('*')
+      .eq('id', id)
+      .execute();
+
+    if (fetchResult.error) throw fetchResult.error;
+
+    const data = fetchResult.data as Construction[];
+    return data && data.length > 0 ? data[0] : null;
   } catch (err) {
     console.error('Failed to update construction:', err);
     throw err;
@@ -335,19 +422,14 @@ export const updateConstruction = async (
 
 // Scenarios
 export const getScenarios = async (): Promise<Scenario[]> => {
-  const { data, error } = await supabase
+  const result = await postgres
     .from('scenarios')
-    .select(`
-      *,
-      scenario_constructions (
-        *,
-        construction:construction_id (name)
-      )
-    `)
-    .order('created_at', { ascending: false });
+    .select('*')
+    .order('created_at', { ascending: false })
+    .execute();
 
-  if (error) throw error;
-  return data || [];
+  if (result.error) throw result.error;
+  return (result.data || []) as Scenario[];
 };
 
 export const createScenario = async (
@@ -355,13 +437,24 @@ export const createScenario = async (
   constructions: { constructionId: string, elementType: string }[]
 ): Promise<Scenario> => {
   // First, insert the scenario
-  const { data: scenarioData, error: scenarioError } = await supabase
+  const scenarioResult = await postgres
     .from('scenarios')
-    .insert(scenario)
-    .select()
-    .single();
+    .insert(scenario);
 
-  if (scenarioError) throw scenarioError;
+  if (scenarioResult.error) throw scenarioResult.error;
+
+  // Fetch the created scenario
+  const fetchResult = await postgres
+    .from('scenarios')
+    .select('*')
+    .eq('name', scenario.name)
+    .execute();
+
+  if (fetchResult.error || !fetchResult.data || fetchResult.data.length === 0) {
+    throw new Error("Failed to fetch created scenario");
+  }
+
+  const scenarioData = (fetchResult.data as Scenario[])[0];
 
   if (constructions.length > 0) {
     // Then, insert the scenario_constructions
@@ -371,11 +464,11 @@ export const createScenario = async (
       element_type: c.elementType
     }));
 
-    const { error: constructionsError } = await supabase
+    const constructionsResult = await postgres
       .from('scenario_constructions')
       .insert(scenarioConstructions);
 
-    if (constructionsError) throw constructionsError;
+    if (constructionsResult.error) throw constructionsResult.error;
   }
 
   return scenarioData;
@@ -387,20 +480,20 @@ export const updateScenario = async (
   constructions: { constructionId: string, elementType: string }[]
 ): Promise<void> => {
   // First, update the scenario
-  const { error: scenarioError } = await supabase
+  const scenarioResult = await postgres
     .from('scenarios')
-    .update(scenario)
-    .eq('id', id);
+    .eq('id', id)
+    .update(scenario);
 
-  if (scenarioError) throw scenarioError;
+  if (scenarioResult.error) throw scenarioResult.error;
 
   // Then, delete existing scenario_constructions
-  const { error: deleteError } = await supabase
+  const deleteResult = await postgres
     .from('scenario_constructions')
-    .delete()
-    .eq('scenario_id', id);
+    .eq('scenario_id', id)
+    .delete();
 
-  if (deleteError) throw deleteError;
+  if (deleteResult.error) throw deleteResult.error;
 
   if (constructions.length > 0) {
     // Finally, insert new scenario_constructions
@@ -410,76 +503,48 @@ export const updateScenario = async (
       element_type: c.elementType
     }));
 
-    const { error: constructionsError } = await supabase
+    const constructionsResult = await postgres
       .from('scenario_constructions')
       .insert(scenarioConstructions);
 
-    if (constructionsError) throw constructionsError;
+    if (constructionsResult.error) throw constructionsResult.error;
   }
 };
 
 export const deleteScenario = async (id: string): Promise<void> => {
   // Deleting the scenario will cascade to scenario_constructions
-  const { error } = await supabase
+  const result = await postgres
     .from('scenarios')
-    .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .delete();
 
-  if (error) throw error;
+  if (result.error) throw result.error;
 };
 
-export const subscribeToMaterials = (callback: (materials: Material[]) => void) => {
-  return supabase
-    .channel('materials_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'materials' 
-    }, async () => {
-      const data = await getMaterials();
-      if (data) callback(data);
-    })
-    .subscribe();
+export const subscribeToMaterials = (_callback: (materials: Material[]) => void) => {
+  // Note: Real-time subscriptions not available with PostgreSQL client
+  // For real-time functionality, consider implementing WebSocket server or polling
+  console.warn('Real-time subscriptions not implemented for PostgreSQL client');
+  return { unsubscribe: () => {} };
 };
 
-export const subscribeToConstructions = (callback: (constructions: Construction[]) => void) => {
-  return supabase
-    .channel('constructions_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'constructions' 
-    }, async () => {
-      const data = await getConstructions();
-      if (data) callback(data);
-    })
-    .subscribe();
+export const subscribeToConstructions = (_callback: (constructions: Construction[]) => void) => {
+  // Note: Real-time subscriptions not available with PostgreSQL client
+  // For real-time functionality, consider implementing WebSocket server or polling
+  console.warn('Real-time subscriptions not implemented for PostgreSQL client');
+  return { unsubscribe: () => {} };
 };
 
-export const subscribeToConstructionSets = (callback: (sets: ConstructionSet[]) => void) => {
-  return supabase
-    .channel('construction_sets_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'construction_sets' 
-    }, async () => {
-      const data = await getConstructionSets();
-      if (data) callback(data);
-    })
-    .subscribe();
+export const subscribeToConstructionSets = (_callback: (sets: ConstructionSet[]) => void) => {
+  // Note: Real-time subscriptions not available with PostgreSQL client
+  // For real-time functionality, consider implementing WebSocket server or polling
+  console.warn('Real-time subscriptions not implemented for PostgreSQL client');
+  return { unsubscribe: () => {} };
 };
 
-export const subscribeToScenarios = (callback: (scenarios: Scenario[]) => void) => {
-  return supabase
-    .channel('scenarios_changes')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'scenarios' 
-    }, async () => {
-      const data = await getScenarios();
-      if (data) callback(data);
-    })
-    .subscribe();
+export const subscribeToScenarios = (_callback: (scenarios: Scenario[]) => void) => {
+  // Note: Real-time subscriptions not available with PostgreSQL client
+  // For real-time functionality, consider implementing WebSocket server or polling
+  console.warn('Real-time subscriptions not implemented for PostgreSQL client');
+  return { unsubscribe: () => {} };
 };

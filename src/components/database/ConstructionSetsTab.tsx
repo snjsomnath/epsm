@@ -28,7 +28,15 @@ import {
 import { Search, Plus, Edit, Trash2, X, Copy } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
-import type { ConstructionSetInsert } from '../../lib/database.types';
+import type { ConstructionSetInsert, ConstructionSet } from '../../lib/database.types';
+
+// Extended type to include construction names from API
+type ConstructionSetWithNames = ConstructionSet & {
+  wall_construction_name?: string | null;
+  roof_construction_name?: string | null;
+  floor_construction_name?: string | null;
+  window_construction_name?: string | null;
+};
 
 const defaultConstructionSet: ConstructionSetInsert = {
   name: '',
@@ -183,7 +191,9 @@ const ConstructionSetsTab = () => {
       )}
 
       <Grid container spacing={3}>
-        {filteredSets.map((set) => (
+        {filteredSets.map((set) => {
+          const setWithNames = set as ConstructionSetWithNames;
+          return (
           <Grid item xs={12} sm={6} md={4} key={set.id}>
             <Card sx={{ 
               height: '100%', 
@@ -220,10 +230,9 @@ const ConstructionSetsTab = () => {
                     <Typography variant="subtitle2" color="primary">
                       Wall Construction
                     </Typography>
-                    {set.wall_construction ? (
+                    {setWithNames.wall_construction_name ? (
                       <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{set.wall_construction.name}</span>
-                        <span>U: {set.wall_construction.u_value_w_m2k.toFixed(3)} W/m²K</span>
+                        <span>{setWithNames.wall_construction_name}</span>
                       </Typography>
                     ) : (
                       <Typography variant="body2" color="text.secondary" fontStyle="italic">
@@ -236,10 +245,9 @@ const ConstructionSetsTab = () => {
                     <Typography variant="subtitle2" color="secondary">
                       Roof Construction
                     </Typography>
-                    {set.roof_construction ? (
+                    {setWithNames.roof_construction_name ? (
                       <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{set.roof_construction.name}</span>
-                        <span>U: {set.roof_construction.u_value_w_m2k.toFixed(3)} W/m²K</span>
+                        <span>{setWithNames.roof_construction_name}</span>
                       </Typography>
                     ) : (
                       <Typography variant="body2" color="text.secondary" fontStyle="italic">
@@ -252,10 +260,9 @@ const ConstructionSetsTab = () => {
                     <Typography variant="subtitle2" color="success.main">
                       Floor Construction
                     </Typography>
-                    {set.floor_construction ? (
+                    {setWithNames.floor_construction_name ? (
                       <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{set.floor_construction.name}</span>
-                        <span>U: {set.floor_construction.u_value_w_m2k.toFixed(3)} W/m²K</span>
+                        <span>{setWithNames.floor_construction_name}</span>
                       </Typography>
                     ) : (
                       <Typography variant="body2" color="text.secondary" fontStyle="italic">
@@ -268,10 +275,9 @@ const ConstructionSetsTab = () => {
                     <Typography variant="subtitle2" color="info.main">
                       Window Construction
                     </Typography>
-                    {set.window_construction ? (
+                    {setWithNames.window_construction_name ? (
                       <Typography variant="body2" sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{set.window_construction.name}</span>
-                        <span>U: {set.window_construction.u_value_w_m2k.toFixed(3)} W/m²K</span>
+                        <span>{setWithNames.window_construction_name}</span>
                       </Typography>
                     ) : (
                       <Typography variant="body2" color="text.secondary" fontStyle="italic">
@@ -318,7 +324,7 @@ const ConstructionSetsTab = () => {
               </Box>
             </Card>
           </Grid>
-        ))}
+        )})}
         
         {filteredSets.length === 0 && (
           <Grid item xs={12}>

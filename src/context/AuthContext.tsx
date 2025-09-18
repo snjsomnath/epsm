@@ -1,13 +1,12 @@
 /* eslint-disable */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { Session, User } from '@supabase/supabase-js';
+import { authService, User, AuthSession } from '../lib/auth-browser';
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
-  session: Session | null;
+  session: AuthSession | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -36,25 +35,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsAuthenticated(!!session);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsAuthenticated(!!session);
-    });
-
-    return () => subscription.unsubscribe();
+    // Check for existing session in localStorage
+    const savedSession = localStorage.getItem('auth_session');
+    if (savedSession) {
+      try {
+        const parsedSession = JSON.parse(savedSession) as AuthSession;
+        
+        // For now, just assume the session is valid
+        // In a real implementation, you'd validate the token expiration
+        setSession(parsedSession);
+        setUser(parsedSession.user);
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Error parsing saved session:', error);
+        localStorage.removeItem('auth_session');
+      }
+    }
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -63,47 +63,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       // Demo bypass for development
       if (email === 'demo@chalmers.se' && password === 'demo123') {
-        // Create a mock session for demo user
-        const mockUser = {
-          id: 'demo-user-id',
-          email: 'demo@chalmers.se',
-          aud: 'authenticated',
-          role: 'authenticated',
-          email_confirmed_at: new Date().toISOString(),
-          phone: null,
-          confirmation_sent_at: undefined,
-          confirmed_at: new Date().toISOString(),
-          recovery_sent_at: undefined,
-          last_sign_in_at: new Date().toISOString(),
-          app_metadata: {},
-          user_metadata: {},
-          identities: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        } as unknown as User;
-
-        const mockSession = {
-          access_token: 'demo-access-token',
-          refresh_token: 'demo-refresh-token',
-          expires_in: 3600,
-          expires_at: Math.floor(Date.now() / 1000) + 3600,
-          token_type: 'bearer',
-          user: mockUser
-        } as Session;
-
-        setSession(mockSession);
-        setUser(mockUser);
+        const session = await authService.signIn({ email, password });
+        setSession(session);
+        setUser(session.user);
         setIsAuthenticated(true);
+        localStorage.setItem('auth_session', JSON.stringify(session));
         navigate('/');
         return;
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) throw error;
+      const session = await authService.signIn({ email, password });
+      setSession(session);
+      setUser(session.user);
+      setIsAuthenticated(true);
+      localStorage.setItem('auth_session', JSON.stringify(session));
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
@@ -113,11 +86,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signUp = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      clearError();
+      
+      const session = await authService.signUp({
         email,
-        password,
+        password
       });
-      if (error) throw error;
+      
+      setSession(session);
+      setUser(session.user);
+      setIsAuthenticated(true);
+      localStorage.setItem('auth_session', JSON.stringify(session));
       navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign up');
@@ -127,11 +106,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      await authService.signOut();
+      
       setIsAuthenticated(false);
       setUser(null);
       setSession(null);
+      localStorage.removeItem('auth_session');
       navigate('/login');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign out');

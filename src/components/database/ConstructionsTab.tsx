@@ -418,10 +418,10 @@ const ConstructionsTab = () => {
                   </Typography>
                   <List dense>
                     {construction.layers?.map((layer, index) => (
-                      <ListItem key={layer.id}>
+                      <ListItem key={`comp-layer-${index}`}>
                         <ListItemText
-                          primary={layer.material?.name || layer.glazing?.name}
-                          secondary={`Layer ${index + 1} - ${(layer.material?.thickness_m || layer.glazing?.thickness_m || 0).toFixed(3)} m`}
+                          primary={layer.material_name}
+                          secondary={`Layer ${index + 1} - ${(layer.thickness_m || 0).toFixed(3)} m`}
                         />
                       </ListItem>
                     ))}
@@ -511,17 +511,17 @@ const ConstructionsTab = () => {
                       </TableHead>
                       <TableBody>
                         {construction.layers?.map((layer, index) => {
-                          const material = layer.material || layer.glazing;
-                          const rValue = material ? 
-                            material.thickness_m / material.conductivity_w_mk : 
+                          // Use flat properties from the updated API
+                          const rValue = layer.thickness_m && layer.conductivity_w_mk ? 
+                            layer.thickness_m / layer.conductivity_w_mk : 
                             0;
                           
                           return (
-                            <TableRow key={layer.id}>
+                            <TableRow key={`layer-${index}`}>
                               <TableCell>{index + 1}</TableCell>
-                              <TableCell>{material?.name}</TableCell>
-                              <TableCell align="right">{material?.thickness_m.toFixed(4)}</TableCell>
-                              <TableCell align="right">{material?.conductivity_w_mk.toFixed(3)}</TableCell>
+                              <TableCell>{layer.material_name}</TableCell>
+                              <TableCell align="right">{layer.thickness_m?.toFixed(4)}</TableCell>
+                              <TableCell align="right">{layer.conductivity_w_mk?.toFixed(3)}</TableCell>
                               <TableCell align="right">{rValue.toFixed(4)}</TableCell>
                             </TableRow>
                           );
