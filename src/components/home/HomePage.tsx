@@ -25,7 +25,7 @@ import {
 // Fix the import for Lucide icons
 import { Database, Home, FlaskConical, Activity, BarChart, Cpu, HardDrive, MemoryStick } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
-import { supabase } from '../../lib/supabase';
+import { getMaterials, getConstructions } from '../../lib/database-browser';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 
@@ -76,38 +76,28 @@ const HomePage = () => {
     }
   }, [showTourNextTime]);
 
-  // Check database connection and get stats
+    // Check database connection and get stats
   useEffect(() => {
     const checkDatabase = async () => {
       try {
-        // Test connection with a simple query
-        const { data: materialsData, error: materialsError } = await supabase
-          .from('materials')
-          .select('created_at')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        const { data: constructionsData, error: constructionsError } = await supabase
-          .from('constructions')
-          .select('created_at')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (materialsError || constructionsError) {
-          setDbConnected(false);
-          return;
-        }
-
-        // Get counts
-        const [materialsCount, constructionsCount] = await Promise.all([
-          supabase.from('materials').select('id', { count: 'exact', head: true }),
-          supabase.from('constructions').select('id', { count: 'exact', head: true })
+        console.log('🔍 Checking database connection and getting stats...');
+        
+        // Try to fetch data from the API via browser service
+        const [materialsData, constructionsData] = await Promise.all([
+          getMaterials(),
+          getConstructions()
         ]);
 
-        // Find latest update across all tables
+        console.log(`📊 Found ${materialsData.length} materials, ${constructionsData.length} constructions`);
+
+        // Calculate stats
+        const materialsCount = materialsData.length;
+        const constructionsCount = constructionsData.length;
+
+        // Find latest update from materials data
         const allDates = [
-          ...(materialsData || []).map(m => new Date(m.created_at)),
-          ...(constructionsData || []).map(c => new Date(c.created_at))
+          ...materialsData.map(m => new Date(m.created_at || m.date_created)),
+          ...constructionsData.map(c => new Date(c.created_at || c.date_created))
         ].filter(date => date instanceof Date && !isNaN(date.getTime()));
 
         const latestUpdate = allDates.length > 0 
@@ -116,12 +106,15 @@ const HomePage = () => {
 
         setDbConnected(true);
         setDbStats({
-          materials: materialsCount.count || 0,
-          constructions: constructionsCount.count || 0,
+          materials: materialsCount,
+          constructions: constructionsCount,
           lastUpdate: latestUpdate
         });
+
+        console.log('✅ Database connection successful');
+        
       } catch (err) {
-        console.error('Database connection check failed:', err);
+        console.error('❌ Database connection check failed:', err);
         setDbConnected(false);
       }
     };
@@ -149,7 +142,7 @@ const HomePage = () => {
         console.error('Failed to fetch system resources:', error);
         // Use fallback data with error information for UI
         setSystemResources({
-          error: error.message || 'Connection error',
+          error: (error as Error).message || 'Connection error',
           cpu: {
             logical_cores: '?',
             physical_cores: '?',
