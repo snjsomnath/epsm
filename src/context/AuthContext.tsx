@@ -61,17 +61,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       clearError();
 
-      // Demo bypass for development
-      if (email === 'demo@chalmers.se' && password === 'demo123') {
-        const session = await authService.signIn({ email, password });
-        setSession(session);
-        setUser(session.user);
-        setIsAuthenticated(true);
-        localStorage.setItem('auth_session', JSON.stringify(session));
-        navigate('/');
-        return;
-      }
-
       const session = await authService.signIn({ email, password });
       setSession(session);
       setUser(session.user);

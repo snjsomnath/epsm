@@ -1,0 +1,83 @@
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.middleware.csrf import get_token
+import json
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_login(request):
+    """API login endpoint for React frontend"""
+    try:
+        data = json.loads(request.body)
+        email = data.get('email')
+        password = data.get('password')
+        
+        if not email or not password:
+            return JsonResponse({
+                'error': 'Email and password are required'
+            }, status=400)
+        
+        # Try to authenticate using email as username
+        user = authenticate(request, username=email, password=password)
+        
+        if user is not None:
+            login(request, user)
+            return JsonResponse({
+                'success': True,
+                'user': {
+                    'id': str(user.pk),
+                    'email': user.email,
+                    'username': user.username,
+                    'created_at': user.date_joined.isoformat()
+                },
+                'session': {
+                    'sessionid': request.session.session_key
+                }
+            })
+        else:
+            return JsonResponse({
+                'error': 'Invalid credentials'
+            }, status=401)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'error': 'Invalid JSON'
+        }, status=400)
+    except Exception as e:
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_logout(request):
+    """API logout endpoint"""
+    logout(request)
+    return JsonResponse({'success': True})
+
+@require_http_methods(["GET"])
+def api_user(request):
+    """Get current user information"""
+    if request.user.is_authenticated:
+        return JsonResponse({
+            'user': {
+                'id': str(request.user.pk),
+                'email': request.user.email,
+                'username': request.user.username,
+                'created_at': request.user.date_joined.isoformat()
+            }
+        })
+    else:
+        return JsonResponse({
+            'error': 'Not authenticated'
+        }, status=401)
+
+@require_http_methods(["GET"])
+def csrf_token(request):
+    """Get CSRF token for frontend"""
+    return JsonResponse({
+        'csrfToken': get_token(request)
+    })

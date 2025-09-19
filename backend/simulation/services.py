@@ -16,7 +16,6 @@ import sqlite3
 class EnergyPlusSimulator:
     def __init__(self, simulation: Simulation):
         self.simulation = simulation
-        self.ep_path = settings.ENERGYPLUS_PATH
         
         # Ensure we're using media_root for all storage
         self.media_root = Path(settings.MEDIA_ROOT)
@@ -41,72 +40,101 @@ class EnergyPlusSimulator:
         print(f"Simulation {simulation.id} results will be saved to: {self.results_dir}")
         print(f"Simulation {simulation.id} files will be saved to: {self.files_dir}")
 
-    def run_single_simulation(self, idf_file, weather_file, energyplus_exe, idf_results_dir):
+    def run_single_simulation(self, idf_file, weather_file, simulation_dir):
+        """Run a single EnergyPlus simulation using Docker container"""
         import subprocess
+        import shutil
 
         idf_basename = os.path.basename(idf_file.file.path)
         idf_name_no_ext = os.path.splitext(idf_basename)[0]
 
-        temp_idf_path = os.path.join(idf_results_dir, 'input.idf')
-        temp_epw_path = os.path.join(idf_results_dir, 'weather.epw')
-        Path(idf_results_dir).mkdir(parents=True, exist_ok=True)
+        # Prepare simulation directory
+        Path(simulation_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Copy files to simulation directory
+        temp_idf_path = os.path.join(simulation_dir, 'input.idf')
+        temp_epw_path = os.path.join(simulation_dir, 'weather.epw')
 
-        with open(idf_file.file.path, 'rb') as src, open(temp_idf_path, 'wb') as dst:
-            dst.write(src.read())
+        shutil.copy2(idf_file.file.path, temp_idf_path)
+        shutil.copy2(weather_file.file.path, temp_epw_path)
 
-        with open(weather_file.file.path, 'rb') as src, open(temp_epw_path, 'wb') as dst:
-            dst.write(src.read())
-
-        command = [
-            energyplus_exe,
-            '--weather', temp_epw_path,
-            '--output-directory', str(idf_results_dir),
+        # Use NREL EnergyPlus Docker container
+        docker_command = [
+            'docker', 'run', '--rm',
+            '-v', f'{simulation_dir}:/var/simdata/energyplus',
+            'nrel/energyplus:23.2.0',
+            'energyplus',
+            '--weather', '/var/simdata/energyplus/weather.epw',
+            '--output-directory', '/var/simdata/energyplus',
             '--expandobjects',
             '--readvars',
-            temp_idf_path
+            '/var/simdata/energyplus/input.idf'
         ]
 
-        process = subprocess.run(
-            command, capture_output=True, text=True, cwd=str(idf_results_dir), timeout=300
-        )
+        try:
+            # Run EnergyPlus simulation in Docker
+            process = subprocess.run(
+                docker_command, 
+                capture_output=True, 
+                text=True, 
+                timeout=600,  # 10 minute timeout
+                cwd=simulation_dir
+            )
 
-        output_log = {
-            "idf_file": idf_file.file.name,
-            "stdout": process.stdout,
-            "stderr": process.stderr,
-            "returncode": process.returncode,
-            "output_dir": str(idf_results_dir)
-        }
+            output_log = {
+                "idf_file": idf_file.file.name,
+                "stdout": process.stdout,
+                "stderr": process.stderr,
+                "returncode": process.returncode,
+                "output_dir": str(simulation_dir),
+                "docker_command": ' '.join(docker_command)
+            }
 
-        # Save output logs
-        with open(os.path.join(idf_results_dir, 'run_output.log'), 'w') as f:
-            f.write(f"COMMAND: {' '.join(command)}\n\n")
-            f.write(f"STDOUT:\n{process.stdout}\n\nSTDERR:\n{process.stderr}")
+            # Save output logs
+            with open(os.path.join(simulation_dir, 'run_output.log'), 'w') as f:
+                f.write(f"DOCKER COMMAND: {' '.join(docker_command)}\n\n")
+                f.write(f"STDOUT:\n{process.stdout}\n\nSTDERR:\n{process.stderr}")
 
-        # Rename standard output files
-        standard_files = {
-            'eplusout.err': 'output.err',
-            'eplusout.eso': 'output.eso',
-            'eplusout.csv': 'output.csv',
-            'eplusout.html': 'output.html',
-            'eplusout.mtd': 'output.mtd',
-            'eplusout.mtr': 'output.mtr',
-            'eplusout.rdd': 'output.rdd',
-            'eplusout.shd': 'output.shd',
-            'eplustbl.htm': 'output.htm',
-            'epluszsz.csv': 'output_zones.csv',
-            'eplusssz.csv': 'output_system.csv',
-            'eplusout.sql': 'output.sql'
-        }
-        for src_name, dst_name in standard_files.items():
-            src_path = os.path.join(idf_results_dir, src_name)
-            if os.path.exists(src_path):
-                dst_path = os.path.join(idf_results_dir, dst_name)
-                os.rename(src_path, dst_path)
+            # Rename standard output files (same as before)
+            standard_files = {
+                'eplusout.err': 'output.err',
+                'eplusout.eso': 'output.eso',
+                'eplusout.csv': 'output.csv',
+                'eplusout.html': 'output.html',
+                'eplusout.mtd': 'output.mtd',
+                'eplusout.mtr': 'output.mtr',
+                'eplusout.rdd': 'output.rdd',
+                'eplusout.shd': 'output.shd',
+                'eplustbl.htm': 'output.htm',
+                'epluszsz.csv': 'output_zones.csv',
+                'eplusssz.csv': 'output_system.csv',
+                'eplusout.sql': 'output.sql'
+            }
+            
+            for src_name, dst_name in standard_files.items():
+                src_path = os.path.join(simulation_dir, src_name)
+                if os.path.exists(src_path):
+                    dst_path = os.path.join(simulation_dir, dst_name)
+                    os.rename(src_path, dst_path)
 
-        return output_log
+            return output_log
 
-    def run_parallel_simulations(self, idf_files, weather_file, energyplus_exe, results_dir, max_workers=4):
+        except subprocess.TimeoutExpired:
+            return {
+                "idf_file": idf_file.file.name,
+                "error": "Simulation timed out after 10 minutes",
+                "returncode": -1,
+                "output_dir": str(simulation_dir)
+            }
+        except Exception as e:
+            return {
+                "idf_file": idf_file.file.name,
+                "error": str(e),
+                "returncode": -1,
+                "output_dir": str(simulation_dir)
+            }
+
+    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers=4):
         # Run multiple IDF files in parallel using ThreadPoolExecutor
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -119,7 +147,7 @@ class EnergyPlusSimulator:
                 idf_results_dir = results_dir / idf_name_no_ext
                 future = executor.submit(
                     self.run_single_simulation,
-                    idf_file, weather_file, energyplus_exe, str(idf_results_dir)
+                    idf_file, weather_file, str(idf_results_dir)
                 )
                 futures.append((idf_file, future))
             for idf_file, future in futures:
@@ -130,7 +158,7 @@ class EnergyPlusSimulator:
                     logs.append((idf_file, {"error": str(e)}))
         return logs
 
-    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, energyplus_exe, results_dir, max_workers=4):
+    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers=4):
         """
         For each base IDF and each construction set, generate a new IDF with the construction set inserted,
         store it in a subfolder, and run all in parallel.
@@ -174,7 +202,6 @@ class EnergyPlusSimulator:
                     self.run_single_simulation,
                     type("FakeFile", (), {"file": type("F", (), {"path": str(entry["idf_path"]), "name": str(entry["idf_path"].name)})})(),
                     weather_file,
-                    energyplus_exe,
                     str(entry["variant_dir"])
                 )
                 future_map[future] = entry
@@ -193,10 +220,9 @@ class EnergyPlusSimulator:
                 except Exception as e:
                     results.append({"error": str(e), "variant_idx": entry["variant_idx"], "idf_idx": entry["idf_idx"]})
 
-        # Save all results to SQLite in the root of the simulation results dir
-        sqlite_path = results_dir / 'batch_results.db'
-        print(f"Saving batch results to: {sqlite_path}")
-        self.save_results_to_sqlite(sqlite_path, results, job_info={
+        # Save all results to PostgreSQL database
+        print(f"Saving batch results to database for simulation {self.simulation.id}")
+        self.save_results_to_database(results, job_info={
             "simulation_id": self.simulation.id,
             "run_id": self.run_id
         })
@@ -214,7 +240,9 @@ class EnergyPlusSimulator:
         print(f"Batch parametric simulation completed: {len(results)} results")
 
     def run_simulation(self, parallel=False, max_workers=4, batch_mode=False, construction_sets=None):
-        # ...existing code up to idf_files and weather_file extraction...
+        """
+        Main method to run simulations using Docker EnergyPlus containers.
+        """
         try:
             self.simulation.status = 'running'
             self.simulation.save()
@@ -225,32 +253,12 @@ class EnergyPlusSimulator:
             if not idf_files or not weather_file:
                 raise ValueError("Missing required simulation files")
 
-            energyplus_exe = settings.ENERGYPLUS_EXE if hasattr(settings, 'ENERGYPLUS_EXE') else os.path.join(self.ep_path, 'energyplus.exe')
-
             # Batch parametric mode: run all variants for all IDFs
             if batch_mode and construction_sets:
                 self.run_batch_parametric_simulation(
-                    idf_files, construction_sets, weather_file, energyplus_exe, self.results_dir, max_workers=max_workers
+                    idf_files, construction_sets, weather_file, self.results_dir, max_workers=max_workers
                 )
                 return
-
-            if not os.path.exists(energyplus_exe):
-                print(f"ERROR: EnergyPlus executable not found at: {energyplus_exe}")
-                # Try with or without .exe extension
-                alternative_exe = energyplus_exe.replace('.exe', '') if energyplus_exe.endswith('.exe') else f"{energyplus_exe}.exe"
-                if os.path.exists(alternative_exe):
-                    print(f"Found EnergyPlus at alternative path: {alternative_exe}")
-                    energyplus_exe = alternative_exe
-                else:
-                    # Try to locate energyplus on the system
-                    import shutil
-                    eplus_bin = shutil.which('energyplus') or shutil.which('energyplus.exe')
-                    if eplus_bin:
-                        print(f"Found EnergyPlus in PATH at: {eplus_bin}")
-                        energyplus_exe = eplus_bin
-                    else:
-                        print("ERROR: EnergyPlus not found in PATH. Make sure it's installed correctly.")
-                        raise FileNotFoundError(f"EnergyPlus executable not found at: {energyplus_exe} or {alternative_exe}")
 
             # Check if IDF/weather files exist
             for idf_file in idf_files:
@@ -264,7 +272,7 @@ class EnergyPlusSimulator:
 
             if parallel:
                 print(f"Running simulations in parallel mode (max_workers={max_workers})")
-                logs = self.run_parallel_simulations(idf_files, weather_file, energyplus_exe, self.results_dir, max_workers=max_workers)
+                logs = self.run_parallel_simulations(idf_files, weather_file, self.results_dir, max_workers=max_workers)
                 for idf_file, log in logs:
                     idf_basename = os.path.basename(idf_file.file.path)
                     idf_name_no_ext = os.path.splitext(idf_basename)[0]
@@ -279,7 +287,7 @@ class EnergyPlusSimulator:
                     idf_basename = os.path.basename(idf_file.file.path)
                     idf_name_no_ext = os.path.splitext(idf_basename)[0]
                     idf_results_dir = self.results_dir / idf_name_no_ext
-                    log = self.run_single_simulation(idf_file, weather_file, energyplus_exe, str(idf_results_dir))
+                    log = self.run_single_simulation(idf_file, weather_file, str(idf_results_dir))
                     logs.append((idf_file, log))
                     results_path = idf_results_dir / 'output'
                     file_results = self.process_file_results(results_path, idf_file)
@@ -291,10 +299,9 @@ class EnergyPlusSimulator:
             with open(combined_results_path, 'w') as f:
                 json.dump(all_results, f)
 
-            # If batch_mode, save results to local sqlite
+            # If batch_mode, save results to PostgreSQL database
             if batch_mode:
-                sqlite_path = self.results_dir / 'batch_results.db'
-                self.save_results_to_sqlite(sqlite_path, all_results, job_info={
+                self.save_results_to_database(all_results, job_info={
                     "simulation_id": self.simulation.id,
                     "run_id": self.run_id
                 })
@@ -360,54 +367,61 @@ class EnergyPlusSimulator:
                 'status': 'error'
             }
 
-    def save_results_to_sqlite(self, sqlite_path, results, job_info=None):
-        """Save parsed simulation results and job info to a local SQLite database."""
-        conn = sqlite3.connect(str(sqlite_path))
-        c = conn.cursor()
-        # Create table if not exists
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS simulation_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                simulation_id INTEGER,
-                run_id TEXT,
-                file_name TEXT,
-                building TEXT,
-                total_energy_use REAL,
-                heating_demand REAL,
-                cooling_demand REAL,
-                lighting_demand REAL,
-                equipment_demand REAL,
-                run_time REAL,
-                total_area REAL,
-                status TEXT,
-                raw_json TEXT
-            )
-        ''')
-        # Insert each result
+    def save_results_to_database(self, results, job_info=None):
+        """Save parsed simulation results to PostgreSQL database models"""
+        from .models import SimulationResult, SimulationZone, SimulationEnergyUse
+        
         for result in results:
-            c.execute('''
-                INSERT INTO simulation_results (
-                    simulation_id, run_id, file_name, building, total_energy_use,
-                    heating_demand, cooling_demand, lighting_demand, equipment_demand,
-                    run_time, total_area, status, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                job_info.get("simulation_id") if job_info else None,
-                job_info.get("run_id") if job_info else None,
-                result.get("fileName"),
-                result.get("building"),
-                result.get("totalEnergyUse"),
-                result.get("heatingDemand"),
-                result.get("coolingDemand"),
-                result.get("lightingDemand"),
-                result.get("equipmentDemand"),
-                result.get("runTime"),
-                result.get("totalArea"),
-                result.get("status"),
-                json.dumps(result)
-            ))
-        conn.commit()
-        conn.close()
+            try:
+                # Create main simulation result
+                simulation_result = SimulationResult.objects.create(
+                    simulation=self.simulation,
+                    run_id=job_info.get("run_id") if job_info else str(self.simulation.id),
+                    file_name=result.get("fileName", "unknown.idf"),
+                    building_name=result.get("building", ""),
+                    total_energy_use=result.get("totalEnergyUse"),
+                    heating_demand=result.get("heatingDemand"),
+                    cooling_demand=result.get("coolingDemand"),
+                    lighting_demand=result.get("lightingDemand"),
+                    equipment_demand=result.get("equipmentDemand"),
+                    total_area=result.get("totalArea"),
+                    run_time=result.get("runTime"),
+                    status=result.get("status", "success"),
+                    error_message=result.get("error", ""),
+                    raw_json=result,
+                    variant_idx=result.get("variant_idx"),
+                    idf_idx=result.get("idf_idx"),
+                    construction_set_data=result.get("construction_set")
+                )
+                
+                # Create zone records
+                zones = result.get("zones", [])
+                for zone_data in zones:
+                    SimulationZone.objects.create(
+                        simulation_result=simulation_result,
+                        zone_name=zone_data.get("name", ""),
+                        area=zone_data.get("area"),
+                        volume=zone_data.get("volume")
+                    )
+                
+                # Create energy use records
+                energy_uses = result.get("energy_use", {})
+                for end_use, values in energy_uses.items():
+                    if isinstance(values, dict):
+                        SimulationEnergyUse.objects.create(
+                            simulation_result=simulation_result,
+                            end_use=end_use,
+                            electricity=values.get("electricity", 0.0),
+                            district_heating=values.get("district_heating", 0.0),
+                            total=values.get("total", 0.0)
+                        )
+                
+                print(f"Saved simulation result to database: {simulation_result.id}")
+                
+            except Exception as e:
+                print(f"Error saving result to database: {e}")
+                import traceback
+                traceback.print_exc()
 
 def parse_html_with_table_lookup(html_path, log_path, idf_files):
     """Parse EnergyPlus HTML output and log to extract structured results."""

@@ -42,12 +42,12 @@ MIDDLEWARE = [
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = not DEBUG  # Only require HTTPS for CSRF in production
+SESSION_COOKIE_SECURE = not DEBUG  # Only require HTTPS for sessions in production
 SECURE_SSL_REDIRECT = not DEBUG
-SECURE_HSTS_SECONDS = 31536000  # 1 year
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0  # Only HSTS in production
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
 
 # File upload settings
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
@@ -95,14 +95,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.routing.application'
 
+# Database configuration - updated for Docker
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'epsm_db',
-        'USER': 'postgres',
-        'PASSWORD': '',  # Add your PostgreSQL password if you have one
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.getenv('DB_NAME', 'epsm_db'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
@@ -144,9 +145,11 @@ os.makedirs(SIMULATION_RESULTS_DIR, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings - add or update these
+# CORS settings - updated for Docker
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Add your frontend development server
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:3000",  # Alternative React dev server
+    "http://frontend:5173",   # Docker service name
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -172,9 +175,9 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
-# EnergyPlus simulation settings
-# Update the path to include .exe for Windows
-ENERGYPLUS_PATH = os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0')
-ENERGYPLUS_EXE = os.path.join(ENERGYPLUS_PATH, 'energyplus.exe')  # Add .exe extension for Windows
+# Simulation settings - Docker-based
+# No local EnergyPlus installation needed - using nrel/energyplus Docker image
+SIMULATION_DOCKER_IMAGE = os.getenv('ENERGYPLUS_DOCKER_IMAGE', 'nrel/energyplus:23.2.0')
+SIMULATION_TIMEOUT = int(os.getenv('SIMULATION_TIMEOUT', '600'))  # 10 minutes default
 WEATHER_FILES_DIR = BASE_DIR / 'weather_files'
 SIMULATION_RESULTS_DIR = BASE_DIR / 'media/simulation_results'
