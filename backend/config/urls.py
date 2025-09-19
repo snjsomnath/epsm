@@ -4,6 +4,7 @@ from django.http import HttpResponse
 from django.conf import settings
 from django.conf.urls.static import static
 from simulation import views as simulation_views
+from simulation import auth_views
 import json
 from django.http import JsonResponse
 import datetime
@@ -31,6 +32,13 @@ def root_view(request):
 urlpatterns = [
     path('', root_view),
     path('admin/', admin.site.urls),
+    
+    # Authentication endpoints
+    path('api/auth/login/', auth_views.api_login, name='api_login'),
+    path('api/auth/logout/', auth_views.api_logout, name='api_logout'),
+    path('api/auth/user/', auth_views.api_user, name='api_user'),
+    path('api/auth/csrf/', auth_views.csrf_token, name='csrf_token'),
+    
     # Direct endpoints
     path('api/parse/idf/', simulation_views.parse_idf, name='parse_idf'),
     path('api/components/add/', simulation_views.add_components, name='add_components'),

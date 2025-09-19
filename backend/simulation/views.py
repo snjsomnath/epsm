@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-from .idf_parser import IdfParser
+from .idf_parser import EnergyPlusIDFParser
 #from database.models import Material, Construction
 from database.models import Material, Construction
 from .database_client import check_material_exists, check_construction_exists
@@ -66,8 +66,8 @@ def parse_idf(request):
         for file_index, file in enumerate(files):
             print("Processing file:", file.name)
             content = file.read().decode('utf-8')
-            parser = IdfParser(content)
-            file_data = parser.parse()
+            parser = EnergyPlusIDFParser()
+            file_data = parser.parse(content)
             
             # Add database comparison for materials
             for material in file_data['materials']:
@@ -254,7 +254,8 @@ def run_simulation(request):
             # Create the database record
             SimulationFile.objects.create(
                 simulation=simulation,
-                file=file_path,
+                file_path=file_path,
+                file_name=idf_file.name,
                 file_type='idf',
                 original_name=idf_file.name  # Store original filename for reference
             )
@@ -272,7 +273,8 @@ def run_simulation(request):
         # Create the database record
         SimulationFile.objects.create(
             simulation=simulation,
-            file=weather_path,
+            file_path=weather_path,
+            file_name=weather_file.name,
             file_type='weather',
             original_name=weather_file.name  # Store original filename for reference
         )
@@ -443,42 +445,63 @@ def system_resources(request):
 @permission_classes([AllowAny])
 def parallel_simulation_results(request, simulation_id):
     """
-    Fetch simulation results from the SQLite file for parallel/batch simulations.
+    Fetch simulation results from PostgreSQL database for parallel/batch simulations.
     """
     try:
-        # Try both possible locations for batch_results.db
-        media_root = Path(settings.MEDIA_ROOT)
-        sim_results_dir = media_root / 'simulation_results' / str(simulation_id)
-        sqlite_path = sim_results_dir / 'batch_results.db'
-        # Fallback: also check for batch_results.db in subfolders (e.g. variant folders)
-        if not sqlite_path.exists():
-            # Search recursively for batch_results.db
-            found = list(sim_results_dir.rglob('batch_results.db'))
-            if found:
-                sqlite_path = found[0]
-        if not sqlite_path.exists():
+        from .models import SimulationResult
+        
+        # Get all results for this simulation
+        results = SimulationResult.objects.filter(simulation_id=simulation_id).select_related()
+        
+        if not results.exists():
             return JsonResponse({
-                'error': f'SQLite results file not found for simulation {simulation_id} in {sim_results_dir}'
+                'error': f'No simulation results found for simulation {simulation_id}'
             }, status=404)
 
-        # Connect and fetch all results
-        conn = sqlite3.connect(str(sqlite_path))
-        c = conn.cursor()
-        c.execute('SELECT * FROM simulation_results')
-        columns = [desc[0] for desc in c.description]
-        rows = c.fetchall()
-        results = []
-        for row in rows:
-            row_dict = dict(zip(columns, row))
-            # Parse raw_json if present
-            if 'raw_json' in row_dict and row_dict['raw_json']:
-                try:
-                    row_dict['parsed'] = json.loads(row_dict['raw_json'])
-                except Exception:
-                    row_dict['parsed'] = None
-            results.append(row_dict)
-        conn.close()
-        return JsonResponse(results, safe=False)
+        # Convert to list format similar to SQLite version
+        results_data = []
+        for result in results:
+            result_dict = {
+                'id': result.id,
+                'simulation_id': result.simulation_id,
+                'run_id': result.run_id,
+                'file_name': result.file_name,
+                'building': result.building_name,
+                'total_energy_use': result.total_energy_use,
+                'heating_demand': result.heating_demand,
+                'cooling_demand': result.cooling_demand,
+                'lighting_demand': result.lighting_demand,
+                'equipment_demand': result.equipment_demand,
+                'run_time': result.run_time,
+                'total_area': result.total_area,
+                'status': result.status,
+                'variant_idx': result.variant_idx,
+                'idf_idx': result.idf_idx,
+                'construction_set': result.construction_set_data,
+                'created_at': result.created_at.isoformat(),
+                'raw_json': result.raw_json,
+                'zones': [
+                    {
+                        'name': zone.zone_name,
+                        'area': zone.area,
+                        'volume': zone.volume
+                    }
+                    for zone in result.zones.all()
+                ],
+                'energy_uses': [
+                    {
+                        'end_use': energy.end_use,
+                        'electricity': energy.electricity,
+                        'district_heating': energy.district_heating,
+                        'total': energy.total
+                    }
+                    for energy in result.energy_uses.all()
+                ]
+            }
+            results_data.append(result_dict)
+            
+        return JsonResponse(results_data, safe=False)
+        
     except Exception as e:
         import traceback
         traceback.print_exc()

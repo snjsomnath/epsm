@@ -1,410 +1,275 @@
-from eppy.modeleditor import IDF
-from eppy.runner.run_functions import install_paths
-from typing import Dict, List, Optional
-from dataclasses import dataclass
 import os
+from pathlib import Path
 import tempfile
+import logging
 
-# Configure eppy paths
-install_paths(
-    os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0'),
-    None  # Will use default IDD from EnergyPlus installation
-)
+logger = logging.getLogger(__name__)
 
-@dataclass
-class Material:
-    name: str
-    thickness: float
-    conductivity: float
-    density: float
-    specific_heat: float
-    roughness: str = "MediumRough"
-    thermal_absorptance: float = 0.9
-    solar_absorptance: float = 0.7
-    visible_absorptance: float = 0.7
+try:
+    from eppy import modeleditor
+    from eppy.modeleditor import IDF
+    EPPY_AVAILABLE = True
+except ImportError:
+    EPPY_AVAILABLE = False
+    logger.warning("Eppy not available, using simplified parser")
 
-@dataclass
-class Construction:
-    name: str
-    layers: List[str]
-    element_type: str = "wall"
-
-@dataclass
-class Zone:
-    name: str
-    area: Optional[float] = None
-    volume: Optional[float] = None
-    ceiling_height: Optional[float] = None
-
-class IdfParser:
-    def __init__(self, content: str):
-        self.content = content
-        self.materials: Dict[str, Material] = {}
-        self.constructions: Dict[str, Construction] = {}
-        self.zones: Dict[str, Zone] = {}
-
-        # Create a unique temporary file for eppy
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".idf", mode="w", encoding="utf-8")
-        tmp.write(content)
-        tmp.close()
-        self.temp_path = tmp.name
-
-        # Set IDD file for eppy
-        idd_path = os.path.join(
-            os.getenv('ENERGYPLUS_PATH', 'C:\\EnergyPlusV23-2-0'),
-            'Energy+.idd'
-        )
-        IDF.setiddname(idd_path)
-
-        # Initialize IDF object
-        self.idf = IDF(self.temp_path)
-
-    def __del__(self):
-        # Cleanup temporary file
-        if hasattr(self, "temp_path") and os.path.exists(self.temp_path):
-            os.remove(self.temp_path)
-
-    def parse(self) -> Dict:
-        """Parse IDF content using eppy and extract components."""
-        # First parse all components
-        self._parse_materials()
-        self._parse_constructions()
-        self._parse_zones()
+class EnergyPlusIDFParser:
+    def __init__(self):
+        self.idd_file_path = None
+        self.setup_idd()
+    
+    def setup_idd(self):
+        """Setup the IDD file for eppy"""
+        if not EPPY_AVAILABLE:
+            return
+            
+        # Look for IDD file in the backend directory
+        backend_dir = Path(__file__).parent.parent
+        idd_path = backend_dir / "Energy+.idd"
         
-        # Then identify and remove unused constructions
-        self._remove_unused_constructions()
+        if idd_path.exists():
+            self.idd_file_path = str(idd_path)
+            try:
+                # Set the IDD file for eppy
+                IDF.setiddname(self.idd_file_path)
+                logger.info(f"IDD file set to: {self.idd_file_path}")
+            except Exception as e:
+                logger.error(f"Failed to set IDD file: {e}")
+                self.idd_file_path = None
+        else:
+            logger.warning(f"IDD file not found at {idd_path}")
+    
+    def parse(self, idf_content):
+        """Parse IDF content and extract relevant information"""
+        if not EPPY_AVAILABLE or not self.idd_file_path:
+            return self._simple_parse(idf_content)
         
-        # Clear and re-parse to ensure we only have the remaining items
-        self._parse_materials()
-        self._parse_constructions()
+        return self._eppy_parse(idf_content)
+    
+    def _eppy_parse(self, idf_content):
+        """Parse using eppy for full IDF analysis"""
+        try:
+            # Create temporary file for the IDF content
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.idf', delete=False) as temp_file:
+                temp_file.write(idf_content)
+                temp_file_path = temp_file.name
+            
+            try:
+                # Load the IDF file using eppy
+                idf = IDF(temp_file_path)
+                
+                # Extract building information
+                buildings = idf.idfobjects['BUILDING']
+                building_info = {}
+                if buildings:
+                    building = buildings[0]
+                    building_info = {
+                        'name': getattr(building, 'Name', 'Unknown'),
+                        'north_axis': getattr(building, 'North_Axis', 0),
+                        'terrain': getattr(building, 'Terrain', 'Unknown'),
+                        'loads_convergence_tolerance': getattr(building, 'Loads_Convergence_Tolerance_Value', 0.04),
+                        'temperature_convergence_tolerance': getattr(building, 'Temperature_Convergence_Tolerance_Value', 0.4)
+                    }
+                
+                # Extract zones
+                zones = []
+                zone_objects = idf.idfobjects['ZONE']
+                for zone in zone_objects:
+                    zones.append({
+                        'name': getattr(zone, 'Name', 'Unknown'),
+                        'direction_of_relative_north': getattr(zone, 'Direction_of_Relative_North', 0),
+                        'x_origin': getattr(zone, 'X_Origin', 0),
+                        'y_origin': getattr(zone, 'Y_Origin', 0),
+                        'z_origin': getattr(zone, 'Z_Origin', 0),
+                        'type': getattr(zone, 'Type', 1),
+                        'multiplier': getattr(zone, 'Multiplier', 1)
+                    })
+                
+                # Extract materials
+                materials = []
+                
+                # Regular materials
+                material_objects = idf.idfobjects.get('MATERIAL', [])
+                for material in material_objects:
+                    materials.append({
+                        'name': getattr(material, 'Name', 'Unknown'),
+                        'type': 'Material',
+                        'roughness': getattr(material, 'Roughness', 'Unknown'),
+                        'thickness': getattr(material, 'Thickness', 0),
+                        'conductivity': getattr(material, 'Conductivity', 0),
+                        'density': getattr(material, 'Density', 0),
+                        'specific_heat': getattr(material, 'Specific_Heat', 0),
+                        'thermal_absorptance': getattr(material, 'Thermal_Absorptance', 0.9),
+                        'solar_absorptance': getattr(material, 'Solar_Absorptance', 0.7),
+                        'visible_absorptance': getattr(material, 'Visible_Absorptance', 0.7)
+                    })
+                
+                # No-mass materials
+                nomass_objects = idf.idfobjects.get('MATERIAL:NOMASS', [])
+                for material in nomass_objects:
+                    materials.append({
+                        'name': getattr(material, 'Name', 'Unknown'),
+                        'type': 'Material:NoMass',
+                        'roughness': getattr(material, 'Roughness', 'Unknown'),
+                        'thermal_resistance': getattr(material, 'Thermal_Resistance', 0),
+                        'thermal_absorptance': getattr(material, 'Thermal_Absorptance', 0.9),
+                        'solar_absorptance': getattr(material, 'Solar_Absorptance', 0.7),
+                        'visible_absorptance': getattr(material, 'Visible_Absorptance', 0.7)
+                    })
+                
+                # Air gap materials
+                airgap_objects = idf.idfobjects.get('MATERIAL:AIRGAP', [])
+                for material in airgap_objects:
+                    materials.append({
+                        'name': getattr(material, 'Name', 'Unknown'),
+                        'type': 'Material:AirGap',
+                        'thermal_resistance': getattr(material, 'Thermal_Resistance', 0)
+                    })
+                
+                # Extract constructions
+                constructions = []
+                construction_objects = idf.idfobjects.get('CONSTRUCTION', [])
+                for construction in construction_objects:
+                    layers = []
+                    # Get all layer fields (Outside_Layer, Layer_2, Layer_3, etc.)
+                    for i, field in enumerate(construction.fieldnames):
+                        if field.startswith('Layer') or field == 'Outside_Layer':
+                            layer_value = getattr(construction, field, None)
+                            if layer_value:
+                                layers.append(layer_value)
+                    
+                    constructions.append({
+                        'name': getattr(construction, 'Name', 'Unknown'),
+                        'layers': layers
+                    })
+                
+                # Extract surfaces
+                surfaces = []
+                surface_objects = idf.idfobjects.get('BUILDINGSURFACE:DETAILED', [])
+                for surface in surface_objects:
+                    surfaces.append({
+                        'name': getattr(surface, 'Name', 'Unknown'),
+                        'surface_type': getattr(surface, 'Surface_Type', 'Unknown'),
+                        'construction_name': getattr(surface, 'Construction_Name', 'Unknown'),
+                        'zone_name': getattr(surface, 'Zone_Name', 'Unknown'),
+                        'outside_boundary_condition': getattr(surface, 'Outside_Boundary_Condition', 'Unknown'),
+                        'sun_exposure': getattr(surface, 'Sun_Exposure', 'SunExposed'),
+                        'wind_exposure': getattr(surface, 'Wind_Exposure', 'WindExposed')
+                    })
+                
+                # Extract version
+                version_info = {}
+                version_objects = idf.idfobjects.get('VERSION', [])
+                if version_objects:
+                    version_info = {
+                        'version_identifier': getattr(version_objects[0], 'Version_Identifier', 'Unknown')
+                    }
+                
+                return {
+                    'success': True,
+                    'parser_type': 'eppy',
+                    'building': building_info,
+                    'zones': zones,
+                    'materials': materials,
+                    'constructions': constructions,
+                    'surfaces': surfaces,
+                    'version': version_info,
+                    'summary': {
+                        'total_zones': len(zones),
+                        'total_materials': len(materials),
+                        'total_constructions': len(constructions),
+                        'total_surfaces': len(surfaces)
+                    }
+                }
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+                    
+        except Exception as e:
+            logger.error(f"Error parsing IDF with eppy: {e}")
+            # Fall back to simple parser
+            return self._simple_parse(idf_content)
+    
+    def _simple_parse(self, idf_content):
+        """Fallback simple parser when eppy is not available"""
+        lines = idf_content.split('\n')
+        
+        # Simple parsing logic
+        materials = []
+        zones = []
+        constructions = []
+        surfaces = []
+        building_info = {}
+        version_info = {}
+        
+        current_object = None
+        current_fields = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('!'):
+                continue
+            
+            if line.upper().startswith('MATERIAL,'):
+                current_object = 'MATERIAL'
+                current_fields = [line.replace('MATERIAL,', '').strip()]
+            elif line.upper().startswith('ZONE,'):
+                current_object = 'ZONE'
+                current_fields = [line.replace('ZONE,', '').strip()]
+            elif line.upper().startswith('BUILDING,'):
+                current_object = 'BUILDING'
+                current_fields = [line.replace('BUILDING,', '').strip()]
+            elif line.upper().startswith('VERSION,'):
+                current_object = 'VERSION'
+                current_fields = [line.replace('VERSION,', '').strip()]
+            elif line.endswith(';'):
+                # End of object
+                if current_object and current_fields:
+                    if line != ';':
+                        current_fields.append(line.replace(';', '').strip())
+                    
+                    if current_object == 'MATERIAL' and current_fields:
+                        materials.append({
+                            'name': current_fields[0] if current_fields else 'Unknown',
+                            'type': 'Material',
+                            'fields': current_fields
+                        })
+                    elif current_object == 'ZONE' and current_fields:
+                        zones.append({
+                            'name': current_fields[0] if current_fields else 'Unknown',
+                            'fields': current_fields
+                        })
+                    elif current_object == 'BUILDING' and current_fields:
+                        building_info = {
+                            'name': current_fields[0] if current_fields else 'Unknown',
+                            'fields': current_fields
+                        }
+                    elif current_object == 'VERSION' and current_fields:
+                        version_info = {
+                            'version_identifier': current_fields[0] if current_fields else 'Unknown'
+                        }
+                
+                current_object = None
+                current_fields = []
+            else:
+                if current_object:
+                    current_fields.append(line.replace(',', '').strip())
         
         return {
-            "materials": [
-                {
-                    "id": name,
-                    "name": name,
-                    "type": "Material",
-                    "properties": {
-                        "thickness": mat.thickness,
-                        "conductivity": mat.conductivity,
-                        "density": mat.density,
-                        "specificHeat": mat.specific_heat,
-                        "roughness": mat.roughness,
-                        "thermalAbsorptance": mat.thermal_absorptance,
-                        "solarAbsorptance": mat.solar_absorptance,
-                        "visibleAbsorptance": mat.visible_absorptance
-                    }
-                }
-                for name, mat in self.materials.items()
-            ],
-            "constructions": [
-                {
-                    "id": name,
-                    "name": name,
-                    "type": const.element_type,
-                    "properties": {
-                        "layers": const.layers
-                    }
-                }
-                for name, const in self.constructions.items()
-            ],
-            "zones": [
-                {
-                    "id": name,
-                    "name": name,
-                    "type": "Zone",
-                    "properties": {
-                        "area": zone.area,
-                        "volume": zone.volume,
-                        "ceilingHeight": zone.ceiling_height
-                    }
-                }
-                for name, zone in self.zones.items()
-            ]
+            'success': True,
+            'parser_type': 'simple',
+            'building': building_info,
+            'zones': zones,
+            'materials': materials,
+            'constructions': constructions,
+            'surfaces': surfaces,
+            'version': version_info,
+            'summary': {
+                'total_zones': len(zones),
+                'total_materials': len(materials),
+                'total_constructions': len(constructions),
+                'total_surfaces': len(surfaces)
+            }
         }
-
-    def _identify_unused_constructions(self):
-        """Identify constructions that are not used in any zone or surface."""
-        used_constructions = set()
-        
-        # Check all surfaces for used constructions
-        for surface in self.idf.idfobjects["BUILDINGSURFACE:DETAILED"]:
-            if hasattr(surface, "Construction_Name"):
-                used_constructions.add(surface.Construction_Name)
-        
-        # Check all zones for used constructions
-        for zone in self.idf.idfobjects["ZONE"]:
-            if hasattr(zone, "Construction_Name"):
-                used_constructions.add(zone.Construction_Name)
-        
-        # Identify unused constructions
-        unused_constructions = set(self.constructions.keys()) - used_constructions
-
-        # Print unused constructions for debugging
-        return unused_constructions
-    
-    def _remove_materials(self, materials_to_remove: List[str]):
-        """Remove specified materials from the IDF."""
-        for mat_name in materials_to_remove:
-            # Remove from MATERIAL
-            for mat in list(self.idf.idfobjects["MATERIAL"]):
-                if mat.Name == mat_name:
-                    self.idf.removeidfobject(mat)
-                    break
-            # Remove from MATERIAL:NOMASS
-            for mat in list(self.idf.idfobjects["MATERIAL:NOMASS"]):
-                if mat.Name == mat_name:
-                    self.idf.removeidfobject(mat)
-                    break
-
-    def _list_materials_from_constructions(self) -> List[str]:
-        """List all materials used in constructions."""
-        materials_in_constructions = set()
-        
-        for const in self.idf.idfobjects["CONSTRUCTION"]:
-            for i in range(1, len(const.fieldnames)):
-                layer = getattr(const, f"Layer_{i}", None)
-                if layer:
-                    materials_in_constructions.add(layer)
-        
-        return list(materials_in_constructions)
-    
-    def _remove_unused_constructions(self):
-        """Remove constructions that are not used in any zone or surface."""
-        unused_constructions = self._identify_unused_constructions()
-        
-        # Print the unused constructions for debugging
-        if unused_constructions:
-            print(f"Found unused constructions: {unused_constructions}")
-        
-        for const_name in unused_constructions:
-            if const_name in self.constructions:
-                del self.constructions[const_name]
-                # Remove from IDF object
-                for const in self.idf.idfobjects["CONSTRUCTION"]:
-                    if const.Name == const_name:
-                        print(f"Removing unused construction: {const_name}")
-                        self.idf.removeidfobject(const)
-                        break
-                        
-        # Find materials that are not used in any construction
-        materials_in_constructions = self._list_materials_from_constructions()
-        materials_to_remove = []
-        
-        for mat_name in self.materials.keys():
-            if mat_name not in materials_in_constructions:
-                materials_to_remove.append(mat_name)
-                
-        if materials_to_remove:
-            print(f"Removing unused materials: {materials_to_remove}")
-            self._remove_materials(materials_to_remove)
-
-    def _parse_materials(self):
-        """Extract material definitions using eppy."""
-        self.materials.clear()  # Ensure old/removed materials are not kept
-        # Parse regular materials
-        for mat in self.idf.idfobjects["MATERIAL"]:
-            name = mat.Name
-            self.materials[name] = Material(
-                name=name,
-                roughness=mat.Roughness,
-                thickness=float(mat.Thickness),
-                conductivity=float(mat.Conductivity),
-                density=float(mat.Density),
-                specific_heat=float(mat.Specific_Heat),
-                thermal_absorptance=float(getattr(mat, "Thermal_Absorptance", 0.9)),
-                solar_absorptance=float(getattr(mat, "Solar_Absorptance", 0.7)),
-                visible_absorptance=float(getattr(mat, "Visible_Absorptance", 0.7))
-            )
-        
-        # Parse no mass materials
-        for mat in self.idf.idfobjects["MATERIAL:NOMASS"]:
-            name = mat.Name
-            # Convert R-value to approximate properties
-            r_value = float(mat.Thermal_Resistance)
-            thickness = 0.0254  # 1 inch default thickness
-            conductivity = thickness / r_value
-            
-            self.materials[name] = Material(
-                name=name,
-                roughness="MediumRough",
-                thickness=thickness,
-                conductivity=conductivity,
-                density=1.0,  # Nominal values for no mass materials
-                specific_heat=1.0,
-                thermal_absorptance=float(getattr(mat, "Thermal_Absorptance", 0.9)),
-                solar_absorptance=float(getattr(mat, "Solar_Absorptance", 0.7)),
-                visible_absorptance=float(getattr(mat, "Visible_Absorptance", 0.7))
-            )
-
-    def _parse_constructions(self):
-        """Extract construction definitions using eppy."""
-        self.constructions.clear()  # Ensure old/removed constructions are not kept
-        for const in self.idf.idfobjects["CONSTRUCTION"]:
-            name = const.Name
-            layers = []
-            
-            # Get all layer fields
-            for i in range(1, len(const.fieldnames)):
-                layer = getattr(const, f"Layer_{i}", None)
-                if layer:
-                    layers.append(layer)
-            
-            # Determine element type based on name or usage
-            element_type = self._determine_construction_type(name, layers)
-            
-            self.constructions[name] = Construction(
-                name=name,
-                layers=layers,
-                element_type=element_type
-            )
-
-    def _parse_zones(self):
-        """Extract zone definitions using eppy."""
-        for zone in self.idf.idfobjects["ZONE"]:
-            name = zone.Name
-            
-            # Calculate zone properties if available
-            area = None
-            volume = None
-            ceiling_height = None
-            
-            if hasattr(zone, "Floor_Area") and zone.Floor_Area:
-                area = float(zone.Floor_Area)
-            if hasattr(zone, "Volume") and zone.Volume:
-                volume = float(zone.Volume)
-            if area and volume:
-                ceiling_height = volume / area
-            
-            self.zones[name] = Zone(
-                name=name,
-                area=area,
-                volume=volume,
-                ceiling_height=ceiling_height
-            )
-
-    def _determine_construction_type(self, name: str, layers: List[str]) -> str:
-        """Determine construction type based on name and layer composition."""
-        name_lower = name.lower()
-        
-        # Check name first
-        if any(x in name_lower for x in ["roof", "ceiling"]):
-            return "roof"
-        if "floor" in name_lower:
-            return "floor"
-        if any(x in name_lower for x in ["window", "glazing"]):
-            return "window"
-        
-        # Check layer composition
-        window_materials = ["WINDOWMATERIAL", "GLAZING"]
-        if any(any(wm in layer.upper() for wm in window_materials) for layer in layers):
-            return "window"
-        
-        # Default to wall
-        return "wall"
-
-    def insert_construction_set(self, construction_set: dict):
-        """
-        Insert a construction set (wall, window, floor, roof) into the IDF.
-        construction_set: {
-            "wall": {"name": ..., "layers": [...]},
-            "window": {"name": ..., "layers": [...]},
-            "floor": {"name": ..., "layers": [...]},
-            "roof": {"name": ..., "layers": [...]}
-        }
-        Ensures all referenced materials and constructions are present in the IDF,
-        and assigns the correct construction to each surface.
-        """
-        # Helper to add material if not present
-        def ensure_material(material_name, material_props):
-            if not any(mat.Name == material_name for mat in self.idf.idfobjects["MATERIAL"]):
-                self.idf.newidfobject(
-                    "MATERIAL",
-                    Name=material_name,
-                    Roughness=material_props.get("roughness", "MediumRough"),
-                    Thickness=material_props.get("thickness", 0.2),
-                    Conductivity=material_props.get("conductivity", 0.5),
-                    Density=material_props.get("density", 800),
-                    Specific_Heat=material_props.get("specificHeat", 900),
-                    Thermal_Absorptance=material_props.get("thermalAbsorptance", 0.9),
-                    Solar_Absorptance=material_props.get("solarAbsorptance", 0.7),
-                    Visible_Absorptance=material_props.get("visibleAbsorptance", 0.7)
-                )
-
-        # Helper to add construction if not present
-        def ensure_construction(construction_name, layers):
-            if not any(const.Name == construction_name for const in self.idf.idfobjects["CONSTRUCTION"]):
-                kwargs = {"Name": construction_name}
-                for i, layer in enumerate(layers):
-                    kwargs[f"Layer_{i+1}"] = layer
-                self.idf.newidfobject("CONSTRUCTION", **kwargs)
-
-        # Insert all materials and constructions for each type
-        for ctype in ["wall", "window", "floor", "roof"]:
-            cdata = construction_set.get(ctype)
-            if not cdata:
-                continue
-            cname = cdata["name"]
-            layers = cdata["layers"]
-            # Ensure all materials for this construction exist
-            for mat in layers:
-                mat_props = {}
-                if mat in self.materials:
-                    m = self.materials[mat]
-                    mat_props = {
-                        "roughness": getattr(m, "roughness", "MediumRough"),
-                        "thickness": getattr(m, "thickness", 0.2),
-                        "conductivity": getattr(m, "conductivity", 0.5),
-                        "density": getattr(m, "density", 800),
-                        "specificHeat": getattr(m, "specific_heat", 900),
-                        "thermalAbsorptance": getattr(m, "thermal_absorptance", 0.9),
-                        "solarAbsorptance": getattr(m, "solar_absorptance", 0.7),
-                        "visibleAbsorptance": getattr(m, "visible_absorptance", 0.7),
-                    }
-                ensure_material(mat, mat_props)
-            ensure_construction(cname, layers)
-
-        # Assign constructions to surfaces
-        surface_map = {
-            "wall": ["WALL", "WALL:EXTERIOR", "WALL:INTERIOR"],
-            "roof": ["ROOF", "ROOFCEILING", "CEILING"],
-            "floor": ["FLOOR"],
-        }
-        # Assign for BUILDINGSURFACE:DETAILED
-        for surface in self.idf.idfobjects["BUILDINGSURFACE:DETAILED"]:
-            surface_type = getattr(surface, "Surface_Type", "").upper()
-            assigned = False
-            for ctype, types in surface_map.items():
-                if surface_type in types:
-                    cdata = construction_set.get(ctype)
-                    if cdata:
-                        surface.Construction_Name = cdata["name"]
-                        assigned = True
-                        break
-            # If not assigned and it's a window, handle fenestration
-        # Assign for FENESTRATIONSURFACE:DETAILED (windows)
-        if "window" in construction_set:
-            window_name = construction_set["window"]["name"]
-            for fen in self.idf.idfobjects.get("FENESTRATIONSURFACE:DETAILED", []):
-                fen.Fenestration_Type = getattr(fen, "Fenestration_Type", "Window")
-                fen.Construction_Name = window_name
-
-def generate_parametric_idfs(base_idf_content: str, construction_sets: list) -> list:
-    """
-    Given a base IDF content string and a list of construction sets,
-    generate a list of IDF content strings, each with a different construction set assigned.
-    Returns a list of (idf_content, construction_set) tuples.
-    """
-    parametric_idfs = []
-    for construction_set in construction_sets:
-        parser = IdfParser(base_idf_content)
-        parser.insert_construction_set(construction_set)
-        # Save the modified IDF to a string
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".idf", mode="w", encoding="utf-8") as tmp:
-            parser.idf.saveas(tmp.name)
-            tmp.close()
-            with open(tmp.name, "r", encoding="utf-8") as f:
-                idf_content = f.read()
-            os.remove(tmp.name)
-        parametric_idfs.append((idf_content, construction_set))
-    return parametric_idfs

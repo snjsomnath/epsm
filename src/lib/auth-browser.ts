@@ -57,38 +57,37 @@ class BrowserAuthService {
 
   async signIn(credentials: SignInCredentials): Promise<AuthSession> {
     try {
-      // For now, we'll create a mock session since we don't have the backend API yet
-      // In a real implementation, this would make an HTTP request to your backend
       console.log('SignIn attempt:', credentials.email);
       
-      // Mock successful authentication
-      const mockSession: AuthSession = {
-        user: {
-          id: '1',
-          email: credentials.email,
-          created_at: new Date().toISOString(),
+      const response = await fetch(`${this.baseUrl}/login/`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
         },
-        access_token: 'mock_access_token_' + Date.now(),
-        refresh_token: 'mock_refresh_token_' + Date.now(),
+        credentials: 'include', // Include cookies for session management
+        body: JSON.stringify(credentials),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Authentication failed');
+      }
+      
+      const data = await response.json();
+      
+      // Convert Django response to our session format
+      const session: AuthSession = {
+        user: {
+          id: data.user.id,
+          email: data.user.email,
+          created_at: data.user.created_at,
+        },
+        access_token: data.session.sessionid,
+        refresh_token: data.session.sessionid, // Django uses session-based auth
       };
 
-      this.saveSessionToStorage(mockSession);
-      return mockSession;
-
-      // Real implementation would be:
-      // const response = await fetch(`${this.baseUrl}/signin`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(credentials),
-      // });
-      // 
-      // if (!response.ok) {
-      //   throw new Error('Authentication failed');
-      // }
-      // 
-      // const session = await response.json();
-      // this.saveSessionToStorage(session);
-      // return session;
+      this.saveSessionToStorage(session);
+      return session;
     } catch (error) {
       console.error('Sign in error:', error);
       throw error;
@@ -99,19 +98,9 @@ class BrowserAuthService {
     try {
       console.log('SignUp attempt:', credentials.email);
       
-      // Mock successful registration
-      const mockSession: AuthSession = {
-        user: {
-          id: '2',
-          email: credentials.email,
-          created_at: new Date().toISOString(),
-        },
-        access_token: 'mock_access_token_' + Date.now(),
-        refresh_token: 'mock_refresh_token_' + Date.now(),
-      };
-
-      this.saveSessionToStorage(mockSession);
-      return mockSession;
+      // For this demo, we'll just redirect to sign in
+      // In a real implementation, you'd create a Django user registration endpoint
+      throw new Error('User registration not implemented. Please contact administrator for account creation.');
     } catch (error) {
       console.error('Sign up error:', error);
       throw error;
@@ -120,11 +109,11 @@ class BrowserAuthService {
 
   async signOut(): Promise<void> {
     try {
-      // In a real implementation, this would notify the backend
-      // await fetch(`${this.baseUrl}/signout`, {
-      //   method: 'POST',
-      //   headers: { 'Authorization': `Bearer ${this.currentSession?.access_token}` },
-      // });
+      // Call Django logout endpoint
+      await fetch(`${this.baseUrl}/logout/`, {
+        method: 'POST',
+        credentials: 'include', // Include session cookies
+      });
 
       this.saveSessionToStorage(null);
     } catch (error) {

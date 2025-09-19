@@ -42,35 +42,56 @@ def get_system_resources():
     except Exception as e:
         system_info['error'] = f"Error fetching system resources: {str(e)}"
     
-    # Check EnergyPlus installation
+    # Check Docker and EnergyPlus container availability
     try:
-        energyplus_exists = hasattr(settings, 'ENERGYPLUS_EXE') and os.path.exists(settings.ENERGYPLUS_EXE)
+        import subprocess
         
-        # Try to get EnergyPlus version by running the executable with -v flag
-        energyplus_version = "Unknown"
-        if energyplus_exists:
-            try:
-                import subprocess
-                result = subprocess.run([settings.ENERGYPLUS_EXE, '-v'], 
-                                       capture_output=True, text=True, timeout=2)
-                if result.stdout:
-                    # Parse version from output (typically "EnergyPlus, Version X.Y.Z")
-                    version_text = result.stdout.strip()
-                    if "Version" in version_text:
-                        energyplus_version = version_text.split("Version")[1].strip().split()[0]
-            except (subprocess.SubprocessError, Exception) as e:
-                energyplus_version = "Error detecting version"
-        
-        system_info['energyplus'] = {
-            'exists': energyplus_exists,
-            'version': energyplus_version,
-            'path': settings.ENERGYPLUS_EXE if hasattr(settings, 'ENERGYPLUS_EXE') else "Not configured"
+        # Check if Docker is available
+        docker_available = False
+        energyplus_info = {
+            'docker_available': False,
+            'container_image': 'nrel/energyplus:23.2.0',
+            'status': 'Docker not available'
         }
+        
+        try:
+            # Check Docker availability
+            result = subprocess.run(['docker', '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                docker_available = True
+                
+                # Check if EnergyPlus container image is available
+                result = subprocess.run(['docker', 'images', 'nrel/energyplus:23.2.0', '--format', 'table {{.Repository}}:{{.Tag}}'], 
+                                      capture_output=True, text=True, timeout=10)
+                
+                if 'nrel/energyplus:23.2.0' in result.stdout:
+                    energyplus_info = {
+                        'docker_available': True,
+                        'container_image': 'nrel/energyplus:23.2.0',
+                        'status': 'Container image available locally'
+                    }
+                else:
+                    energyplus_info = {
+                        'docker_available': True,
+                        'container_image': 'nrel/energyplus:23.2.0',
+                        'status': 'Container image will be pulled when needed'
+                    }
+                    
+        except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+            energyplus_info = {
+                'docker_available': False,
+                'container_image': 'nrel/energyplus:23.2.0',
+                'status': 'Docker not available or accessible'
+            }
+
+        system_info['energyplus'] = energyplus_info
+        
     except Exception as e:
         system_info['energyplus'] = {
-            'exists': False,
-            'version': "Unknown",
-            'error': str(e)
+            'docker_available': False,
+            'container_image': 'nrel/energyplus:23.2.0',
+            'status': f'Error checking Docker: {str(e)}'
         }
     
     # Add platform information
