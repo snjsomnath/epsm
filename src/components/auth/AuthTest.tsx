@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, Alert } from '@mui/material';
-import { supabase } from '../../lib/supabase';
+import { postgres } from '../../lib/queryBuilder';
 import { useAuth } from '../../context/AuthContext';
 
 const AuthTest = () => {
@@ -17,9 +17,9 @@ const AuthTest = () => {
           return;
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await postgres
           .from('materials')
-          .select('count')
+          .select('count(*)')
           .single();
 
         if (error) {

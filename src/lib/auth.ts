@@ -1,6 +1,6 @@
 /**
  * Custom Authentication Service
- * Replaces Supabase Auth with JWT-based authentication
+ * JWT-based authentication for PostgreSQL backend
  */
 
 import bcrypt from 'bcryptjs';

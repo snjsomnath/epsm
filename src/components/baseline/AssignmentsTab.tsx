@@ -513,7 +513,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
               continue;
             }
             
-            // Format material data for Supabase with proper defaults
+            // Format material data for PostgreSQL with proper defaults
             const materialData: MaterialInsert = {
               name: item.name,
               thickness_m: updatedValues.thickness_m || item.properties.thickness || 0,
@@ -534,7 +534,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
               source: item.source || `Imported from IDF file: ${uploadedFiles[0]?.name || 'unknown'}`
             };
             
-            console.log(`Attempting to add material to Supabase:`, materialData);
+            console.log(`Attempting to add material to PostgreSQL:`, materialData);
             
             try {
               console.log("Calling addMaterial function...");
@@ -545,7 +545,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
               // since the database operation might still succeed
               if (result && result.error) {
                 if (result.error.code === '23505') {
-                  console.log(`Material ${item.name} already exists in Supabase (duplicate key), skipping`);
+                  console.log(`Material ${item.name} already exists in PostgreSQL (duplicate key), skipping`);
                   skippedItems.push(item.name);
                   
                   // Mark as existing in database immediately
@@ -579,11 +579,11 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                   if (material) material.existsInDatabase = true;
                 }
               }
-            } catch (supabaseError) {
-              console.error("Exception when calling addMaterial:", supabaseError);
+            } catch (dbError) {
+              console.error("Exception when calling addMaterial:", dbError);
               
               // Check for fetchMaterials error in addition to duplicate key
-              if (supabaseError.message && supabaseError.message.includes('fetchMaterials is not defined')) {
+              if (dbError.message && dbError.message.includes('fetchMaterials is not defined')) {
                 console.log(`Material ${item.name} was likely added but refresh failed`);
                 successfulAdditions.push(item.name);
                 
@@ -593,14 +593,14 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                   if (material) material.existsInDatabase = true;
                 }
                 continue;
-              } else if (supabaseError.code === '23505' || 
-                  (supabaseError.message && supabaseError.message.includes('duplicate key'))) {
+              } else if (dbError.code === '23505' || 
+                  (dbError.message && dbError.message.includes('duplicate key'))) {
                 console.log(`Material ${item.name} already exists (caught error), skipping`);
                 skippedItems.push(item.name);
                 continue;
               }
               
-              throw supabaseError;
+              throw dbError;
             }
           } else {
             // For constructions...
@@ -638,7 +638,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
             
             if (missingMaterials) continue;
             
-            // Format construction data for Supabase
+            // Format construction data for PostgreSQL
             const constructionData: ConstructionInsert = {
               name: item.name,
               element_type: item.type || 'wall',
@@ -654,7 +654,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
             console.log(`Adding construction: ${item.name}`, constructionData, 'with layers:', layerMaterials);
             
             try {
-              // Add construction to Supabase
+              // Add construction to PostgreSQL
               const result = await addConstruction(constructionData, layerMaterials);
               console.log("Result from addConstruction:", result);
               
