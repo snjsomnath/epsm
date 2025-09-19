@@ -189,7 +189,7 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     layers: Omit<LayerInsert, 'construction_id'>[]
   ) => {
     try {
-      console.log("DatabaseContext: Adding construction to Supabase:", construction);
+      console.log("DatabaseContext: Adding construction to PostgreSQL:", construction);
       const result = await createConstruction(construction, layers);
       console.log("DatabaseContext: Result from createConstruction:", result);
       

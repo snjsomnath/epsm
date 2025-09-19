@@ -8,7 +8,8 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from .idf_parser import IdfParser
 #from database.models import Material, Construction
-from .supabase_client import check_material_exists, check_construction_exists
+from database.models import Material, Construction
+from .database_client import check_material_exists, check_construction_exists
 
 from .services import EnergyPlusSimulator
 from .models import Simulation, SimulationFile
