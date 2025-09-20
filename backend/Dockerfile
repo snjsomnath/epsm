@@ -29,8 +29,10 @@ RUN mkdir -p /app/media/simulation_files \
     && mkdir -p /app/media/simulation_results \
     && mkdir -p /app/staticfiles
 
-# Create non-root user for security
+# Create non-root user for security 
+# Note: For Docker socket access on macOS, we need to handle permissions carefully
 RUN adduser --disabled-password --gecos '' appuser \
+    && usermod -aG docker appuser \
     && chown -R appuser:appuser /app
 
 # Switch to non-root user
@@ -41,7 +43,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/system-resources/ || exit 1
+    CMD curl -f http://localhost:8000/api/simulation/system-resources/ || exit 1
 
 # Run the application
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
