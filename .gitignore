@@ -133,9 +133,8 @@ test-*.mjs
 test_*.py
 test_*.sh
 
-# Supabase exports and migrations
+# Database exports and migrations
 database_exports/
-supabase_*.sql
 export_*.md
 export_*.py
 export_*.sh

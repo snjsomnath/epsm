@@ -1,5 +1,6 @@
 -- Create Users Table for Custom Authentication
--- This replaces the Supabase auth.users table
+-- Create Django-compatible authentication system
+-- This replaces external authentication services
 
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
