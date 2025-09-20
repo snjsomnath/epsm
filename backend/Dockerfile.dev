@@ -1,0 +1,51 @@
+# Development Dockerfile for Django Backend
+FROM python:3.11-slim as development
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    curl \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user and add to docker group for Docker socket access
+RUN adduser --disabled-password --gecos '' appuser \
+    && usermod -aG docker appuser
+
+# Set work directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project
+COPY . /app/
+
+# Create media directories and set permissions
+RUN mkdir -p /app/media/simulation_files \
+    && mkdir -p /app/media/simulation_results \
+    && mkdir -p /app/staticfiles \
+    && chown -R appuser:appuser /app
+
+# Switch to app user for security (but keep root for Docker access in development)
+# USER appuser
+
+# Run as root in development for Docker socket access
+USER root
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health/ || exit 1
+
+# Run migrations and start server
+CMD ["sh", "-c", "docker pull nrel/energyplus:23.2.0 2>/dev/null || true && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]

@@ -1,81 +1,115 @@
+# Development Docker Compose Configuration
 version: '3.8'
 
 services:
   # PostgreSQL Database
-  db:
-    image: postgres:15
+  database:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    container_name: epsm_database_dev
     environment:
       POSTGRES_DB: epsm_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-epsm_password}
+      POSTGRES_USER: epsm_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-epsm_secure_password}
+      POSTGRES_MULTIPLE_DATABASES: epsm_db,epsm_materials
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database_exports:/docker-entrypoint-initdb.d  # Auto-import existing data
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./database/exports:/docker-entrypoint-initdb.d/exports:ro
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations:ro
     ports:
       - "5432:5432"
+    networks:
+      - epsm_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U epsm_user -d epsm_db"]
       interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
 
   # Django Backend
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    user: root  # Temporary: run as root for Docker socket access
+      dockerfile: Dockerfile.dev
+    container_name: epsm_backend_dev
     environment:
-      - DEBUG=${DEBUG:-True}
+      - DEBUG=True
       - DB_NAME=epsm_db
-      - DB_USER=postgres
-      - DB_PASSWORD=${DB_PASSWORD:-epsm_password}
-      - DB_HOST=db
+      - DB_USER=epsm_user
+      - DB_PASSWORD=${DB_PASSWORD:-epsm_secure_password}
+      - DB_HOST=database
       - DB_PORT=5432
-      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-your-secret-key-here}
+      - MATERIALS_DB_NAME=epsm_materials
+      - MATERIALS_DB_USER=epsm_user
+      - MATERIALS_DB_PASSWORD=${DB_PASSWORD:-epsm_secure_password}
+      - MATERIALS_DB_HOST=database
+      - MATERIALS_DB_PORT=5432
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
       - ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
       - SIMULATION_TIMEOUT=600
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://frontend:5173
     volumes:
       - ./backend:/app
-      - simulation_files:/app/media/simulation_files
-      - simulation_results:/app/media/simulation_results
-      - /var/run/docker.sock:/var/run/docker.sock  # Allow Docker-in-Docker for EnergyPlus
+      - simulation_files_dev:/app/media/simulation_files
+      - simulation_results_dev:/app/media/simulation_results
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
-    depends_on: []  # No longer depends on Docker PostgreSQL
-    command: >
-      sh -c "python manage.py runserver 0.0.0.0:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/simulation/system-resources/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - epsm_network
+    restart: unless-stopped
 
-  # React Frontend (optional - can be run separately)
+  # React Frontend
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: epsm_frontend_dev
     environment:
       - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
     volumes:
-      - ./src:/app/src
-      - ./public:/app/public
-      - ./package.json:/app/package.json
-      - ./vite.config.ts:/app/vite.config.ts
+      - ./frontend:/app
+      - /app/node_modules
     ports:
       - "5173:5173"
     depends_on:
       - backend
-    command: npm run dev -- --host 0.0.0.0
-    profiles:
-      - frontend  # Optional service, activate with --profile frontend
+    networks:
+      - epsm_network
+    restart: unless-stopped
+
+  # Redis for caching and sessions (optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: epsm_redis_dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_dev:/data
+    networks:
+      - epsm_network
+    command: redis-server --appendonly yes
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
-  simulation_files:
-  simulation_results:
+  postgres_data_dev:
+    driver: local
+  simulation_files_dev:
+    driver: local
+  simulation_results_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
 
 networks:
-  default:
+  epsm_network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -1,12 +1,63 @@
-# EnergyPlus Simulation Manager (EPSM)
+# EPSM - Energy Performance Simulation Manager
 
 [![Built with Vite](https://img.shields.io/badge/Built%20with-Vite-646CFF.svg)](https://vitejs.dev/)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.2-3178C6.svg)](https://www.typescriptlang.org/)
-[![Supabase](https://img.shields.io/badge/Supabase-2.39-3ECF8E.svg)](https://supabase.io/)
 [![Django](https://img.shields.io/badge/Django-3.2-092E20.svg)](https://www.djangoproject.com/)
+[![Docker](https://img.shields.io/badge/Docker-20.10-2496ED.svg)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-336791.svg)](https://www.postgresql.org/)
 
-EPSM is a comprehensive web-based platform for managing, running, and analyzing EnergyPlus building energy simulations. Developed at Chalmers University of Technology, it empowers building owners, researchers, and engineers to explore and evaluate energy renovation strategies across large building stocks—quickly, transparently, and at low cost.
+A modern, containerized web application for managing building energy performance simulations using EnergyPlus. Developed at Chalmers University of Technology, EPSM empowers building owners, researchers, and engineers to explore and evaluate energy renovation strategies across large building stocks—quickly, transparently, and at low cost.
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Docker 20.10+
+- Docker Compose 2.0+
+- 4GB+ RAM, 10GB+ disk space
+
+### Development Setup
+```bash
+# Clone repository
+git clone <repository-url>
+cd epsm
+
+# Start development environment
+./scripts/start.sh
+
+# Access application
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000
+# Django Admin: http://localhost:8000/admin (admin/admin123)
+```
+
+## 📁 Project Structure
+
+```
+epsm/
+├── frontend/              # React + TypeScript + Vite
+├── backend/               # Django + PostgreSQL + Redis
+├── database/              # PostgreSQL configuration & data
+├── scripts/               # Deployment and utility scripts
+├── docs/                  # Documentation
+├── .docker/               # Docker configurations
+├── docker-compose.yml     # Development services
+└── docker-compose.prod.yml # Production services
+```
+
+## 🏗️ Architecture
+
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Material-UI
+- **Backend**: Django 3.2, Django REST Framework, PostgreSQL, Redis
+- **Infrastructure**: Docker, Nginx, WebSocket support
+- **Simulation**: EnergyPlus (containerized)
+
+## 📖 Documentation
+
+- [📋 Development Guide](docs/DEVELOPMENT.md) - Setup and development workflow
+- [🚀 Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
+- [🏛️ Architecture Guide](docs/ARCHITECTURE.md) - System architecture
+- [📋 API Documentation](http://localhost:8000/api/docs/) - REST API docs
 
 ## 🚀 Features
 

@@ -18,11 +18,11 @@ class Simulation(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    start_time = models.DateTimeField(auto_now_add=True)
+    start_time = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     end_time = models.DateTimeField(null=True, blank=True)
     error_message = models.TextField(blank=True, null=True)
     file_count = models.IntegerField(default=0)  # Track how many files are being simulated
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -39,7 +39,7 @@ class SimulationFile(models.Model):
     file_path = models.CharField(max_length=500, default='')
     file_size = models.IntegerField(null=True, blank=True)
     original_name = models.CharField(max_length=255, default='', blank=True)  # Store original filename
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         db_table = 'simulation_files'
