@@ -1,11 +1,18 @@
-/* eslint-disable */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService, User, AuthSession } from '../lib/auth-browser';
+import { 
+  signIn as apiSignIn, 
+  signOut as apiSignOut, 
+  getSession, 
+  getUser, 
+  isAuthenticated as checkAuth,
+  AuthUser,
+  AuthSession 
+} from '../lib/auth-browser';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: User | null;
+  user: AuthUser | null;
   session: AuthSession | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
@@ -34,26 +41,17 @@ interface AuthProviderProps {
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check for existing session in localStorage
-    const savedSession = localStorage.getItem('auth_session');
-    if (savedSession) {
-      try {
-        const parsedSession = JSON.parse(savedSession) as AuthSession;
-        
-        // For now, just assume the session is valid
-        // In a real implementation, you'd validate the token expiration
-        setSession(parsedSession);
-        setUser(parsedSession.user);
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Error parsing saved session:', error);
-        localStorage.removeItem('auth_session');
-      }
+    // Check for existing session
+    const existingSession = getSession();
+    if (existingSession) {
+      setSession(existingSession);
+      setUser(existingSession.user);
+      setIsAuthenticated(true);
     }
   }, []);
 
@@ -61,32 +59,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       clearError();
 
-      const session = await authService.signIn({ email, password });
-      setSession(session);
-      setUser(session.user);
-      setIsAuthenticated(true);
-      localStorage.setItem('auth_session', JSON.stringify(session));
-      navigate('/');
+      const result = await apiSignIn(email, password);
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      if (result.data) {
+        setSession(result.data);
+        setUser(result.data.user);
+        setIsAuthenticated(true);
+        navigate('/');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
       throw err;
     }
   };
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (_email: string, _password: string) => {
     try {
       clearError();
       
-      const session = await authService.signUp({
-        email,
-        password
-      });
-      
-      setSession(session);
-      setUser(session.user);
-      setIsAuthenticated(true);
-      localStorage.setItem('auth_session', JSON.stringify(session));
-      navigate('/');
+      // For now, just redirect to sign in since we don't have sign up API
+      setError('Sign up not implemented yet. Please use existing credentials.');
+      throw new Error('Sign up not implemented yet');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign up');
       throw err;
@@ -95,12 +91,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const signOut = async () => {
     try {
-      await authService.signOut();
+      await apiSignOut();
       
       setIsAuthenticated(false);
       setUser(null);
       setSession(null);
-      localStorage.removeItem('auth_session');
       navigate('/login');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign out');

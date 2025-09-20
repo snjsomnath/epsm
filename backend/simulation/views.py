@@ -508,3 +508,116 @@ def parallel_simulation_results(request, simulation_id):
         return JsonResponse({
             'error': str(e)
         }, status=500)
+
+# Database API endpoints for frontend
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow unauthenticated access for now
+def api_materials(request):
+    """Get all materials from database"""
+    try:
+        from database.models import Material
+        materials = Material.objects.using('materials_db').all()
+        
+        materials_data = []
+        for material in materials:
+            materials_data.append({
+                'id': material.id,
+                'name': material.name,
+                'roughness': material.roughness,
+                'thickness_m': material.thickness_m,
+                'conductivity_w_mk': material.conductivity_w_mk,
+                'density_kg_m3': material.density_kg_m3,
+                'specific_heat_j_kgk': material.specific_heat_j_kgk,
+                'thermal_absorptance': material.thermal_absorptance,
+                'solar_absorptance': material.solar_absorptance,
+                'visible_absorptance': material.visible_absorptance,
+                'gwp_kgco2e_per_m2': material.gwp_kgco2e_per_m2,
+                'cost_sek_per_m2': material.cost_sek_per_m2,
+                'wall_allowed': material.wall_allowed,
+                'roof_allowed': material.roof_allowed,
+                'floor_allowed': material.floor_allowed,
+                'window_layer_allowed': material.window_layer_allowed,
+                'date_created': material.date_created.isoformat() if material.date_created else None,
+                'date_modified': material.date_modified.isoformat() if material.date_modified else None,
+                'source': material.source
+            })
+        
+        return JsonResponse(materials_data, safe=False)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow unauthenticated access for now
+def api_constructions(request):
+    """Get all constructions from database"""
+    try:
+        from database.models import Construction
+        from django.db import connections
+        
+        # Check which database is being used
+        constructions = Construction.objects.using('materials_db').all()
+        
+        constructions_data = []
+        for construction in constructions:
+            constructions_data.append({
+                'id': construction.id,
+                'name': construction.name,
+                'element_type': construction.element_type,
+                'is_window': construction.is_window,
+                'u_value_w_m2k': construction.u_value_w_m2k,
+                'gwp_kgco2e_per_m2': construction.gwp_kgco2e_per_m2,
+                'cost_sek_per_m2': construction.cost_sek_per_m2,
+                'date_created': construction.date_created.isoformat() if construction.date_created else None,
+                'date_modified': construction.date_modified.isoformat() if construction.date_modified else None,
+                'source': construction.source
+            })
+        
+        return JsonResponse(constructions_data, safe=False)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # Allow unauthenticated access for now
+def api_construction_sets(request):
+    """Get all construction sets from database"""
+    try:
+        from database.models import ConstructionSet
+        construction_sets = ConstructionSet.objects.using('materials_db').all()
+        
+        sets_data = []
+        for cs in construction_sets:
+            sets_data.append({
+                'id': cs.id,
+                'name': cs.name,
+                'description': cs.description,
+                'wall_construction_id': cs.wall_construction.id if cs.wall_construction else None,
+                'wall_construction_name': cs.wall_construction.name if cs.wall_construction else None,
+                'roof_construction_id': cs.roof_construction.id if cs.roof_construction else None,
+                'roof_construction_name': cs.roof_construction.name if cs.roof_construction else None,
+                'floor_construction_id': cs.floor_construction.id if cs.floor_construction else None,
+                'floor_construction_name': cs.floor_construction.name if cs.floor_construction else None,
+                'window_construction_id': cs.window_construction.id if cs.window_construction else None,
+                'window_construction_name': cs.window_construction.name if cs.window_construction else None,
+                'date_created': cs.date_created.isoformat() if cs.date_created else None,
+                'date_modified': cs.date_modified.isoformat() if cs.date_modified else None,
+                'source': cs.source
+            })
+        
+        return JsonResponse(sets_data, safe=False)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e)
+        }, status=500)

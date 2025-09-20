@@ -5,7 +5,19 @@
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { db } from './postgres';
+import { AuthUser, AuthSession, AuthError } from '../types/auth';
+
+// API endpoints
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+// CSRF token helper
+const getCSRFToken = async (): Promise<string> => {
+  const response = await fetch(`${API_BASE_URL}/api/csrf/`, {
+    credentials: 'include',
+  });
+  const data = await response.json();
+  return data.csrfToken;
+};
 
 // Environment variables for JWT
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
