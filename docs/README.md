@@ -9,23 +9,7 @@
 
 A modern, containerized web application for managing building energy performance simulations using EnergyPlus. Developed at Chalmers University of Technology, EPSM empowers building owners, researchers, and engineers to explore and evaluate energy renovation strategies across large building stocks—quickly, transparently, and at low cost.
 
-## 📑 Table of Contents
-- [Quick Start](#-quick-start)
-- [Project Structure](#-project-structure)
-- [Architecture](#️-architecture)
-- [Documentation](#-documentation)
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Production Deployment](#-production-deployment)
-- [Security](#-security)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Acknowledgments](#-acknowledgments)
-- [Contact](#-contact)
-
-<details>
-<summary>🚀 <strong>Quick Start</strong></summary>
+## 🚀 Quick Start
 
 ### Prerequisites
 - Docker 24.x+ with Docker Compose
@@ -46,10 +30,10 @@ cd epsm
 # Backend API: http://localhost:8000
 # Django Admin: http://localhost:8000/admin (admin/admin123)
 ```
-</details>
 
-<details>
-<summary>📁 <strong>Project Structure</strong></summary>
+## 📁 Project Structure
+
+## 📁 Project Structure
 
 ```
 epsm/
@@ -66,10 +50,8 @@ epsm/
 ├── docker-compose.prod.yml # Production services
 └── package.json           # Root npm configuration
 ```
-</details>
 
-<details>
-<summary>🏗️ <strong>Architecture</strong></summary>
+## 🏗️ Architecture
 
 - **Frontend**: React 18, TypeScript 5.9, Vite 5, Tailwind CSS, Material-UI
 - **Backend**: Django 3.2, Django REST Framework, PostgreSQL 15, Redis 7
@@ -77,20 +59,14 @@ epsm/
 - **Simulation**: EnergyPlus (containerized via NREL Docker image)
 - **Development**: Hot reload, containerized services, automated setup
 
-</details>
-
-<details>
-<summary>📖 <strong>Documentation</strong></summary>
+## 📖 Documentation
 
 - [📋 Development Guide](docs/DEVELOPMENT.md) - Setup and development workflow
 - [🚀 Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
 - [🏛️ Architecture Guide](docs/ARCHITECTURE.md) - System architecture
 - [📋 API Documentation](http://localhost:8000/api/docs/) - REST API docs
 
-</details>
-
-<details>
-<summary>🚀 <strong>Features</strong></summary>
+## 🚀 Features
 
 - **Interactive Component Database**
   - Create and manage materials, constructions, and construction sets
@@ -122,10 +98,7 @@ epsm/
   - Cost-benefit analysis
   - Export to various formats
 
-</details>
-
-<details>
-<summary>🛠️ <strong>Tech Stack</strong></summary>
+## 🛠️ Tech Stack
 
 ### Frontend
 - **Framework**: React 18 with TypeScript 5.9
@@ -154,10 +127,32 @@ epsm/
 - **Simulation**: EnergyPlus via Docker containers
 - **Reverse Proxy**: Nginx (production)
 
-</details>
+## 📦 Project Structure
 
-<details>
-<summary>🚀 <strong>Getting Started</strong></summary>
+```
+epsm/
+├── src/                    # Frontend source code
+│   ├── components/         # React components
+│   │   ├── auth/          # Authentication components
+│   │   ├── baseline/      # Baseline simulation
+│   │   ├── database/      # Database management
+│   │   ├── layout/        # Layout components
+│   │   ├── scenario/      # Scenario management
+│   │   └── simulation/    # Simulation controls
+│   ├── context/           # React context providers
+│   ├── lib/               # Shared utilities
+│   ├── types/             # TypeScript definitions
+│   └── utils/             # Helper functions
+├── backend/               # Django backend
+│   ├── simulation/        # Simulation management
+│   ├── database/          # Database models
+│   └── config/            # Django settings
+├── supabase/              # Supabase configuration
+│   └── migrations/        # Database migrations
+└── public/                # Static assets
+```
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
@@ -211,10 +206,8 @@ epsm/
 
 3. Access the application at [http://localhost:5173](http://localhost:5173)
 
-</details>
 
-<details>
-<summary>🚀 <strong>Production Deployment</strong></summary>
+### Production Deployment
 
 1. Build the frontend:
    ```bash
@@ -227,10 +220,7 @@ epsm/
 
 4. Configure environment variables for production
 
-</details>
-
-<details>
-<summary>🔒 <strong>Security</strong></summary>
+## 🔒 Security
 
 - All database access is controlled through Django ORM and permissions
 - Authentication handled by Django with JWT tokens
@@ -239,10 +229,7 @@ epsm/
 - Input validation and sanitization
 - Regular security audits
 
-</details>
-
-<details>
-<summary>🤝 <strong>Contributing</strong></summary>
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -252,17 +239,11 @@ epsm/
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and development process.
 
-</details>
-
-<details>
-<summary>📄 <strong>License</strong></summary>
+## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-</details>
-
-<details>
-<summary>🙏 <strong>Acknowledgments</strong></summary>
+## 🙏 Acknowledgments
 
 This project is funded by the Swedish Energy Agency under Project ID P2024-04053.
 
@@ -276,13 +257,8 @@ This project is funded by the Swedish Energy Agency under Project ID P2024-04053
 - **Principal Investigator**: Alexander Hollberg
 - **Team Members**: Yinan Yu, Sanjay Somanath
 
-</details>
-
-<details>
-<summary>📞 <strong>Contact</strong></summary>
+## 📞 Contact
 
 For questions and support, please contact:
 - Sanjay Somanath (Lead Developer)
 - Email: sanjay.somanath@chalmers.se
-
-</details>

@@ -1,5 +1,5 @@
 /**
- * API Query Builder - Provides Supabase-like interface for Django API
+ * API Query Builder - Provides chainable query interface for Django API
  * Makes HTTP requests to Django backend instead of direct database access
  */
 
@@ -273,7 +273,8 @@ class QueryBuilder<T extends Record<string, any> = Record<string, any>> {
 }
 
 /**
- * Main API client interface - mimics Supabase's API
+ * Main API client interface - provides database operations
+ * Compatible with existing codebase patterns
  */
 class APIClient {
   /**

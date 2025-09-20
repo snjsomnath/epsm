@@ -3,7 +3,7 @@
 # EPSM Development Start Script
 # This script starts the EPSM application in development mode
 
-set -e  # Exit on any error
+set -e  # Exit on any errors
 
 echo "🚀 Starting EPSM Development Environment..."
 

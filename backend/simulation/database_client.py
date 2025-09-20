@@ -1,5 +1,6 @@
 # PostgreSQL Database Client for Django Backend
-# Replaces Supabase client with Django ORM queries
+# Django ORM database client
+# Provides database operations through Django models
 
 def check_material_exists(material_name: str) -> bool:
     """
