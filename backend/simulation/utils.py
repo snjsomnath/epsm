@@ -75,32 +75,37 @@ def get_system_resources():
                                 'docker_available': True,
                                 'container_image': 'nrel/energyplus:23.2.0',
                                 'status': 'Available and working',
+                                'exists': True,  # Add this for frontend compatibility
                                 'version': test_result.stdout.strip().split('\n')[-1] if test_result.stdout else 'Unknown'
                             }
                         else:
                             energyplus_info = {
                                 'docker_available': True,
                                 'container_image': 'nrel/energyplus:23.2.0',
-                                'status': 'Image available but test failed'
+                                'status': 'Image available but test failed',
+                                'exists': False  # Add this for frontend compatibility
                             }
                     except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
                         energyplus_info = {
                             'docker_available': True,
                             'container_image': 'nrel/energyplus:23.2.0',
-                            'status': 'Image available but executable test failed'
+                            'status': 'Image available but executable test failed',
+                            'exists': False  # Add this for frontend compatibility
                         }
                 else:
                     energyplus_info = {
                         'docker_available': True,
                         'container_image': 'nrel/energyplus:23.2.0',
-                        'status': 'Container image not found locally'
+                        'status': 'Container image not found locally',
+                        'exists': False  # Add this for frontend compatibility
                     }
                     
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
             energyplus_info = {
                 'docker_available': False,
                 'container_image': 'nrel/energyplus:23.2.0',
-                'status': 'Docker not available or accessible'
+                'status': 'Docker not available or accessible',
+                'exists': False  # Add this for frontend compatibility
             }
 
         system_info['energyplus'] = energyplus_info
@@ -109,7 +114,8 @@ def get_system_resources():
         system_info['energyplus'] = {
             'docker_available': False,
             'container_image': 'nrel/energyplus:23.2.0',
-            'status': f'Error checking Docker: {str(e)}'
+            'status': f'Error checking Docker: {str(e)}',
+            'exists': False  # Add this for frontend compatibility
         }
     
     # Add platform information
