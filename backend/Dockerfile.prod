@@ -1,0 +1,51 @@
+# Production Dockerfile for Django Backend
+FROM python:3.11-slim as production
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DJANGO_SETTINGS_MODULE=config.settings.production
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    curl \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user and add to docker group for Docker socket access
+RUN adduser --disabled-password --gecos '' appuser \
+    && usermod -aG docker appuser
+
+# Set work directory
+WORKDIR /app
+
+# Copy and install production requirements
+COPY requirements.prod.txt /app/
+RUN pip install --no-cache-dir -r requirements.prod.txt
+
+# Copy project
+COPY . /app/
+
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
+# Create media directories and set permissions
+RUN mkdir -p /app/media/simulation_files \
+    && mkdir -p /app/media/simulation_results \
+    && chown -R appuser:appuser /app
+
+# Switch to app user
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health/ || exit 1
+
+# Start gunicorn server
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--worker-class", "gevent", "config.wsgi:application"]

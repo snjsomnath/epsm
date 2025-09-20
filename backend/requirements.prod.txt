@@ -1,0 +1,20 @@
+# Production requirements - includes all base requirements plus production-specific packages
+-r requirements.txt
+
+# Production WSGI server
+gunicorn==21.2.0
+
+# Performance monitoring
+psutil==5.9.5
+
+# Production logging
+structlog==23.1.0
+
+# Security
+django-ratelimit==4.1.0
+
+# Health checks
+django-health-check==3.17.0
+
+# Environment management
+python-decouple==3.8

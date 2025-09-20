@@ -1,5 +1,6 @@
 import os
 import platform
+import time
 from django.conf import settings
 
 def get_system_resources():
@@ -37,6 +38,43 @@ def get_system_resources():
             'free_gb': round(disk.free / (1024 ** 3), 2),
             'usage_percent': disk.percent
         }
+        
+        # Get network information
+        net_io = psutil.net_io_counters()
+        if net_io:
+            # Store previous values for rate calculation
+            if not hasattr(get_system_resources, '_prev_net_io'):
+                get_system_resources._prev_net_io = net_io
+                get_system_resources._prev_time = time.time()
+                # Return zero for first call
+                system_info['network'] = {
+                    'bytes_sent_per_sec': 0,
+                    'bytes_recv_per_sec': 0,
+                    'total_bytes_sent': net_io.bytes_sent,
+                    'total_bytes_recv': net_io.bytes_recv
+                }
+            else:
+                # Calculate rate since last call
+                current_time = time.time()
+                time_delta = current_time - get_system_resources._prev_time
+                
+                if time_delta > 0:
+                    bytes_sent_per_sec = (net_io.bytes_sent - get_system_resources._prev_net_io.bytes_sent) / time_delta
+                    bytes_recv_per_sec = (net_io.bytes_recv - get_system_resources._prev_net_io.bytes_recv) / time_delta
+                else:
+                    bytes_sent_per_sec = 0
+                    bytes_recv_per_sec = 0
+                
+                system_info['network'] = {
+                    'bytes_sent_per_sec': max(0, bytes_sent_per_sec),  # Ensure non-negative
+                    'bytes_recv_per_sec': max(0, bytes_recv_per_sec),  # Ensure non-negative
+                    'total_bytes_sent': net_io.bytes_sent,
+                    'total_bytes_recv': net_io.bytes_recv
+                }
+                
+                # Update stored values for next calculation
+                get_system_resources._prev_net_io = net_io
+                get_system_resources._prev_time = current_time
     except ImportError:
         system_info['error'] = "The psutil package is not installed. Install it with 'pip install psutil' for system resource monitoring."
     except Exception as e:
