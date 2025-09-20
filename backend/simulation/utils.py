@@ -62,20 +62,38 @@ def get_system_resources():
                 docker_available = True
                 
                 # Check if EnergyPlus container image is available
-                result = subprocess.run(['docker', 'images', 'nrel/energyplus:23.2.0', '--format', 'table {{.Repository}}:{{.Tag}}'], 
+                result = subprocess.run(['docker', 'images', 'nrel/energyplus:23.2.0', '--format', '{{.Repository}}:{{.Tag}}'], 
                                       capture_output=True, text=True, timeout=10)
                 
                 if 'nrel/energyplus:23.2.0' in result.stdout:
-                    energyplus_info = {
-                        'docker_available': True,
-                        'container_image': 'nrel/energyplus:23.2.0',
-                        'status': 'Container image available locally'
-                    }
+                    # Test if EnergyPlus actually works
+                    try:
+                        test_result = subprocess.run(['docker', 'run', '--rm', 'nrel/energyplus:23.2.0', 'energyplus', '--version'], 
+                                                   capture_output=True, text=True, timeout=30)
+                        if test_result.returncode == 0 and 'EnergyPlus' in test_result.stdout:
+                            energyplus_info = {
+                                'docker_available': True,
+                                'container_image': 'nrel/energyplus:23.2.0',
+                                'status': 'Available and working',
+                                'version': test_result.stdout.strip().split('\n')[-1] if test_result.stdout else 'Unknown'
+                            }
+                        else:
+                            energyplus_info = {
+                                'docker_available': True,
+                                'container_image': 'nrel/energyplus:23.2.0',
+                                'status': 'Image available but test failed'
+                            }
+                    except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                        energyplus_info = {
+                            'docker_available': True,
+                            'container_image': 'nrel/energyplus:23.2.0',
+                            'status': 'Image available but executable test failed'
+                        }
                 else:
                     energyplus_info = {
                         'docker_available': True,
                         'container_image': 'nrel/energyplus:23.2.0',
-                        'status': 'Container image will be pulled when needed'
+                        'status': 'Container image not found locally'
                     }
                     
         except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
