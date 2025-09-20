@@ -41,13 +41,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock  # Allow Docker-in-Docker for EnergyPlus
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
+    depends_on: []  # No longer depends on Docker PostgreSQL
     command: >
-      sh -c "python manage.py migrate &&
-             python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8000"
+      sh -c "python manage.py runserver 0.0.0.0:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/system-resources/"]
       interval: 30s

@@ -95,17 +95,30 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.routing.application'
 
-# Database configuration - updated for Docker
+# Database configuration - Dual database setup
 DATABASES = {
     'default': {
+        # Docker PostgreSQL for Django-managed tables (users, simulations, etc.)
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'epsm_db'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+    },
+    'materials_db': {
+        # Local PostgreSQL for existing materials/constructions data
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('MATERIALS_DB_NAME', 'epsm_local'),
+        'USER': os.getenv('MATERIALS_DB_USER', 'ssanjay'),
+        'PASSWORD': os.getenv('MATERIALS_DB_PASSWORD', ''),
+        'HOST': os.getenv('MATERIALS_DB_HOST', 'host.docker.internal'),
+        'PORT': os.getenv('MATERIALS_DB_PORT', '5432'),
     }
 }
+
+# Database routing
+DATABASE_ROUTERS = ['config.db_router.DatabaseRouter']
 
 AUTH_PASSWORD_VALIDATORS = [
     {

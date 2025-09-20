@@ -31,6 +31,9 @@ def api_login(request):
                     'id': str(user.pk),
                     'email': user.email,
                     'username': user.username,
+                    'first_name': user.first_name or '',
+                    'last_name': user.last_name or '',
+                    'is_active': user.is_active,
                     'created_at': user.date_joined.isoformat()
                 },
                 'session': {
@@ -67,6 +70,9 @@ def api_user(request):
                 'id': str(request.user.pk),
                 'email': request.user.email,
                 'username': request.user.username,
+                'first_name': request.user.first_name or '',
+                'last_name': request.user.last_name or '',
+                'is_active': request.user.is_active,
                 'created_at': request.user.date_joined.isoformat()
             }
         })

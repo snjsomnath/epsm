@@ -1,6 +1,8 @@
 from django.db import models
+import uuid
 
 class Author(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     email = models.EmailField(null=True, blank=True)
@@ -10,6 +12,7 @@ class Author(models.Model):
 
     class Meta:
         db_table = 'authors'
+        managed = False  # Don't let Django manage this table
 
 class Material(models.Model):
     ROUGHNESS_CHOICES = [
@@ -21,6 +24,7 @@ class Material(models.Model):
         ('VerySmooth', 'Very Smooth'),
     ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
     roughness = models.CharField(max_length=20, choices=ROUGHNESS_CHOICES)
     thickness_m = models.FloatField()
@@ -46,6 +50,7 @@ class Material(models.Model):
 
     class Meta:
         db_table = 'materials'
+        managed = False  # Don't let Django manage this table
 
 class WindowGlazing(models.Model):
     OPTICAL_DATA_CHOICES = [
@@ -101,10 +106,10 @@ class Construction(models.Model):
         ('window', 'Window'),
     ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
     element_type = models.CharField(max_length=20, choices=ELEMENT_CHOICES)
     is_window = models.BooleanField(default=False)
-    ep_construction_name = models.CharField(max_length=255, null=True, blank=True)
     
     u_value_w_m2k = models.FloatField()
     gwp_kgco2e_per_m2 = models.FloatField()
@@ -117,6 +122,7 @@ class Construction(models.Model):
 
     class Meta:
         db_table = 'constructions'
+        managed = False  # Don't let Django manage this table
 
 class Layer(models.Model):
     construction = models.ForeignKey(Construction, on_delete=models.CASCADE, related_name='layers')
@@ -131,6 +137,7 @@ class Layer(models.Model):
         ordering = ['layer_order']
 
 class ConstructionSet(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
     wall_construction = models.ForeignKey(Construction, on_delete=models.SET_NULL, null=True, related_name='wall_sets')
     roof_construction = models.ForeignKey(Construction, on_delete=models.SET_NULL, null=True, related_name='roof_sets')
@@ -145,6 +152,7 @@ class ConstructionSet(models.Model):
 
     class Meta:
         db_table = 'construction_sets'
+        managed = False  # Don't let Django manage this table
 
 class UnitDescription(models.Model):
     field = models.CharField(max_length=50, primary_key=True)
