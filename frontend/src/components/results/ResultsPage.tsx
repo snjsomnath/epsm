@@ -1,5 +1,4 @@
 // frontend/src/components/results/ResultsPage.tsx
-// TEMP: Trigger git change for debugging
 import React, { useState, useEffect } from 'react';
 import {
   Box,
