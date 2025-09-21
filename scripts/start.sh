@@ -7,10 +7,38 @@ set -e  # Exit on any errors
 
 echo "🚀 Starting EPSM Development Environment..."
 
-# Check if Docker is running
+
+# Check if Docker is running, try to start Docker Desktop if not
 if ! docker info > /dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker and try again."
-    exit 1
+    echo "❌ Docker is not running. Attempting to start Docker Desktop..."
+    OS_TYPE="$(uname)"
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS
+        open -a Docker
+        echo "⏳ Waiting for Docker Desktop to start (macOS)..."
+    elif grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+        # WSL (Windows Subsystem for Linux)
+        powershell.exe -NoProfile -Command "Start-Process 'Docker Desktop'" > /dev/null 2>&1
+        echo "⏳ Waiting for Docker Desktop to start (Windows/WSL)..."
+    elif [ "$OS_TYPE" = "Linux" ]; then
+        echo "❌ Docker is not running. Please start the Docker daemon manually."
+        exit 1
+    else
+        echo "❌ Unsupported OS. Please start Docker manually."
+        exit 1
+    fi
+
+    # Wait for Docker to be ready (max 60s)
+    SECONDS_WAITED=0
+    until docker info > /dev/null 2>&1; do
+        sleep 2
+        SECONDS_WAITED=$((SECONDS_WAITED+2))
+        if [ $SECONDS_WAITED -ge 60 ]; then
+            echo "❌ Docker did not start within 60 seconds. Please start Docker manually and try again."
+            exit 1
+        fi
+    done
+    echo "✅ Docker is now running!"
 fi
 
 # Check if .env file exists
