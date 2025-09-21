@@ -113,6 +113,7 @@ sample_*.epw
 *.audit
 *.htm
 *.html
+!frontend/index.html
 *.tab
 
 # Simulation results and outputs
