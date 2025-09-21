@@ -119,6 +119,7 @@ sample_*.epw
 simulation_results/
 output/
 results/
+!frontend/src/components/results/
 
 # ==============================================
 # LEGACY & MIGRATION FILES
