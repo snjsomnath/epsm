@@ -1,6 +1,15 @@
 from django.db import models
 import uuid
 
+# Shared element choices for constructions and scenario constructions
+ELEMENT_CHOICES = [
+    ('wall', 'Wall'),
+    ('roof', 'Roof'),
+    ('floor', 'Floor'),
+    ('ceiling', 'Ceiling'),
+    ('window', 'Window'),
+]
+
 class Author(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     first_name = models.CharField(max_length=100)
@@ -107,14 +116,6 @@ class WindowGlazing(models.Model):
         managed = True  # Let Django manage this table
 
 class Construction(models.Model):
-    ELEMENT_CHOICES = [
-        ('wall', 'Wall'),
-        ('roof', 'Roof'),
-        ('floor', 'Floor'),
-        ('ceiling', 'Ceiling'),
-        ('window', 'Window'),
-    ]
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
     element_type = models.CharField(max_length=20, choices=ELEMENT_CHOICES)
@@ -172,3 +173,38 @@ class UnitDescription(models.Model):
 
     class Meta:
         db_table = 'unit_descriptions'
+
+
+class Scenario(models.Model):
+    ELEMENT_CHOICES = [
+        ('wall', 'Wall'),
+        ('roof', 'Roof'),
+        ('floor', 'Floor'),
+        ('window', 'Window'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    total_simulations = models.IntegerField(null=True, blank=True)
+    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True, blank=True)
+    date_created = models.DateField(auto_now_add=True)
+    date_modified = models.DateField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    source = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'scenarios'
+        managed = True
+
+
+class ScenarioConstruction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scenario = models.ForeignKey(Scenario, on_delete=models.CASCADE, related_name='scenario_constructions')
+    construction = models.ForeignKey(Construction, on_delete=models.SET_NULL, null=True, blank=True)
+    element_type = models.CharField(max_length=20, choices=ELEMENT_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'scenario_constructions'
+        managed = True

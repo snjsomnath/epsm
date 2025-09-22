@@ -254,7 +254,18 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     constructions: { constructionId: string, elementType: string }[]
   ) => {
     try {
-      await createScenario(scenario, constructions);
+      // Ensure we only send a valid UUID for author_id (backend expects UUID).
+      const isUUID = (id?: string | null) => {
+        if (!id) return false;
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+      };
+
+      const scenarioToSend = { ...scenario } as any;
+      if (!isUUID(scenarioToSend.author_id)) {
+        delete scenarioToSend.author_id;
+      }
+
+      await createScenario(scenarioToSend, constructions);
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add scenario');
@@ -268,7 +279,17 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
     constructions: { constructionId: string, elementType: string }[]
   ) => {
     try {
-      await updateScenarioInDb(id, scenario, constructions);
+      const isUUID = (id?: string | null) => {
+        if (!id) return false;
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id);
+      };
+
+      const scenarioToSend = { ...scenario } as any;
+      if (!isUUID(scenarioToSend.author_id)) {
+        delete scenarioToSend.author_id;
+      }
+
+      await updateScenarioInDb(id, scenarioToSend, constructions);
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update scenario');

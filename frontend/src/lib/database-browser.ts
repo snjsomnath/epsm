@@ -415,10 +415,16 @@ class BrowserDatabaseService {
   // Scenarios
   async getScenarios(): Promise<Scenario[]> {
     try {
-      return [];
+      const response = await fetch(`${this.baseUrl}/scenarios/`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const scenarios = await response.json();
+      return scenarios;
     } catch (error) {
       console.error('Error fetching scenarios:', error);
-      throw error;
+      // Fallback to empty list
+      return [];
     }
   }
 
@@ -427,14 +433,31 @@ class BrowserDatabaseService {
     constructions: { constructionId: string, elementType: string }[]
   ): Promise<Scenario> {
     try {
-      console.log('Creating scenario:', scenario, constructions);
-      const newScenario: Scenario = {
-        id: Date.now().toString(),
-        ...scenario,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      return newScenario;
+      console.log('Creating scenario via API:', scenario, constructions);
+      const csrfToken = getCSRFTokenFromCookie();
+      const body = { ...scenario, constructions };
+      const response = await fetch(`${this.baseUrl}/scenarios/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const created = await response.json();
+      // If backend returns id only, fetch the full scenario list to refresh client
+      if (created && created.id) {
+        const all = await this.getScenarios();
+        const newScenario = all.find((s: any) => String(s.id) === String(created.id));
+        return newScenario ?? ({ id: created.id, ...scenario } as unknown as Scenario);
+      }
+      return created as unknown as Scenario;
     } catch (error) {
       console.error('Error creating scenario:', error);
       throw error;
@@ -447,8 +470,22 @@ class BrowserDatabaseService {
     constructions: { constructionId: string, elementType: string }[]
   ): Promise<void> {
     try {
-      console.log('Updating scenario:', id, scenario, constructions);
-      // Mock implementation
+      console.log('Updating scenario via API:', id, scenario, constructions);
+      const csrfToken = getCSRFTokenFromCookie();
+      const body = { ...scenario, constructions };
+      const response = await fetch(`${this.baseUrl}/scenarios/${id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
     } catch (error) {
       console.error('Error updating scenario:', error);
       throw error;
@@ -457,8 +494,19 @@ class BrowserDatabaseService {
 
   async deleteScenario(id: string): Promise<void> {
     try {
-      console.log('Deleting scenario:', id);
-      // Mock implementation
+      console.log('Deleting scenario via API:', id);
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/scenarios/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
     } catch (error) {
       console.error('Error deleting scenario:', error);
       throw error;

@@ -104,6 +104,8 @@ urlpatterns = [
         path('api/constructions/<uuid:id>/', simulation_views.api_construction_detail, name='api_construction_detail'),
     path('api/construction-sets/', simulation_views.api_construction_sets, name='api_construction_sets'),
     path('api/construction-sets/<uuid:id>/', simulation_views.api_construction_set_detail, name='api_construction_set_detail'),
+    path('api/scenarios/', simulation_views.api_scenarios, name='api_scenarios'),
+    path('api/scenarios/<uuid:id>/', simulation_views.api_scenario_detail, name='api_scenario_detail'),
     path('api/window-glazing', simulation_views.api_window_glazing, name='api_window_glazing'),
     
     # Direct endpoints
