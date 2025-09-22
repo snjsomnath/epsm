@@ -45,7 +45,11 @@ class EnergyPlusSimulator:
         import subprocess
         import shutil
 
-        idf_basename = os.path.basename(idf_file.file.path)
+        # Resolve stored file paths (SimulationFile uses `file_path` and `file_name`)
+        idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+        weather_path = os.path.join(settings.MEDIA_ROOT, weather_file.file_path)
+
+        idf_basename = os.path.basename(idf_path)
         idf_name_no_ext = os.path.splitext(idf_basename)[0]
 
         # Prepare simulation directory
@@ -55,19 +59,79 @@ class EnergyPlusSimulator:
         temp_idf_path = os.path.join(simulation_dir, 'input.idf')
         temp_epw_path = os.path.join(simulation_dir, 'weather.epw')
 
-        shutil.copy2(idf_file.file.path, temp_idf_path)
-        shutil.copy2(weather_file.file.path, temp_epw_path)
+        shutil.copy2(idf_path, temp_idf_path)
+        shutil.copy2(weather_path, temp_epw_path)
+
+        # Preflight: ensure copied files exist in the container-side simulation directory.
+        # The host path (HOST_MEDIA_ROOT) is only useful for building the docker -v source
+        # string but cannot be reliably inspected from inside the container. Instead,
+        # verify the files exist where the container will mount them (the container
+        # simulation_dir) and write a diagnostic listing that includes the expected
+        # host path for external debugging.
+        host_media_root = os.environ.get('HOST_MEDIA_ROOT')
+        if host_media_root and str(simulation_dir).startswith(str(settings.MEDIA_ROOT)):
+            rel = os.path.relpath(str(simulation_dir), str(settings.MEDIA_ROOT))
+            expected_host_sim_dir = os.path.join(host_media_root, rel)
+        else:
+            expected_host_sim_dir = None
+
+        # Paths in the container that should exist
+        temp_idf_container = temp_idf_path
+        temp_epw_container = temp_epw_path
+
+        missing = []
+        for p in (temp_idf_container, temp_epw_container):
+            if not os.path.exists(p):
+                missing.append(p)
+
+        # Write a preflight listing for debugging (container view). Include expected
+        # host path if available but do not attempt to access it from inside the
+        # container.
+        try:
+            listing = '\n'.join(os.listdir(simulation_dir))
+        except Exception as _e:
+            listing = f"<failed to list: {_e}>"
+        try:
+            with open(os.path.join(simulation_dir, 'preflight_listing.txt'), 'w') as f:
+                f.write(f"simulation_dir: {simulation_dir}\n")
+                if expected_host_sim_dir:
+                    f.write(f"expected_host_sim_dir: {expected_host_sim_dir}\n")
+                f.write(f"contents:\n{listing}\n")
+        except Exception:
+            pass
+
+        if missing:
+            raise FileNotFoundError(f"Preflight: expected file(s) missing in container simulation dir: {missing}")
 
         # Use NREL EnergyPlus Docker container
+        # If backend is running inside Docker and invoking the host Docker daemon,
+        # mounting the container-internal path (e.g. /app/media/...) will fail because
+        # the Docker daemon on the host doesn't know that path. Allow an explicit
+        # host-accessible path via HOST_MEDIA_ROOT env var.
+        host_media_root = os.environ.get('HOST_MEDIA_ROOT')
+
+        # If HOST_MEDIA_ROOT is set to the host's MEDIA_ROOT directory, translate
+        # the container `simulation_dir` to the equivalent host path. This allows
+        # the host Docker daemon to mount the correct host directory even when
+        # the code runs inside a container.
+        if host_media_root and str(simulation_dir).startswith(str(settings.MEDIA_ROOT)):
+            rel = os.path.relpath(str(simulation_dir), str(settings.MEDIA_ROOT))
+            mount_source = os.path.join(host_media_root, rel)
+        else:
+            mount_source = simulation_dir
+
+        # Honor an environment variable to request a specific container platform
+        platform = os.environ.get('EPLUS_DOCKER_PLATFORM', 'linux/amd64')
+
         docker_command = [
             'docker', 'run', '--rm',
-            '-v', f'{simulation_dir}:/var/simdata/energyplus',
+            '-v', f'{mount_source}:/var/simdata/energyplus',
+            '--platform', platform,
             'nrel/energyplus:23.2.0',
             'energyplus',
             '--weather', '/var/simdata/energyplus/weather.epw',
             '--output-directory', '/var/simdata/energyplus',
-            '--expandobjects',
-            '--readvars',
+            '--expandobjects', '--readvars',
             '/var/simdata/energyplus/input.idf'
         ]
 
@@ -81,8 +145,10 @@ class EnergyPlusSimulator:
                 cwd=simulation_dir
             )
 
+            display_idf_name = getattr(idf_file, 'original_name', None) or getattr(idf_file, 'file_name', None) or idf_basename
+
             output_log = {
-                "idf_file": idf_file.file.name,
+                "idf_file": display_idf_name,
                 "stdout": process.stdout,
                 "stderr": process.stderr,
                 "returncode": process.returncode,
@@ -121,14 +187,14 @@ class EnergyPlusSimulator:
 
         except subprocess.TimeoutExpired:
             return {
-                "idf_file": idf_file.file.name,
+                "idf_file": display_idf_name,
                 "error": "Simulation timed out after 10 minutes",
                 "returncode": -1,
                 "output_dir": str(simulation_dir)
             }
         except Exception as e:
             return {
-                "idf_file": idf_file.file.name,
+                "idf_file": display_idf_name,
                 "error": str(e),
                 "returncode": -1,
                 "output_dir": str(simulation_dir)
@@ -142,7 +208,8 @@ class EnergyPlusSimulator:
         logs = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for idf_file in idf_files:
-                idf_basename = os.path.basename(idf_file.file.path)
+                idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+                idf_basename = os.path.basename(idf_path)
                 idf_name_no_ext = os.path.splitext(idf_basename)[0]
                 idf_results_dir = results_dir / idf_name_no_ext
                 future = executor.submit(
@@ -171,7 +238,8 @@ class EnergyPlusSimulator:
 
         # Generate all variant IDFs and store them in organized folders
         for idf_idx, idf_file in enumerate(base_idf_files):
-            with open(idf_file.file.path, "r", encoding="utf-8") as f:
+            idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+            with open(idf_path, "r", encoding="utf-8") as f:
                 base_content = f.read()
             for variant_idx, construction_set in enumerate(construction_sets):
                 parser = IdfParser(base_content)
@@ -262,10 +330,12 @@ class EnergyPlusSimulator:
 
             # Check if IDF/weather files exist
             for idf_file in idf_files:
-                if not os.path.exists(idf_file.file.path):
-                    raise FileNotFoundError(f"IDF file not found at: {idf_file.file.path}")
-            if not os.path.exists(weather_file.file.path):
-                raise FileNotFoundError(f"Weather file not found at: {weather_file.file.path}")
+                idf_full = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+                if not os.path.exists(idf_full):
+                    raise FileNotFoundError(f"IDF file not found at: {idf_full}")
+            weather_full = os.path.join(settings.MEDIA_ROOT, weather_file.file_path)
+            if not os.path.exists(weather_full):
+                raise FileNotFoundError(f"Weather file not found at: {weather_full}")
 
             all_results = []
             logs = []
@@ -274,7 +344,8 @@ class EnergyPlusSimulator:
                 print(f"Running simulations in parallel mode (max_workers={max_workers})")
                 logs = self.run_parallel_simulations(idf_files, weather_file, self.results_dir, max_workers=max_workers)
                 for idf_file, log in logs:
-                    idf_basename = os.path.basename(idf_file.file.path)
+                    idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+                    idf_basename = os.path.basename(idf_path)
                     idf_name_no_ext = os.path.splitext(idf_basename)[0]
                     idf_results_dir = self.results_dir / idf_name_no_ext
                     results_path = idf_results_dir / 'output'
@@ -284,7 +355,8 @@ class EnergyPlusSimulator:
             else:
                 print("Running simulations in serial mode")
                 for idf_file in idf_files:
-                    idf_basename = os.path.basename(idf_file.file.path)
+                    idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+                    idf_basename = os.path.basename(idf_path)
                     idf_name_no_ext = os.path.splitext(idf_basename)[0]
                     idf_results_dir = self.results_dir / idf_name_no_ext
                     log = self.run_single_simulation(idf_file, weather_file, str(idf_results_dir))
@@ -339,7 +411,7 @@ class EnergyPlusSimulator:
                 results = parse_html_with_table_lookup(html_path, log_path, [idf_file])
                 
                 # Add original filename to results
-                results['originalFileName'] = idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name)
+                results['originalFileName'] = idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else (idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path))
                 
                 # Save parsed results as a JSON file
                 json_path = output_file.with_suffix('.json')
@@ -351,8 +423,8 @@ class EnergyPlusSimulator:
                 print(f"Warning: HTML results file not found at {html_path}")
                 return {
                     'error': 'HTML results file not found',
-                    'fileName': os.path.basename(idf_file.file.name),
-                    'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name),
+                    'fileName': idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path),
+                    'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else (idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path)),
                     'status': 'error'
                 }
                 
@@ -362,8 +434,8 @@ class EnergyPlusSimulator:
             traceback.print_exc()
             return {
                 'error': str(e),
-                'fileName': os.path.basename(idf_file.file.name),
-                'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else os.path.basename(idf_file.file.name),
+                'fileName': idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path),
+                'originalFileName': idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else (idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path)),
                 'status': 'error'
             }
 
@@ -455,12 +527,28 @@ def parse_html_with_table_lookup(html_path, log_path, idf_files):
         file_name = None
         if hasattr(idf_files, "first") and callable(getattr(idf_files, "first", None)):
             first_file = idf_files.first()
-            file_name = first_file.file.name if first_file else "unknown.idf"
+            if first_file:
+                if getattr(first_file, 'file_name', None):
+                    file_name = first_file.file_name
+                elif getattr(first_file, 'original_name', None):
+                    file_name = first_file.original_name
+                elif getattr(first_file, 'file_path', None):
+                    file_name = os.path.basename(first_file.file_path)
         elif isinstance(idf_files, list) and idf_files:
-            file_name = getattr(idf_files[0].file, "name", "unknown.idf")
-        else:
+            first = idf_files[0]
+            if getattr(first, 'file_name', None):
+                file_name = first.file_name
+            elif getattr(first, 'original_name', None):
+                file_name = first.original_name
+            elif getattr(first, 'file_path', None):
+                file_name = os.path.basename(first.file_path)
+            else:
+                # Fallback: try FileField-like attribute
+                file_attr = getattr(first, 'file', None)
+                if file_attr and getattr(file_attr, 'name', None):
+                    file_name = os.path.basename(file_attr.name)
+        if not file_name:
             file_name = "unknown.idf"
-        file_name = os.path.basename(file_name)
 
         # Extract values from tables
         total_energy_use = get_value_from_table("Site and Source Energy", "Total Site Energy", 2)  # kWh/m²
@@ -552,9 +640,20 @@ def parse_html_with_table_lookup(html_path, log_path, idf_files):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        file_name_fallback = "unknown.idf"
+        try:
+            if hasattr(idf_files, "first") and callable(getattr(idf_files, "first", None)) and idf_files.exists():
+                first_file = idf_files.first()
+                if first_file and getattr(first_file, 'file_name', None):
+                    file_name_fallback = first_file.file_name
+                elif first_file and getattr(first_file, 'file_path', None):
+                    file_name_fallback = os.path.basename(first_file.file_path)
+        except Exception:
+            pass
+
         return {
             "error": str(e),
-            "fileName": idf_files.first().file.name if idf_files.exists() else "unknown.idf",
+            "fileName": file_name_fallback,
             "totalEnergyUse": 0.0,
             "heatingDemand": 0.0,
             "coolingDemand": 0.0,
@@ -565,127 +664,88 @@ def parse_html_with_table_lookup(html_path, log_path, idf_files):
         }
 
 def parse_simulation_results(simulation):
-    """Retrieve parsed simulation results."""
-    if simulation.results_file:
-        try:
-            # Ensure we interpret the path correctly
-            media_root = Path(settings.MEDIA_ROOT)
-            
-            # Handle FieldFile object properly by accessing its path or name attribute
-            if hasattr(simulation.results_file, 'path'):
-                results_path = Path(simulation.results_file.path)
-            elif hasattr(simulation.results_file, 'name'):
-                results_path = media_root / simulation.results_file.name
-            else:
-                # If it's already a string or PathLike object
-                results_path = media_root / str(simulation.results_file)
-            
-            print(f"Looking for results file at: {results_path}")
-            
-            # Check if the file exists
-            if not results_path.exists():
-                # Try alternative paths
-                alternative_paths = [
-                    # Try the absolute path stored in the DB
-                    Path(str(simulation.results_file)),
-                    # Try looking in the backend directory
-                    Path(settings.BASE_DIR) / 'simulation_results' / str(simulation.id) / 'output.json'
-                ]
-                
-                for alt_path in alternative_paths:
-                    print(f"Checking alternative path: {alt_path}")
-                    if alt_path.exists():
-                        results_path = alt_path
-                        print(f"Found results at alternative path: {results_path}")
-                        break
-            
-            if not results_path.exists():
-                # If we still can't find combined results, look for individual results
-                if simulation.file_count > 1:
-                    # Try to collect results from individual IDF files
-                    idf_files = simulation.files.filter(file_type='idf')
-                    all_results = []
-                    
-                    for idf_file in idf_files:
-                        idf_basename = os.path.basename(idf_file.file.path)
-                        idf_name_no_ext = os.path.splitext(idf_basename)[0]
-                        
-                        individual_results_path = media_root / 'simulation_results' / str(simulation.id) / idf_name_no_ext / 'output.json'
-                        
-                        if individual_results_path.exists():
-                            with open(individual_results_path, 'r') as f:
-                                file_results = json.load(f)
-                                file_results['simulationId'] = simulation.id
-                                all_results.append(file_results)
-                    
-                    if all_results:
-                        return all_results
-                
-                raise FileNotFoundError(f"Results file not found at {results_path} or any alternative locations")
-                
-            print(f"Opening results file from: {results_path}")
-            
-            with open(results_path, 'r') as f:
-                result_data = json.load(f)
-                
-                # Handle both single results and multiple results
-                if isinstance(result_data, list):
-                    # Add simulation ID to each result
-                    for item in result_data:
+    """Retrieve parsed simulation results.
+
+    Because `Simulation` model doesn't have a `results_file` field, look for
+    combined results under MEDIA_ROOT/simulation_results/<simulation.id>/combined_results.json
+    or fall back to individual per-idf `output.json` files in the same folder.
+    """
+    media_root = Path(settings.MEDIA_ROOT)
+    sim_results_dir = media_root / 'simulation_results' / str(simulation.id)
+
+    # Preferred combined file
+    combined_path = sim_results_dir / 'combined_results.json'
+    try:
+        if combined_path.exists():
+            with open(combined_path, 'r') as f:
+                data = json.load(f)
+                # Normalize to list if necessary
+                if isinstance(data, dict) and simulation.file_count > 1:
+                    data = [data]
+                if isinstance(data, list):
+                    for item in data:
                         if isinstance(item, dict):
                             item['simulationId'] = simulation.id
-                elif isinstance(result_data, dict):
-                    # Add simulation ID to the single result
-                    result_data['simulationId'] = simulation.id
-                
-                return result_data
-                
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            
-            # Return a consistent format whether one file or multiple
-            if simulation.file_count > 1:
-                return [{
-                    'error': f"Failed to read results: {str(e)}",
-                    'simulationId': simulation.id,
-                    'fileName': file.file.name if hasattr(file, 'file') else "unknown.idf",
-                    'totalEnergyUse': 0.0,
-                    'heatingDemand': 0.0,
-                    'coolingDemand': 0.0,
-                    'runTime': 0.0
-                } for file in simulation.files.filter(file_type='idf')]
-            else:
-                return {
-                    'error': f"Failed to read results: {str(e)}",
-                    'simulationId': simulation.id,
-                    'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
-                    'totalEnergyUse': 0.0,
-                    'heatingDemand': 0.0,
-                    'coolingDemand': 0.0,
-                    'runTime': 0.0
-                }
-    else:
-        # Return a consistent format whether one file or multiple
+                elif isinstance(data, dict):
+                    data['simulationId'] = simulation.id
+                return data
+
+        # Fall back to individual output.json files for each IDF
+        if sim_results_dir.exists():
+            results = []
+            idf_files = simulation.files.filter(file_type='idf')
+            for idf_file in idf_files:
+                idf_basename = os.path.basename(idf_file.file_path if getattr(idf_file, 'file_path', None) else (getattr(idf_file, 'file_name', None) or 'unknown.idf'))
+                idf_name_no_ext = os.path.splitext(idf_basename)[0]
+                individual_results_path = sim_results_dir / idf_name_no_ext / 'output.json'
+                if individual_results_path.exists():
+                    with open(individual_results_path, 'r') as f:
+                        file_results = json.load(f)
+                        if isinstance(file_results, dict):
+                            file_results['simulationId'] = simulation.id
+                        results.append(file_results)
+
+            if results:
+                return results
+
+        # If nothing found, raise so the caller can respond appropriately
+        raise FileNotFoundError(f"No combined or individual results found under {sim_results_dir}")
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # Construct a consistent fallback response
         if simulation.file_count > 1:
-            return [{
-                'error': "No results file available",
-                'simulationId': simulation.id,
-                'fileName': file.file.name if hasattr(file, 'file') else "unknown.idf",
-                'totalEnergyUse': 0.0,
-                'heatingDemand': 0.0,
-                'coolingDemand': 0.0,
-                'runTime': 0.0
-            } for file in simulation.files.filter(file_type='idf')]
+            fallback = []
+            for file in simulation.files.filter(file_type='idf'):
+                fallback.append({
+                    'error': f"Failed to read results: {str(e)}",
+                    'simulationId': simulation.id,
+                    'fileName': file.file_name if getattr(file, 'file_name', None) else (os.path.basename(file.file_path) if getattr(file, 'file_path', None) else "unknown.idf"),
+                    'totalEnergyUse': 0.0,
+                    'heatingDemand': 0.0,
+                    'coolingDemand': 0.0,
+                    'runTime': 0.0,
+                    'status': 'error'
+                })
+            return fallback
         else:
+            first = simulation.files.first()
+            file_name_val = "unknown.idf"
+            if first:
+                if getattr(first, 'file_name', None):
+                    file_name_val = first.file_name
+                elif getattr(first, 'file_path', None):
+                    file_name_val = os.path.basename(first.file_path)
             return {
-                'error': "No results file available",
+                'error': f"Failed to read results: {str(e)}",
                 'simulationId': simulation.id,
-                'fileName': getattr(simulation.files.first(), 'file', None) and simulation.files.first().file.name or "unknown.idf",
+                'fileName': file_name_val,
                 'totalEnergyUse': 0.0,
                 'heatingDemand': 0.0,
                 'coolingDemand': 0.0,
-                'runTime': 0.0
+                'runTime': 0.0,
+                'status': 'error'
             }
 
 def get_resource_utilisation():
