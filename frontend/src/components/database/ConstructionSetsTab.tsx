@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Grid,
@@ -128,26 +128,6 @@ const ConstructionSetsTab = () => {
     }
   };
 
-  // Fallback: if the MUI dialog doesn't appear for some reason, show a native confirm after a short delay
-  useEffect(() => {
-    if (!confirmDelete) return;
-
-    console.log('ConstructionSetsTab: confirmDelete set ->', confirmDelete);
-
-    const timer = setTimeout(async () => {
-      // If still set after 500ms, show a native confirm as a fallback
-      if (!confirmDelete) return;
-      const setName = constructionSets.find(s => s.id === confirmDelete)?.name || '';
-      const ok = window.confirm(`Delete construction set "${setName}"? This cannot be undone.`);
-      if (ok) {
-        await handleDelete(confirmDelete);
-      } else {
-        setConfirmDelete(null);
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [confirmDelete]);
 
   const handleSubmit = async () => {
     try {
