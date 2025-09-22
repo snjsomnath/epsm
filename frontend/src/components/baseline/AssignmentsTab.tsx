@@ -894,9 +894,9 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                       />
                     </TableCell>
                     <TableCell>{material.name}</TableCell>
-                    <TableCell>{material.properties.thickness.toFixed(4)}</TableCell>
-                    <TableCell>{material.properties.conductivity.toFixed(3)}</TableCell>
-                    <TableCell>{material.properties.density.toFixed(1)}</TableCell>
+                    <TableCell>{typeof material?.properties?.thickness === 'number' ? material.properties.thickness.toFixed(4) : 'N/A'}</TableCell>
+                    <TableCell>{typeof material?.properties?.conductivity === 'number' ? material.properties.conductivity.toFixed(3) : 'N/A'}</TableCell>
+                    <TableCell>{typeof material?.properties?.density === 'number' ? material.properties.density.toFixed(1) : 'N/A'}</TableCell>
                     <TableCell>
                       {material.existsInDatabase ? (
                         <Chip label="In Database" color="success" size="small" />
@@ -968,7 +968,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                     <TableCell>{construction.name}</TableCell>
                     <TableCell>{construction.type}</TableCell>
                     <TableCell>
-                      {construction.properties.layers.map((layer, i) => (
+                      {(construction?.properties?.layers || []).map((layer, i) => (
                         <Chip 
                           key={`${construction.uniqueKey}-layer-${i}`}
                           label={layer} 
@@ -1013,9 +1013,9 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                 {parsedData.zones.map((zone, index) => (
                   <TableRow key={zone.uniqueKey || `zone-${index}-${zone.name}`}>
                     <TableCell>{zone.name}</TableCell>
-                    <TableCell align="right">{zone.properties.area ? zone.properties.area.toFixed(1) : 'N/A'}</TableCell>
-                    <TableCell align="right">{zone.properties.volume ? zone.properties.volume.toFixed(1) : 'N/A'}</TableCell>
-                    <TableCell align="right">{zone.properties.ceilingHeight ? zone.properties.ceilingHeight.toFixed(2) : 'N/A'}</TableCell>
+                    <TableCell align="right">{typeof zone?.properties?.area === 'number' ? zone.properties.area.toFixed(1) : 'N/A'}</TableCell>
+                    <TableCell align="right">{typeof zone?.properties?.volume === 'number' ? zone.properties.volume.toFixed(1) : 'N/A'}</TableCell>
+                    <TableCell align="right">{typeof zone?.properties?.ceilingHeight === 'number' ? zone.properties.ceilingHeight.toFixed(2) : 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

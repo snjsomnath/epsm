@@ -126,7 +126,9 @@ export const parseIdfFiles = async (files: File[]) => {
         headers: {
           'X-Requested-With': 'XMLHttpRequest',
         },
-        credentials: 'include',
+        // Do not include credentials for this public parse endpoint.
+        // Including cookies triggers DRF SessionAuthentication which
+        // enforces CSRF and can return 403 when no CSRF token is sent.
       });
 
       return handleResponse(response);
