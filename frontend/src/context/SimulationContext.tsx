@@ -1,11 +1,14 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-// lightweight synchronous friendly name generator (avoids runtime require/import in browser)
-const _adjectives = ['quick','bright','calm','brisk','bold','gentle','clever','silent','merry','quiet'];
-const _animals = ['fox','owl','hare','wolf','raven','otter','lynx','stoat'];
-const makeFriendlyName = () => {
-  const a = _adjectives[Math.floor(Math.random() * _adjectives.length)];
-  const b = _animals[Math.floor(Math.random() * _animals.length)];
-  return `${a}-${b}`;
+import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
+const makeFriendlyName = (opts?: { separator?: string }) => {
+  try {
+    return uniqueNamesGenerator({ dictionaries: [adjectives, animals], separator: opts?.separator ?? '-', length: 2 });
+  } catch (e) {
+    // fallback simple generator
+    const _adjectives = ['quick','bright','calm','brisk','bold','gentle','clever','silent','merry','quiet'];
+    const _animals = ['fox','owl','hare','wolf','raven','otter','lynx','stoat'];
+    return `${_adjectives[Math.floor(Math.random() * _adjectives.length)]}-${_animals[Math.floor(Math.random() * _animals.length)]}`;
+  }
 };
 import type { ParsedData } from '../types/simulation';
 
@@ -112,8 +115,11 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const addToBaselineRun = (simulationId: string, title?: string, metadata?: Record<string, any>) => {
     if (!simulationId) return;
     const now = Date.now();
-    const generatedName = makeFriendlyName();
-    const entry = { id: simulationId, title: title || generatedName, ts: now, kpis: {}, metadata: { ...(metadata || {}), generatedName, createdAt: new Date(now).toISOString() } };
+    const generatedWord = makeFriendlyName();
+    // include file base name if provided
+    const fileBase = title ? String(title).replace(/\.[^/.]+$/, '') : null;
+    const combinedTitle = fileBase ? `${fileBase}-${generatedWord}` : generatedWord;
+    const entry = { id: simulationId, title: combinedTitle, ts: now, kpis: {}, metadata: { ...(metadata || {}), generatedWord, createdAt: new Date(now).toISOString() } };
     setBaselineHistory(prev => {
       const next = [entry, ...prev.filter(h => h.id !== simulationId)].slice(0, 20);
       try { persistBaselineHistory(next); console.debug('addToBaselineRun ->', entry, 'next length', next.length); } catch (e) {}
