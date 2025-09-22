@@ -188,7 +188,7 @@ def parse_idf(request):
 def add_components(request):
     """Add extracted components to database."""
     try:
-        data = json.loads(request.body)
+        data = request.data
         components = data.get('components', [])
         component_type = data.get('type')
         
@@ -640,7 +640,7 @@ def api_materials(request):
             return JsonResponse({'error': str(e)}, status=500)
     elif request.method == 'POST':
         try:
-            data = json.loads(request.body.decode('utf-8'))
+            data = request.data
             material = Material.objects.using('materials_db').create(
                 name=data['name'],
                 roughness=data['roughness'],
@@ -801,7 +801,7 @@ def api_constructions_create(request):
             return JsonResponse(constructions_data, safe=False)
 
         # POST - create construction and layers
-        data = json.loads(request.body.decode('utf-8'))
+        data = request.data
 
         construction = Construction.objects.using('materials_db').create(
             name=data.get('name'),
@@ -924,11 +924,11 @@ def api_construction_detail(request, id):
 
         if request.method == 'DELETE':
             # Delete construction and its layers (cascade should handle layers)
-            construction.delete()
+            Construction.objects.using('materials_db').filter(id=construction.id).delete()
             return JsonResponse({'status': 'deleted'})
 
         # PUT - update construction and replace layers if provided
-        data = json.loads(request.body.decode('utf-8'))
+        data = request.data
         # Update fields
         construction.name = data.get('name', construction.name)
         construction.element_type = data.get('element_type', construction.element_type)
@@ -1025,6 +1025,161 @@ def api_construction_sets(request):
         }, status=500)
 
 
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def api_scenarios(request):
+    """List all scenarios or create a new scenario with its constructions."""
+    try:
+        from database.models import Scenario, ScenarioConstruction, Construction
+        if request.method == 'GET':
+            scenarios_qs = Scenario.objects.using('materials_db').all()
+            scenarios = []
+            for s in scenarios_qs:
+                constructions = []
+                sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario=s)
+                for sc in sc_qs:
+                    constructions.append({
+                        'id': str(sc.id),
+                        'construction_id': str(sc.construction.id) if sc.construction else None,
+                        'element_type': sc.element_type,
+                        'created_at': sc.created_at.isoformat() if getattr(sc, 'created_at', None) else None
+                    })
+
+                scenarios.append({
+                    'id': str(s.id),
+                    'name': s.name,
+                    'description': s.description,
+                    'total_simulations': getattr(s, 'total_simulations', None),
+                    'author_id': getattr(s.author, 'id', None) if getattr(s, 'author', None) else None,
+                    'date_created': s.date_created.isoformat() if getattr(s, 'date_created', None) else None,
+                    'date_modified': s.date_modified.isoformat() if getattr(s, 'date_modified', None) else None,
+                    'scenario_constructions': constructions
+                })
+            return JsonResponse(scenarios, safe=False)
+
+        # POST - create scenario and its scenario_constructions
+        data = request.data
+        name = data.get('name')
+        description = data.get('description')
+        total_simulations = data.get('total_simulations')
+        author_id = data.get('author_id')
+        constructions = data.get('constructions', [])
+
+        # Resolve author if provided (Author.id is UUID). Ignore invalid values.
+        author_obj = None
+        if author_id:
+            try:
+                from database.models import Author
+                author_uuid = uuid.UUID(str(author_id))
+                author_obj = Author.objects.using('materials_db').filter(id=author_uuid).first()
+            except Exception:
+                author_obj = None
+
+        # Create scenario
+        scenario = Scenario.objects.using('materials_db').create(
+            name=name,
+            description=description,
+            total_simulations=total_simulations,
+            author=author_obj
+        )
+
+        # Create scenario_constructions rows
+        for sc in constructions:
+            try:
+                construction_obj = Construction.objects.using('materials_db').get(id=sc.get('constructionId'))
+            except Exception:
+                construction_obj = None
+            ScenarioConstruction.objects.using('materials_db').create(
+                scenario=scenario,
+                construction=construction_obj,
+                element_type=sc.get('elementType')
+            )
+
+        return JsonResponse({'id': str(scenario.id)}, status=201)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([AllowAny])
+def api_scenario_detail(request, id):
+    """Get, update or delete a single scenario and manage its constructions."""
+    try:
+        from database.models import Scenario, ScenarioConstruction, Construction
+        try:
+            s = Scenario.objects.using('materials_db').get(id=id)
+        except Scenario.DoesNotExist:
+            return JsonResponse({'error': 'Scenario not found'}, status=404)
+
+        if request.method == 'GET':
+            constructions = []
+            sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario=s)
+            for sc in sc_qs:
+                constructions.append({
+                    'id': str(sc.id),
+                    'construction_id': str(sc.construction.id) if sc.construction else None,
+                    'element_type': sc.element_type,
+                })
+
+            return JsonResponse({
+                'id': str(s.id),
+                'name': s.name,
+                'description': s.description,
+                'total_simulations': getattr(s, 'total_simulations', None),
+                'scenario_constructions': constructions
+            })
+
+        if request.method == 'DELETE':
+            # Delete scenario and related scenario_constructions explicitly on materials_db
+            ScenarioConstruction.objects.using('materials_db').filter(scenario=s).delete()
+            Scenario.objects.using('materials_db').filter(id=s.id).delete()
+            return JsonResponse({'status': 'deleted'})
+
+        # PUT - update scenario and replace constructions
+        data = request.data
+        s.name = data.get('name', s.name)
+        s.description = data.get('description', s.description)
+        # Update author if provided and valid
+        if 'author_id' in data:
+            try:
+                from database.models import Author
+                aid = data.get('author_id')
+                author_uuid = uuid.UUID(str(aid))
+                s.author = Author.objects.using('materials_db').filter(id=author_uuid).first()
+            except Exception:
+                # ignore invalid author id and leave author unchanged
+                pass
+        if 'total_simulations' in data:
+            try:
+                s.total_simulations = int(data.get('total_simulations'))
+            except Exception:
+                pass
+        s.save(using='materials_db')
+
+        if 'constructions' in data:
+            ScenarioConstruction.objects.using('materials_db').filter(scenario=s).delete()
+            for sc in data.get('constructions', []):
+                try:
+                    construction_obj = Construction.objects.using('materials_db').get(id=sc.get('constructionId'))
+                except Exception:
+                    construction_obj = None
+                ScenarioConstruction.objects.using('materials_db').create(
+                    scenario=s,
+                    construction=construction_obj,
+                    element_type=sc.get('elementType')
+                )
+
+        return JsonResponse({'status': 'updated'})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
+
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([AllowAny])
 def api_construction_set_detail(request, id):
@@ -1052,11 +1207,11 @@ def api_construction_set_detail(request, id):
             })
 
         if request.method == 'DELETE':
-            cs.delete()
+            ConstructionSet.objects.using('materials_db').filter(id=cs.id).delete()
             return JsonResponse({'status': 'deleted'})
 
         # PUT - update fields
-        data = json.loads(request.body.decode('utf-8'))
+        data = request.data
         cs.name = data.get('name', cs.name)
         cs.description = data.get('description', cs.description)
         # Update foreign keys if provided
