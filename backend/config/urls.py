@@ -1,12 +1,13 @@
 from django.contrib import admin
 from django.urls import path, include
-from django.http import HttpResponse
+from django.http import HttpResponse, FileResponse, Http404, JsonResponse
 from django.conf import settings
 from django.conf.urls.static import static
 from simulation import views as simulation_views
 from simulation import auth_views
 import json
-from django.http import JsonResponse
+import os
+import mimetypes
 import datetime
 
 def db_test_view():
@@ -131,4 +132,30 @@ urlpatterns = [
 
 # Add this if not already present
 if settings.DEBUG:
+    # Serve simulation result HTML requests that may be generated as .htm
+    # (EnergyPlus outputs `output.htm` but frontend may request `output.html`).
+    # This fallback will return the .htm file when an .html path is requested.
+    def media_html_fallback(request, path):
+        # Only handle simulation_results paths; otherwise let static handler manage.
+        if not path.startswith('simulation_results/'):
+            raise Http404
+
+        full_path = os.path.join(settings.MEDIA_ROOT, path)
+        if os.path.exists(full_path):
+            content_type = mimetypes.guess_type(full_path)[0] or 'application/octet-stream'
+            return FileResponse(open(full_path, 'rb'), content_type=content_type)
+
+        # If an HTML was requested but only .htm exists, serve the .htm
+        if path.endswith('.html'):
+            alt = path[:-5] + '.htm'
+            alt_full = os.path.join(settings.MEDIA_ROOT, alt)
+            if os.path.exists(alt_full):
+                return FileResponse(open(alt_full, 'rb'), content_type='text/html')
+
+        raise Http404
+
+    urlpatterns += [
+        path('media/<path:path>', media_html_fallback),
+    ]
+
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
