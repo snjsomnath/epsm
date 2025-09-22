@@ -12,45 +12,57 @@ class Author(models.Model):
 
     class Meta:
         db_table = 'authors'
-        managed = False  # Don't let Django manage this table
+        managed = True  # Let Django manage this table
 
 class Material(models.Model):
     ROUGHNESS_CHOICES = [
-        ('VeryRough', 'Very Rough'),
-        ('Rough', 'Rough'),
-        ('MediumRough', 'Medium Rough'),
-        ('MediumSmooth', 'Medium Smooth'),
         ('Smooth', 'Smooth'),
-        ('VerySmooth', 'Very Smooth'),
+        ('MediumSmooth', 'MediumSmooth'),
+        ('MediumRough', 'MediumRough'),
+        ('Rough', 'Rough'),
+        ('VeryRough', 'VeryRough'),
     ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=255, unique=True)
-    roughness = models.CharField(max_length=20, choices=ROUGHNESS_CHOICES)
-    thickness_m = models.FloatField()
-    conductivity_w_mk = models.FloatField()
-    density_kg_m3 = models.FloatField()
-    specific_heat_j_kgk = models.FloatField()
-    thermal_absorptance = models.FloatField(default=0.9)
-    solar_absorptance = models.FloatField(default=0.7)
-    visible_absorptance = models.FloatField(default=0.7)
-    
-    gwp_kgco2e_per_m2 = models.FloatField()
-    cost_sek_per_m2 = models.FloatField()
-    
+    roughness = models.CharField(max_length=20, choices=ROUGHNESS_CHOICES, null=True, blank=True)
+    density_kg_m3 = models.FloatField(null=True, blank=True)
+    specific_heat_j_kgk = models.FloatField(null=True, blank=True)
+    thermal_absorptance = models.FloatField(null=True, blank=True)
+    solar_absorptance = models.FloatField(null=True, blank=True)
+    visible_absorptance = models.FloatField(null=True, blank=True)
     wall_allowed = models.BooleanField(default=False)
     roof_allowed = models.BooleanField(default=False)
     floor_allowed = models.BooleanField(default=False)
     window_layer_allowed = models.BooleanField(default=False)
-    
-    author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
-    date_created = models.DateField(auto_now_add=True)
-    date_modified = models.DateField(auto_now=True)
+    author = models.ForeignKey('Author', on_delete=models.SET_NULL, null=True, blank=True)
+    date_created = models.DateTimeField(null=True, blank=True)
+    date_modified = models.DateTimeField(null=True, blank=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, unique=True)
+    thickness_m = models.FloatField(null=True, blank=True)
+    conductivity_w_mk = models.FloatField(default=0.9, null=True, blank=True)
+    solar_transmittance = models.FloatField(null=True, blank=True)
+    front_solar_reflectance = models.FloatField(null=True, blank=True)
+    back_solar_reflectance = models.FloatField(null=True, blank=True)
+    visible_transmittance = models.FloatField(null=True, blank=True)
+    front_visible_reflectance = models.FloatField(null=True, blank=True)
+    back_visible_reflectance = models.FloatField(null=True, blank=True)
+    infrared_transmittance = models.FloatField(default=0.0, null=True, blank=True)
+    front_ir_emissivity = models.FloatField(default=0.84, null=True, blank=True)
+    back_ir_emissivity = models.FloatField(default=0.84, null=True, blank=True)
+    dirt_correction_factor = models.FloatField(default=1.0, null=True, blank=True)
+    solar_diffusing = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='No', null=True, blank=True)
+    youngs_modulus_pa = models.FloatField(default=7.2e10, null=True, blank=True)
+    poisson_ratio = models.FloatField(default=0.22, null=True, blank=True)
+    angle_trans_table = models.TextField(null=True, blank=True)
+    angle_front_refl_table = models.TextField(null=True, blank=True)
+    angle_back_refl_table = models.TextField(null=True, blank=True)
+    gwp_kgco2e_per_m2 = models.FloatField(null=True, blank=True)
+    cost_sek_per_m2 = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     source = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'materials'
-        managed = False  # Don't let Django manage this table
+        managed = True  # Let Django manage this table
 
 class WindowGlazing(models.Model):
     OPTICAL_DATA_CHOICES = [
@@ -60,42 +72,39 @@ class WindowGlazing(models.Model):
         ('SpectralAndAngle', 'Spectral and Angle'),
     ]
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, unique=True)
-    optical_data_type = models.CharField(max_length=20, choices=OPTICAL_DATA_CHOICES)
+    optical_data_type = models.CharField(max_length=20, choices=OPTICAL_DATA_CHOICES, null=True, blank=True)
     spectral_data_set = models.CharField(max_length=255, null=True, blank=True)
-    
-    thickness_m = models.FloatField()
-    conductivity_w_mk = models.FloatField(default=0.9)
-    
-    solar_transmittance = models.FloatField(null=True)
-    front_solar_reflectance = models.FloatField(null=True)
-    back_solar_reflectance = models.FloatField(null=True)
-    visible_transmittance = models.FloatField(null=True)
-    front_visible_reflectance = models.FloatField(null=True)
-    back_visible_reflectance = models.FloatField(null=True)
-    infrared_transmittance = models.FloatField(default=0.0)
-    front_ir_emissivity = models.FloatField(default=0.84)
-    back_ir_emissivity = models.FloatField(default=0.84)
-    dirt_correction_factor = models.FloatField(default=1.0)
-    solar_diffusing = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='No')
-    
-    youngs_modulus_pa = models.FloatField(default=7.2e10)
-    poisson_ratio = models.FloatField(default=0.22)
-    
+    thickness_m = models.FloatField(null=True, blank=True)
+    conductivity_w_mk = models.FloatField(default=0.9, null=True, blank=True)
+    solar_transmittance = models.FloatField(null=True, blank=True)
+    front_solar_reflectance = models.FloatField(null=True, blank=True)
+    back_solar_reflectance = models.FloatField(null=True, blank=True)
+    visible_transmittance = models.FloatField(null=True, blank=True)
+    front_visible_reflectance = models.FloatField(null=True, blank=True)
+    back_visible_reflectance = models.FloatField(null=True, blank=True)
+    infrared_transmittance = models.FloatField(default=0.0, null=True, blank=True)
+    front_ir_emissivity = models.FloatField(default=0.84, null=True, blank=True)
+    back_ir_emissivity = models.FloatField(default=0.84, null=True, blank=True)
+    dirt_correction_factor = models.FloatField(default=1.0, null=True, blank=True)
+    solar_diffusing = models.CharField(max_length=3, choices=[('Yes', 'Yes'), ('No', 'No')], default='No', null=True, blank=True)
+    youngs_modulus_pa = models.FloatField(default=7.2e10, null=True, blank=True)
+    poisson_ratio = models.FloatField(default=0.22, null=True, blank=True)
     angle_trans_table = models.TextField(null=True, blank=True)
     angle_front_refl_table = models.TextField(null=True, blank=True)
     angle_back_refl_table = models.TextField(null=True, blank=True)
-    
-    gwp_kgco2e_per_m2 = models.FloatField()
-    cost_sek_per_m2 = models.FloatField()
-    
+    gwp_kgco2e_per_m2 = models.FloatField(null=True, blank=True)
+    cost_sek_per_m2 = models.FloatField(null=True, blank=True)
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     date_created = models.DateField(auto_now_add=True)
     date_modified = models.DateField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     source = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'window_glazing'
+        managed = True  # Let Django manage this table
 
 class Construction(models.Model):
     ELEMENT_CHOICES = [
@@ -118,11 +127,12 @@ class Construction(models.Model):
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     date_created = models.DateField(auto_now_add=True)
     date_modified = models.DateField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     source = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'constructions'
-        managed = False  # Don't let Django manage this table
+        managed = True  # Let Django manage this table
 
 class Layer(models.Model):
     construction = models.ForeignKey(Construction, on_delete=models.CASCADE, related_name='layers')
@@ -148,11 +158,12 @@ class ConstructionSet(models.Model):
     author = models.ForeignKey(Author, on_delete=models.SET_NULL, null=True)
     date_created = models.DateField(auto_now_add=True)
     date_modified = models.DateField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     source = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'construction_sets'
-        managed = False  # Don't let Django manage this table
+        managed = True  # Let Django manage this table
 
 class UnitDescription(models.Model):
     field = models.CharField(max_length=50, primary_key=True)

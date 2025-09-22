@@ -100,7 +100,8 @@ urlpatterns = [
     
     # Database API endpoints
     path('api/materials/', simulation_views.api_materials, name='api_materials'),
-    path('api/constructions/', simulation_views.api_constructions, name='api_constructions'),
+        path('api/constructions/', simulation_views.api_constructions_create, name='api_constructions_create'),
+        path('api/constructions/<uuid:id>/', simulation_views.api_construction_detail, name='api_construction_detail'),
     path('api/construction-sets/', simulation_views.api_construction_sets, name='api_construction_sets'),
     
     # Direct endpoints
@@ -109,6 +110,9 @@ urlpatterns = [
     
     # Include the simulation URLs under the api/simulation/ prefix
     path('api/simulation/', include('simulation.urls')),
+
+    # RESTful materials API (v2)
+    path('api/v2/', include('database.urls')),
 
     # Add a test endpoint for diagnostics
     path('api/test/', lambda request: JsonResponse({

@@ -39,7 +39,7 @@ export interface Scenario {
 // Material functions
 export async function getMaterials(): Promise<Material[]> {
   try {
-    const response = await authenticatedFetch(`${API_BASE_URL}/api/materials/`);
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/v2/materials/`);
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -55,7 +55,7 @@ export async function getMaterials(): Promise<Material[]> {
 
 export async function createMaterial(materialData: Partial<Material>): Promise<Material | null> {
   try {
-    const response = await authenticatedFetch(`${API_BASE_URL}/api/materials/`, {
+  const response = await authenticatedFetch(`${API_BASE_URL}/api/v2/materials/`, {
       method: 'POST',
       body: JSON.stringify(materialData),
     });

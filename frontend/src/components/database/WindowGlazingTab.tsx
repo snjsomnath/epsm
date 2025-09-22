@@ -38,30 +38,19 @@ import {
   Plus, 
   Edit, 
   Info, 
+  Copy,
+  Eye,
   X,
   Sun,
   Thermometer,
   Leaf,
-  ArrowUpDown
+  ArrowUpDown,
+  Trash2
 } from 'lucide-react';
+import { deleteWindowGlazing } from '../../lib/database-browser';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { WindowGlazing, WindowGlazingInsert } from '../../lib/database.types';
-
-const defaultGlazing: WindowGlazingInsert = {
-  name: '',
-  thickness_m: 0,
-  conductivity_w_mk: 0.9,
-  solar_transmittance: null,
-  visible_transmittance: null,
-  infrared_transmittance: 0.0,
-  front_ir_emissivity: 0.84,
-  back_ir_emissivity: 0.84,
-  gwp_kgco2e_per_m2: 0,
-  cost_sek_per_m2: 0,
-  author_id: '00000000-0000-0000-0000-000000000000',
-  source: null
-};
 
 interface HeadCell {
   id: keyof WindowGlazing;
@@ -82,7 +71,23 @@ const headCells: HeadCell[] = [
 
 const WindowGlazingTab = () => {
   const { isAuthenticated } = useAuth();
-  const { windowGlazing, addWindowGlazing, updateWindowGlazing, error: dbError } = useDatabase();
+  const { windowGlazing, addWindowGlazing, updateWindowGlazing, error: dbError, refreshData } = useDatabase();
+
+  const defaultGlazing: WindowGlazingInsert = {
+    name: '',
+    thickness_m: 0,
+    conductivity_w_mk: 0.9,
+    solar_transmittance: null,
+    visible_transmittance: null,
+    infrared_transmittance: 0.0,
+    front_ir_emissivity: 0.84,
+    back_ir_emissivity: 0.84,
+    gwp_kgco2e_per_m2: 0,
+    cost_sek_per_m2: 0,
+    author_id: '00000000-0000-0000-0000-000000000000',
+    source: null
+  };
+
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof WindowGlazing>('name');
@@ -95,6 +100,31 @@ const WindowGlazingTab = () => {
   const [editingGlazing, setEditingGlazing] = useState<WindowGlazing | null>(null);
   const [openDetailsDialog, setOpenDetailsDialog] = useState(false);
   const [selectedGlazing, setSelectedGlazing] = useState<WindowGlazing | null>(null);
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [glazingToDelete, setGlazingToDelete] = useState<WindowGlazing | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (id: string) => {
+    setDeleteError(null);
+    try {
+      setDeleting(true);
+      await deleteWindowGlazing(id);
+      // Refresh the database state so UI updates immediately
+      try {
+        await refreshData();
+      } catch (refreshErr) {
+        console.warn('Failed to refresh window glazing after delete:', refreshErr);
+      }
+      setDeleteDialogOpen(false);
+      setGlazingToDelete(null);
+    } catch (err) {
+      setDeleteError('Failed to delete window glazing.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleRequestSort = (property: keyof WindowGlazing) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -132,6 +162,25 @@ const WindowGlazingTab = () => {
     setEditingGlazing(glazing);
     setFormData({
       name: glazing.name,
+      thickness_m: glazing.thickness_m,
+      conductivity_w_mk: glazing.conductivity_w_mk,
+      solar_transmittance: glazing.solar_transmittance,
+      visible_transmittance: glazing.visible_transmittance,
+      infrared_transmittance: glazing.infrared_transmittance,
+      front_ir_emissivity: glazing.front_ir_emissivity,
+      back_ir_emissivity: glazing.back_ir_emissivity,
+      gwp_kgco2e_per_m2: glazing.gwp_kgco2e_per_m2,
+      cost_sek_per_m2: glazing.cost_sek_per_m2,
+      author_id: glazing.author_id || '00000000-0000-0000-0000-000000000000',
+      source: glazing.source
+    });
+    setOpenModal(true);
+  };
+
+  const handleCopy = (glazing: WindowGlazing) => {
+    setEditingGlazing(null);
+    setFormData({
+      name: `${glazing.name} (Copy)`,
       thickness_m: glazing.thickness_m,
       conductivity_w_mk: glazing.conductivity_w_mk,
       solar_transmittance: glazing.solar_transmittance,
@@ -549,19 +598,43 @@ const WindowGlazingTab = () => {
                   <TableCell align="right">{glazing.gwp_kgco2e_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="right">{glazing.cost_sek_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="center">
+                    <Tooltip title="View">
+                      <IconButton size="small" onClick={() => handleViewDetails(glazing)}>
+                        <Eye size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Copy">
+                      <IconButton size="small" onClick={() => handleCopy(glazing)}>
+                        <Copy size={18} />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => handleEdit(glazing)}>
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Details">
-                      <IconButton size="small" onClick={() => handleViewDetails(glazing)}>
-                        <Info size={18} />
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => { setGlazingToDelete(glazing); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
+                        <Trash2 size={18} />
                       </IconButton>
                     </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Window Glazing?</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete <b>{glazingToDelete?.name}</b>?
+          {deleteError && <Alert severity="error" sx={{ mt: 2 }}>{deleteError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => glazingToDelete && handleDelete(glazingToDelete.id)} disabled={deleting}>
+            {deleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
               {paginatedGlazing.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={8} align="center">

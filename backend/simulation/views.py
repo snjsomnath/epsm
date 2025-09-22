@@ -510,46 +510,69 @@ def parallel_simulation_results(request, simulation_id):
         }, status=500)
 
 # Database API endpoints for frontend
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated access for now
 def api_materials(request):
-    """Get all materials from database"""
-    try:
-        from database.models import Material
-        materials = Material.objects.using('materials_db').all()
-        
-        materials_data = []
-        for material in materials:
-            materials_data.append({
-                'id': material.id,
-                'name': material.name,
-                'roughness': material.roughness,
-                'thickness_m': material.thickness_m,
-                'conductivity_w_mk': material.conductivity_w_mk,
-                'density_kg_m3': material.density_kg_m3,
-                'specific_heat_j_kgk': material.specific_heat_j_kgk,
-                'thermal_absorptance': material.thermal_absorptance,
-                'solar_absorptance': material.solar_absorptance,
-                'visible_absorptance': material.visible_absorptance,
-                'gwp_kgco2e_per_m2': material.gwp_kgco2e_per_m2,
-                'cost_sek_per_m2': material.cost_sek_per_m2,
-                'wall_allowed': material.wall_allowed,
-                'roof_allowed': material.roof_allowed,
-                'floor_allowed': material.floor_allowed,
-                'window_layer_allowed': material.window_layer_allowed,
-                'date_created': material.date_created.isoformat() if material.date_created else None,
-                'date_modified': material.date_modified.isoformat() if material.date_modified else None,
-                'source': material.source
-            })
-        
-        return JsonResponse(materials_data, safe=False)
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JsonResponse({
-            'error': str(e)
-        }, status=500)
+    """Get all materials from database or create a new material"""
+    from database.models import Material
+    import json
+    if request.method == 'GET':
+        try:
+            materials = Material.objects.using('materials_db').all()
+            materials_data = []
+            for material in materials:
+                materials_data.append({
+                    'id': material.id,
+                    'name': material.name,
+                    'roughness': material.roughness,
+                    'thickness_m': material.thickness_m,
+                    'conductivity_w_mk': material.conductivity_w_mk,
+                    'density_kg_m3': material.density_kg_m3,
+                    'specific_heat_j_kgk': material.specific_heat_j_kgk,
+                    'thermal_absorptance': material.thermal_absorptance,
+                    'solar_absorptance': material.solar_absorptance,
+                    'visible_absorptance': material.visible_absorptance,
+                    'gwp_kgco2e_per_m2': material.gwp_kgco2e_per_m2,
+                    'cost_sek_per_m2': material.cost_sek_per_m2,
+                    'wall_allowed': material.wall_allowed,
+                    'roof_allowed': material.roof_allowed,
+                    'floor_allowed': material.floor_allowed,
+                    'window_layer_allowed': material.window_layer_allowed,
+                    'date_created': material.date_created.isoformat() if material.date_created else None,
+                    'date_modified': material.date_modified.isoformat() if material.date_modified else None,
+                    'source': material.source
+                })
+            return JsonResponse(materials_data, safe=False)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({'error': str(e)}, status=500)
+    elif request.method == 'POST':
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            material = Material.objects.using('materials_db').create(
+                name=data['name'],
+                roughness=data['roughness'],
+                thickness_m=data['thickness_m'],
+                conductivity_w_mk=data['conductivity_w_mk'],
+                density_kg_m3=data['density_kg_m3'],
+                specific_heat_j_kgk=data['specific_heat_j_kgk'],
+                thermal_absorptance=data.get('thermal_absorptance', 0.9),
+                solar_absorptance=data.get('solar_absorptance', 0.7),
+                visible_absorptance=data.get('visible_absorptance', 0.7),
+                gwp_kgco2e_per_m2=data['gwp_kgco2e_per_m2'],
+                cost_sek_per_m2=data['cost_sek_per_m2'],
+                wall_allowed=data.get('wall_allowed', False),
+                roof_allowed=data.get('roof_allowed', False),
+                floor_allowed=data.get('floor_allowed', False),
+                window_layer_allowed=data.get('window_layer_allowed', False),
+                source=data.get('source', None)
+            )
+            return JsonResponse({'id': str(material.id)}, status=201)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({'error': str(e)}, status=400)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])  # Allow unauthenticated access for now
@@ -562,8 +585,39 @@ def api_constructions(request):
         # Check which database is being used
         constructions = Construction.objects.using('materials_db').all()
         
+        from database.models import Layer, Material, WindowGlazing
         constructions_data = []
         for construction in constructions:
+            # gather flattened layer info for listing
+            layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+            layers_list = []
+            for L in layers_qs:
+                mat = L.material
+                win = L.window
+                if mat:
+                    material_name = mat.name
+                    thickness_m = mat.thickness_m
+                    conductivity_w_mk = mat.conductivity_w_mk
+                elif win:
+                    material_name = win.name
+                    thickness_m = win.thickness_m
+                    conductivity_w_mk = win.conductivity_w_mk
+                else:
+                    material_name = None
+                    thickness_m = None
+                    conductivity_w_mk = None
+
+                layers_list.append({
+                    'id': getattr(L, 'id', None),
+                    'material_id': str(mat.id) if mat else None,
+                    'glazing_id': str(win.id) if win else None,
+                    'material_name': material_name,
+                    'thickness_m': thickness_m,
+                    'conductivity_w_mk': conductivity_w_mk,
+                    'layer_order': L.layer_order,
+                    'is_glazing_layer': L.is_glazing_layer,
+                })
+
             constructions_data.append({
                 'id': construction.id,
                 'name': construction.name,
@@ -574,17 +628,250 @@ def api_constructions(request):
                 'cost_sek_per_m2': construction.cost_sek_per_m2,
                 'date_created': construction.date_created.isoformat() if construction.date_created else None,
                 'date_modified': construction.date_modified.isoformat() if construction.date_modified else None,
-                'source': construction.source
+                'source': construction.source,
+                'layers': layers_list
             })
         
         return JsonResponse(constructions_data, safe=False)
-        
+    
     except Exception as e:
         import traceback
         traceback.print_exc()
         return JsonResponse({
             'error': str(e)
         }, status=500)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+def api_constructions_create(request):
+    """Create a construction (with optional layers) or list constructions.
+    This endpoint accepts POST with JSON body containing construction fields and optional `layers` array.
+    Each layer may contain `material_id` or `glazing_id`, `layer_order`, and `is_glazing_layer`.
+    """
+    try:
+        from database.models import Construction, Layer, Material, WindowGlazing
+
+        if request.method == 'GET':
+            # Return list of constructions (inline to avoid DRF Request vs HttpRequest mismatch)
+            from database.models import Layer, Material, WindowGlazing
+            constructions = Construction.objects.using('materials_db').all()
+            constructions_data = []
+            for construction in constructions:
+                # gather flattened layer info for listing
+                layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+                layers_list = []
+                for L in layers_qs:
+                    mat = L.material
+                    win = L.window
+                    if mat:
+                        material_name = mat.name
+                        thickness_m = mat.thickness_m
+                        conductivity_w_mk = mat.conductivity_w_mk
+                    elif win:
+                        material_name = win.name
+                        thickness_m = win.thickness_m
+                        conductivity_w_mk = win.conductivity_w_mk
+                    else:
+                        material_name = None
+                        thickness_m = None
+                        conductivity_w_mk = None
+
+                    layers_list.append({
+                        'id': getattr(L, 'id', None),
+                        'material_id': str(mat.id) if mat else None,
+                        'glazing_id': str(win.id) if win else None,
+                        'material_name': material_name,
+                        'thickness_m': thickness_m,
+                        'conductivity_w_mk': conductivity_w_mk,
+                        'layer_order': L.layer_order,
+                        'is_glazing_layer': L.is_glazing_layer,
+                    })
+
+                # debug log
+                try:
+                    print(f"api_constructions_create: construction={construction.id} found_layers={len(layers_list)}")
+                except Exception:
+                    pass
+
+                constructions_data.append({
+                    'id': construction.id,
+                    'name': construction.name,
+                    'element_type': construction.element_type,
+                    'is_window': construction.is_window,
+                    'u_value_w_m2k': construction.u_value_w_m2k,
+                    'gwp_kgco2e_per_m2': construction.gwp_kgco2e_per_m2,
+                    'cost_sek_per_m2': construction.cost_sek_per_m2,
+                    'date_created': construction.date_created.isoformat() if construction.date_created else None,
+                    'date_modified': construction.date_modified.isoformat() if construction.date_modified else None,
+                    'source': construction.source,
+                    'layers': layers_list
+                })
+            return JsonResponse(constructions_data, safe=False)
+
+        # POST - create construction and layers
+        data = json.loads(request.body.decode('utf-8'))
+
+        construction = Construction.objects.using('materials_db').create(
+            name=data.get('name'),
+            element_type=data.get('element_type', 'wall'),
+            is_window=data.get('is_window', False),
+            u_value_w_m2k=data.get('u_value_w_m2k', 0.0),
+            gwp_kgco2e_per_m2=data.get('gwp_kgco2e_per_m2', 0.0),
+            cost_sek_per_m2=data.get('cost_sek_per_m2', 0.0),
+            source=data.get('source', None)
+        )
+
+        layers = data.get('layers', [])
+        for layer in layers:
+            layer_order = layer.get('layer_order', 1)
+            is_glazing = layer.get('is_glazing_layer', False)
+            if layer.get('material_id'):
+                try:
+                    mat = Material.objects.using('materials_db').get(id=layer['material_id'])
+                    Layer.objects.using('materials_db').create(
+                        construction=construction,
+                        material=mat,
+                        layer_order=layer_order,
+                        is_glazing_layer=False
+                    )
+                except Material.DoesNotExist:
+                    # skip missing materials
+                    print(f"Warning: material {layer.get('material_id')} not found")
+            elif layer.get('glazing_id'):
+                try:
+                    win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
+                    Layer.objects.using('materials_db').create(
+                        construction=construction,
+                        window=win,
+                        layer_order=layer_order,
+                        is_glazing_layer=True
+                    )
+                except WindowGlazing.DoesNotExist:
+                    print(f"Warning: glazing {layer.get('glazing_id')} not found")
+
+        return JsonResponse({'id': str(construction.id)}, status=201)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([AllowAny])
+def api_construction_detail(request, id):
+    """Handle GET/PUT/DELETE for a single construction including managing its layers."""
+    try:
+        from database.models import Construction, Layer, Material, WindowGlazing
+
+        try:
+            construction = Construction.objects.using('materials_db').get(id=id)
+        except Construction.DoesNotExist:
+            return JsonResponse({'error': 'Construction not found'}, status=404)
+
+        if request.method == 'GET':
+            # Return construction detail including layers
+            layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+            layers_data = []
+            for L in layers_qs:
+                # include flattened fields expected by the frontend
+                mat = L.material
+                win = L.window
+                if mat:
+                    material_name = mat.name
+                    thickness_m = mat.thickness_m
+                    conductivity_w_mk = mat.conductivity_w_mk
+                    gwp = mat.gwp_kgco2e_per_m2
+                    cost = mat.cost_sek_per_m2
+                elif win:
+                    material_name = win.name
+                    thickness_m = win.thickness_m
+                    conductivity_w_mk = win.conductivity_w_mk
+                    gwp = win.gwp_kgco2e_per_m2
+                    cost = win.cost_sek_per_m2
+                else:
+                    material_name = None
+                    thickness_m = None
+                    conductivity_w_mk = None
+                    gwp = None
+                    cost = None
+
+                layers_data.append({
+                    'id': getattr(L, 'id', None),
+                    'material_id': str(mat.id) if mat else None,
+                    'glazing_id': str(win.id) if win else None,
+                    'material_name': material_name,
+                    'thickness_m': thickness_m,
+                    'conductivity_w_mk': conductivity_w_mk,
+                    'gwp_kgco2e_per_m2': gwp,
+                    'cost_sek_per_m2': cost,
+                    'layer_order': L.layer_order,
+                    'is_glazing_layer': L.is_glazing_layer,
+                })
+
+            return JsonResponse({
+                'id': str(construction.id),
+                'name': construction.name,
+                'element_type': construction.element_type,
+                'is_window': construction.is_window,
+                'u_value_w_m2k': construction.u_value_w_m2k,
+                'gwp_kgco2e_per_m2': construction.gwp_kgco2e_per_m2,
+                'cost_sek_per_m2': construction.cost_sek_per_m2,
+                'layers': layers_data,
+            })
+
+        if request.method == 'DELETE':
+            # Delete construction and its layers (cascade should handle layers)
+            construction.delete()
+            return JsonResponse({'status': 'deleted'})
+
+        # PUT - update construction and replace layers if provided
+        data = json.loads(request.body.decode('utf-8'))
+        # Update fields
+        construction.name = data.get('name', construction.name)
+        construction.element_type = data.get('element_type', construction.element_type)
+        construction.is_window = data.get('is_window', construction.is_window)
+        construction.u_value_w_m2k = data.get('u_value_w_m2k', construction.u_value_w_m2k)
+        construction.gwp_kgco2e_per_m2 = data.get('gwp_kgco2e_per_m2', construction.gwp_kgco2e_per_m2)
+        construction.cost_sek_per_m2 = data.get('cost_sek_per_m2', construction.cost_sek_per_m2)
+        construction.source = data.get('source', construction.source)
+        construction.save(using='materials_db')
+
+        # If layers provided, remove existing and recreate
+        if 'layers' in data:
+            Layer.objects.using('materials_db').filter(construction=construction).delete()
+            for layer in data.get('layers', []):
+                layer_order = layer.get('layer_order', 1)
+                if layer.get('material_id'):
+                    try:
+                        mat = Material.objects.using('materials_db').get(id=layer['material_id'])
+                        Layer.objects.using('materials_db').create(
+                            construction=construction,
+                            material=mat,
+                            layer_order=layer_order,
+                            is_glazing_layer=False
+                        )
+                    except Material.DoesNotExist:
+                        print(f"Warning: material {layer.get('material_id')} not found")
+                elif layer.get('glazing_id'):
+                    try:
+                        win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
+                        Layer.objects.using('materials_db').create(
+                            construction=construction,
+                            window=win,
+                            layer_order=layer_order,
+                            is_glazing_layer=True
+                        )
+                    except WindowGlazing.DoesNotExist:
+                        print(f"Warning: glazing {layer.get('glazing_id')} not found")
+
+        return JsonResponse({'status': 'updated'})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
 
 @api_view(['GET'])
 @permission_classes([AllowAny])  # Allow unauthenticated access for now

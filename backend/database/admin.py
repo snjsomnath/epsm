@@ -11,8 +11,8 @@ class AuthorAdmin(admin.ModelAdmin):
 
 @admin.register(Material)
 class MaterialAdmin(admin.ModelAdmin):
-    list_display = ('name', 'roughness', 'thickness_m', 'conductivity_w_mk', 'author')
-    list_filter = ('roughness', 'wall_allowed', 'roof_allowed', 'floor_allowed')
+    list_display = ('name', 'thickness_m', 'conductivity_w_mk', 'created_at')
+    list_filter = ()
     search_fields = ('name', 'source')
 
 @admin.register(WindowGlazing)

@@ -42,12 +42,15 @@ import {
   Plus, 
   Edit, 
   Info, 
+  Copy,
+  Eye,
   X,
   Thermometer,
   Box as BoxIcon,
   Sun,
   Leaf,
   ArrowUpDown
+  ,Trash2
 } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
@@ -102,7 +105,7 @@ const headCells: HeadCell[] = [
 
 const MaterialsTab = () => {
   const { isAuthenticated } = useAuth();
-  const { materials, addMaterial, updateMaterial, error: dbError } = useDatabase();
+  const { materials, addMaterial, updateMaterial, error: dbError, refreshData } = useDatabase();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [orderBy, setOrderBy] = useState<keyof Material>('name');
@@ -115,6 +118,10 @@ const MaterialsTab = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<MaterialInsert>(defaultMaterial);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleRequestSort = (property: keyof Material) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -139,7 +146,9 @@ const MaterialsTab = () => {
   const handleInputChange = (field: keyof MaterialInsert, value: any) => {
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: value === undefined || value === null
+        ? (typeof defaultMaterial[field] !== 'undefined' ? defaultMaterial[field] : '')
+        : value
     }));
   };
 
@@ -148,6 +157,51 @@ const MaterialsTab = () => {
     setFormData({
       ...material,
       author_id: material.author_id || '00000000-0000-0000-0000-000000000000'
+    });
+    setOpenModal(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleteError(null);
+    try {
+      setDeleting(true);
+      // import deleteMaterial from browser API
+      await (await import('../../lib/database-browser')).deleteMaterial(id);
+      // Refresh the database state so UI updates immediately
+      try {
+        await refreshData();
+      } catch (refreshErr) {
+        console.warn('Failed to refresh materials after delete:', refreshErr);
+      }
+      setDeleteDialogOpen(false);
+      setMaterialToDelete(null);
+    } catch (err) {
+      setDeleteError('Failed to delete material.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleCopy = (material: Material) => {
+    setEditingMaterial(null);
+    setFormData({
+      name: `${material.name} (Copy)`,
+      roughness: material.roughness as any,
+      thickness_m: material.thickness_m,
+      conductivity_w_mk: material.conductivity_w_mk,
+      density_kg_m3: material.density_kg_m3,
+      specific_heat_j_kgk: material.specific_heat_j_kgk,
+      thermal_absorptance: material.thermal_absorptance,
+      solar_absorptance: material.solar_absorptance,
+      visible_absorptance: material.visible_absorptance,
+      gwp_kgco2e_per_m2: material.gwp_kgco2e_per_m2,
+      cost_sek_per_m2: material.cost_sek_per_m2,
+      wall_allowed: material.wall_allowed,
+      roof_allowed: material.roof_allowed,
+      floor_allowed: material.floor_allowed,
+      window_layer_allowed: material.window_layer_allowed,
+      author_id: material.author_id || '00000000-0000-0000-0000-000000000000',
+      source: material.source
     });
     setOpenModal(true);
   };
@@ -170,10 +224,16 @@ const MaterialsTab = () => {
         throw new Error('You must be logged in to manage materials');
       }
 
+      // Ensure roughness is always a valid value
+      const validRoughness = roughnessOptions.includes(formData.roughness)
+        ? formData.roughness
+        : 'MediumRough';
+      const safeFormData = { ...formData, roughness: validRoughness };
+
       if (editingMaterial) {
-        await updateMaterial(editingMaterial.id, formData);
+        await updateMaterial(editingMaterial.id, safeFormData);
       } else {
-        await addMaterial(formData);
+        await addMaterial(safeFormData);
       }
 
       setOpenModal(false);
@@ -426,14 +486,24 @@ const MaterialsTab = () => {
                     </Stack>
                   </TableCell>
                   <TableCell align="center">
+                    <Tooltip title="View">
+                      <IconButton size="small" onClick={() => handleViewDetails(material)}>
+                        <Eye size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Copy">
+                      <IconButton size="small" onClick={() => handleCopy(material)}>
+                        <Copy size={18} />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Edit">
                       <IconButton size="small" onClick={() => handleEdit(material)}>
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Details">
-                      <IconButton size="small" onClick={() => handleViewDetails(material)}>
-                        <Info size={18} />
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => { setMaterialToDelete(material); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
+                        <Trash2 size={18} />
                       </IconButton>
                     </Tooltip>
                   </TableCell>
@@ -770,7 +840,7 @@ const MaterialsTab = () => {
                 fullWidth
                 label="Material Name"
                 required
-                value={formData.name}
+                value={formData.name ?? ''}
                 onChange={(e) => handleInputChange('name', e.target.value)}
               />
             </Grid>
@@ -778,9 +848,9 @@ const MaterialsTab = () => {
               <FormControl fullWidth required>
                 <InputLabel>Roughness</InputLabel>
                 <Select
-                  value={formData.roughness}
+                  value={formData.roughness ?? ''}
                   label="Roughness"
-                  onChange={(e) => handleInputChange('roughness', e.target.value)}
+                  onChange={(e) => handleInputChange('roughness', e.target.value || 'MediumRough')}
                 >
                   {roughnessOptions.map(option => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -795,7 +865,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 0.0001, min: 0 }}
-                value={formData.thickness_m}
+                value={formData.thickness_m ?? ''}
                 onChange={(e) => handleInputChange('thickness_m', Number(e.target.value))}
               />
             </Grid>
@@ -806,7 +876,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 0.001, min: 0 }}
-                value={formData.conductivity_w_mk}
+                value={formData.conductivity_w_mk ?? ''}
                 onChange={(e) => handleInputChange('conductivity_w_mk', Number(e.target.value))}
               />
             </Grid>
@@ -817,7 +887,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 1, min: 0 }}
-                value={formData.density_kg_m3}
+                value={formData.density_kg_m3 ?? ''}
                 onChange={(e) => handleInputChange('density_kg_m3', Number(e.target.value))}
               />
             </Grid>
@@ -828,7 +898,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 1, min: 0 }}
-                value={formData.specific_heat_j_kgk}
+                value={formData.specific_heat_j_kgk ?? ''}
                 onChange={(e) => handleInputChange('specific_heat_j_kgk', Number(e.target.value))}
               />
             </Grid>
@@ -839,7 +909,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 0.1, min: 0 }}
-                value={formData.gwp_kgco2e_per_m2}
+                value={formData.gwp_kgco2e_per_m2 ?? ''}
                 onChange={(e) => handleInputChange('gwp_kgco2e_per_m2', Number(e.target.value))}
               />
             </Grid>
@@ -850,7 +920,7 @@ const MaterialsTab = () => {
                 type="number"
                 required
                 inputProps={{ step: 0.1, min: 0 }}
-                value={formData.cost_sek_per_m2}
+                value={formData.cost_sek_per_m2 ?? ''}
                 onChange={(e) => handleInputChange('cost_sek_per_m2', Number(e.target.value))}
               />
             </Grid>
@@ -891,7 +961,7 @@ const MaterialsTab = () => {
                 label="Source"
                 multiline
                 rows={2}
-                value={formData.source || ''}
+                value={formData.source ?? ''}
                 onChange={(e) => handleInputChange('source', e.target.value)}
               />
             </Grid>
@@ -905,6 +975,21 @@ const MaterialsTab = () => {
             disabled={loading}
           >
             {editingMaterial ? 'Save Changes' : 'Add Material'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Material?</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete <b>{materialToDelete?.name}</b>?
+          {deleteError && <Alert severity="error" sx={{ mt: 2 }}>{deleteError}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => materialToDelete && handleDelete(materialToDelete.id)} disabled={deleting}>
+            {deleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

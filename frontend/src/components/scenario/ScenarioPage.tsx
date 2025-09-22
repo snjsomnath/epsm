@@ -495,8 +495,8 @@ const ScenarioPage = () => {
                       <Tooltip title="Delete">
                         <IconButton 
                           size="small" 
-                          color="error"
                           onClick={() => setConfirmDelete(scenario.id)}
+                          sx={{ color: 'error.main' }}
                         >
                           <Trash2 size={18} />
                         </IconButton>

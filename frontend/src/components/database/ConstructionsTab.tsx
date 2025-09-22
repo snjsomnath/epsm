@@ -56,6 +56,7 @@ import {
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { Construction, ConstructionInsert, Material, WindowGlazing, LayerInsert } from '../../lib/database.types';
+import { getConstruction } from '../../lib/database-browser';
 
 interface Layer {
   id: string;
@@ -97,32 +98,68 @@ const ConstructionsTab = () => {
   const [selectedConstruction, setSelectedConstruction] = useState<Construction | null>(null);
   const [editingConstruction, setEditingConstruction] = useState<Construction | null>(null);
 
-  const handleEdit = (construction: Construction) => {
+  const handleEdit = async (construction: Construction) => {
+    const detail = await getConstruction(construction.id);
+    const source = detail || construction;
     setEditingConstruction(construction);
     setFormData({
-      ...construction,
-      author_id: construction.author_id || '00000000-0000-0000-0000-000000000000'
+      ...source,
+      author_id: source.author_id || '00000000-0000-0000-0000-000000000000'
     });
 
     // Convert existing layers to the Layer format
-    const constructionLayers = construction.layers?.map(layer => ({
+    const constructionLayers: Layer[] = (source.layers || []).map((layer: any) => ({
       id: crypto.randomUUID(),
       type: layer.is_glazing_layer ? 'glazing' : 'material',
       itemId: layer.is_glazing_layer ? layer.glazing_id! : layer.material_id!,
-      name: layer.is_glazing_layer ? layer.glazing?.name! : layer.material?.name!,
-      thickness: layer.is_glazing_layer ? layer.glazing?.thickness_m! : layer.material?.thickness_m!,
-      conductivity: layer.is_glazing_layer ? layer.glazing?.conductivity_w_mk! : layer.material?.conductivity_w_mk!,
-      gwp: layer.is_glazing_layer ? layer.glazing?.gwp_kgco2e_per_m2! : layer.material?.gwp_kgco2e_per_m2!,
-      cost: layer.is_glazing_layer ? layer.glazing?.cost_sek_per_m2! : layer.material?.cost_sek_per_m2!
-    })) || [];
+      name: layer.material_name ?? (layer.glazing?.name ?? ''),
+      thickness: layer.thickness_m ?? 0,
+      conductivity: layer.conductivity_w_mk ?? 0,
+      gwp: layer.gwp_kgco2e_per_m2 ?? 0,
+      cost: layer.cost_sek_per_m2 ?? 0
+    }));
 
     setLayers(constructionLayers);
     setOpenModal(true);
   };
 
-  const handleViewDetails = (construction: Construction) => {
-    setSelectedConstruction(construction);
+  const handleViewDetails = async (construction: Construction) => {
+    const detail = await getConstruction(construction.id);
+    setSelectedConstruction(detail || construction);
     setOpenDetailsDialog(true);
+  };
+
+  const handleCopy = async (construction: Construction) => {
+    const detail = await getConstruction(construction.id);
+    const source = detail || construction;
+
+    setEditingConstruction(null);
+    // Prefill form data
+    setFormData({
+      name: `${source.name} (Copy)`,
+      element_type: source.element_type,
+      is_window: source.is_window,
+      u_value_w_m2k: source.u_value_w_m2k,
+      gwp_kgco2e_per_m2: source.gwp_kgco2e_per_m2,
+      cost_sek_per_m2: source.cost_sek_per_m2,
+      author_id: source.author_id || '00000000-0000-0000-0000-000000000000',
+      source: source.source
+    });
+
+    // Convert layers
+    const copiedLayers: Layer[] = (source.layers || []).map((layer: any) => ({
+      id: crypto.randomUUID(),
+      type: layer.is_glazing_layer ? 'glazing' : 'material',
+      itemId: layer.is_glazing_layer ? layer.glazing_id! : layer.material_id!,
+      name: layer.material_name ?? '',
+      thickness: layer.thickness_m ?? 0,
+      conductivity: layer.conductivity_w_mk ?? 0,
+      gwp: layer.gwp_kgco2e_per_m2 ?? 0,
+      cost: layer.cost_sek_per_m2 ?? 0
+    }));
+
+    setLayers(copiedLayers);
+    setOpenModal(true);
   };
 
   const handleSubmit = async () => {

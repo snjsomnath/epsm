@@ -1,6 +1,7 @@
 // Browser-compatible database service
 // This service makes HTTP requests to a backend API instead of connecting to PostgreSQL directly
 
+
 import type { 
   Material,
   WindowGlazing,
@@ -14,19 +15,82 @@ import type {
   LayerInsert,
   ScenarioInsert
 } from './database.types';
+import { getCSRFTokenFromCookie } from './csrf';
 
 class BrowserDatabaseService {
+  async deleteMaterial(id: string): Promise<void> {
+    try {
+      console.log('Deleting material via API:', id);
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/v2/materials/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      console.log('Material deleted successfully');
+    } catch (error) {
+      console.error('Error deleting material:', error);
+      throw error;
+    }
+  }
+
+  async deleteWindowGlazing(id: string): Promise<void> {
+    try {
+      console.log('Deleting window glazing via API:', id);
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/v2/window-glazing/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      console.log('Window glazing deleted successfully');
+    } catch (error) {
+      console.error('Error deleting window glazing:', error);
+      throw error;
+    }
+  }
+
+  async deleteConstruction(id: string): Promise<void> {
+    try {
+      console.log('Deleting construction via API:', id);
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/v2/constructions/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+        },
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      console.log('Construction deleted successfully');
+    } catch (error) {
+      console.error('Error deleting construction:', error);
+      throw error;
+    }
+  }
   private baseUrl: string;
 
   constructor() {
     // Point to our local API server that serves real PostgreSQL data
-    this.baseUrl = 'http://localhost:8000/api'; 
+  this.baseUrl = 'http://localhost:8000/api'; 
   }
 
   // Materials
   async getMaterials(): Promise<Material[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/materials`);
+      const response = await fetch(`${this.baseUrl}/v2/materials/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -56,6 +120,8 @@ class BrowserDatabaseService {
           author_id: 'demo-user',
           date_created: new Date().toISOString(),
           date_modified: new Date().toISOString(),
+
+// (removed misplaced export)
           source: 'Fallback Data',
           created_at: new Date().toISOString()
         }
@@ -66,22 +132,21 @@ class BrowserDatabaseService {
   async createMaterial(materialData: MaterialInsert): Promise<Material | null> {
     try {
       console.log('Creating material via API:', materialData);
-      
-      const response = await fetch(`${this.baseUrl}/materials`, {
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/v2/materials/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
         body: JSON.stringify(materialData),
+        credentials: 'include',
       });
-      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
       const newMaterial = await response.json();
       return newMaterial;
-      
     } catch (error) {
       console.error('Error creating material:', error);
       throw error;
@@ -91,22 +156,21 @@ class BrowserDatabaseService {
   async updateMaterial(id: string, updates: Partial<MaterialInsert>): Promise<Material | null> {
     try {
       console.log('Updating material via API:', id, updates);
-      
-      const response = await fetch(`${this.baseUrl}/materials/${id}`, {
+      const csrfToken = getCSRFTokenFromCookie();
+      const response = await fetch(`${this.baseUrl}/v2/materials/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
         body: JSON.stringify(updates),
+        credentials: 'include',
       });
-      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
       const updatedMaterial = await response.json();
       return updatedMaterial;
-      
     } catch (error) {
       console.error('Error updating material:', error);
       throw error;
@@ -189,7 +253,7 @@ class BrowserDatabaseService {
   // Constructions
   async getConstructions(): Promise<Construction[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/constructions`);
+  const response = await fetch(`${this.baseUrl}/constructions/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -202,10 +266,24 @@ class BrowserDatabaseService {
     }
   }
 
+  async getConstruction(id: string): Promise<Construction | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/constructions/${id}/`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const construction = await response.json();
+      return construction;
+    } catch (error) {
+      console.error('Error fetching construction detail:', error);
+      return null;
+    }
+  }
+
   // Construction Sets
   async getConstructionSets(): Promise<ConstructionSet[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/construction-sets`);
+  const response = await fetch(`${this.baseUrl}/construction-sets/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -222,7 +300,7 @@ class BrowserDatabaseService {
     try {
       console.log('Creating construction set via API:', constructionSetData);
       
-      const response = await fetch(`${this.baseUrl}/construction-sets`, {
+  const response = await fetch(`${this.baseUrl}/construction-sets/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -247,7 +325,7 @@ class BrowserDatabaseService {
     try {
       console.log('Updating construction set via API:', id, updates);
       
-      const response = await fetch(`${this.baseUrl}/construction-sets/${id}`, {
+  const response = await fetch(`${this.baseUrl}/construction-sets/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -272,7 +350,7 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting construction set via API:', id);
       
-      const response = await fetch(`${this.baseUrl}/construction-sets/${id}`, {
+  const response = await fetch(`${this.baseUrl}/construction-sets/${id}/`, {
         method: 'DELETE',
       });
       
@@ -295,15 +373,13 @@ class BrowserDatabaseService {
   ) {
     try {
       console.log('Creating construction via API:', construction);
-      // Note: For now, we'll create the construction without layers
-      // Layers functionality would require additional API endpoints
-      
-      const response = await fetch(`${this.baseUrl}/constructions`, {
+      // Send construction and layers to API for persistence
+  const response = await fetch(`${this.baseUrl}/constructions/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(construction),
+        body: JSON.stringify({ ...construction, layers }),
       });
       
       if (!response.ok) {
@@ -326,15 +402,13 @@ class BrowserDatabaseService {
   ) {
     try {
       console.log('Updating construction via API:', id, construction);
-      // Note: For now, we'll update the construction without layers
-      // Layers functionality would require additional API endpoints
-      
-      const response = await fetch(`${this.baseUrl}/constructions/${id}`, {
+      // Send update including layers so backend can replace them
+  const response = await fetch(`${this.baseUrl}/constructions/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(construction),
+        body: JSON.stringify({ ...construction, layers }),
       });
       
       if (!response.ok) {
@@ -431,10 +505,14 @@ export const browserDatabaseService = new BrowserDatabaseService();
 export const getMaterials = () => browserDatabaseService.getMaterials();
 export const createMaterial = (data: MaterialInsert) => browserDatabaseService.createMaterial(data);
 export const updateMaterial = (id: string, updates: Partial<MaterialInsert>) => browserDatabaseService.updateMaterial(id, updates);
+export const deleteMaterial = (id: string) => browserDatabaseService.deleteMaterial(id);
 export const getWindowGlazing = () => browserDatabaseService.getWindowGlazing();
 export const createWindowGlazing = (data: WindowGlazingInsert) => browserDatabaseService.createWindowGlazing(data);
 export const updateWindowGlazing = (id: string, updates: Partial<WindowGlazingInsert>) => browserDatabaseService.updateWindowGlazing(id, updates);
+export const deleteWindowGlazing = (id: string) => browserDatabaseService.deleteWindowGlazing(id);
+export const deleteConstruction = (id: string) => browserDatabaseService.deleteConstruction(id);
 export const getConstructions = () => browserDatabaseService.getConstructions();
+export const getConstruction = (id: string) => browserDatabaseService.getConstruction(id);
 export const getConstructionSets = () => browserDatabaseService.getConstructionSets();
 export const createConstructionSet = (data: ConstructionSetInsert) => browserDatabaseService.createConstructionSet(data);
 export const updateConstructionSet = (id: string, updates: Partial<ConstructionSetInsert>) => browserDatabaseService.updateConstructionSet(id, updates);

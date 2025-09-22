@@ -63,16 +63,21 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
-    'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/day',
-        'user': '1000/day',
-        'file_upload': '50/hour'
-    }
 }
+
+# Enable throttling in production, but disable in DEBUG to avoid development 429s
+if not DEBUG:
+    REST_FRAMEWORK.update({
+        'DEFAULT_THROTTLE_CLASSES': [
+            'rest_framework.throttling.AnonRateThrottle',
+            'rest_framework.throttling.UserRateThrottle'
+        ],
+        'DEFAULT_THROTTLE_RATES': {
+            'anon': '100/day',
+            'user': '1000/day',
+            'file_upload': '50/hour'
+        }
+    })
 
 ROOT_URLCONF = 'config.urls'
 
@@ -107,12 +112,12 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
     },
     'materials_db': {
-        # Local PostgreSQL for existing materials/constructions data
+        # Docker PostgreSQL for materials/constructions data
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('MATERIALS_DB_NAME', 'epsm_local'),
-        'USER': os.getenv('MATERIALS_DB_USER', 'ssanjay'),
+        'NAME': os.getenv('MATERIALS_DB_NAME', 'epsm_materials'),
+        'USER': os.getenv('MATERIALS_DB_USER', 'epsm_user'),
         'PASSWORD': os.getenv('MATERIALS_DB_PASSWORD', ''),
-        'HOST': os.getenv('MATERIALS_DB_HOST', 'host.docker.internal'),
+        'HOST': os.getenv('MATERIALS_DB_HOST', 'database'),
         'PORT': os.getenv('MATERIALS_DB_PORT', '5432'),
     }
 }
