@@ -1,6 +1,8 @@
 import os
 import json
+import uuid
 from django.http import JsonResponse
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -509,6 +511,37 @@ def parallel_simulation_results(request, simulation_id):
             'error': str(e)
         }, status=500)
 
+
+# Simple endpoint to return window glazing rows from the materials_db
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_window_glazing(request):
+    try:
+        from database.models import WindowGlazing
+        glazings_qs = WindowGlazing.objects.using('materials_db').all()
+        glazings = []
+        for g in glazings_qs:
+            glazings.append({
+                'id': str(g.id),
+                'name': g.name,
+                'thickness_m': g.thickness_m,
+                'conductivity_w_mk': g.conductivity_w_mk,
+                'solar_transmittance': getattr(g, 'solar_transmittance', None),
+                'visible_transmittance': getattr(g, 'visible_transmittance', None),
+                'infrared_transmittance': getattr(g, 'infrared_transmittance', None),
+                'front_ir_emissivity': getattr(g, 'front_ir_emissivity', None),
+                'back_ir_emissivity': getattr(g, 'back_ir_emissivity', None),
+                'gwp_kgco2e_per_m2': g.gwp_kgco2e_per_m2,
+                'cost_sek_per_m2': g.cost_sek_per_m2,
+                'date_created': g.date_created.isoformat() if getattr(g, 'date_created', None) else None,
+                'date_modified': g.date_modified.isoformat() if getattr(g, 'date_modified', None) else None,
+            })
+        return JsonResponse(glazings, safe=False)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
 # Database API endpoints for frontend
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])  # Allow unauthenticated access for now
@@ -727,6 +760,11 @@ def api_constructions_create(request):
             layer_order = layer.get('layer_order', 1)
             is_glazing = layer.get('is_glazing_layer', False)
             if layer.get('material_id'):
+                # validate UUID
+                try:
+                    uuid.UUID(str(layer['material_id']))
+                except Exception:
+                    return JsonResponse({'error': f"Invalid material_id in layer: {layer.get('material_id')}"}, status=400)
                 try:
                     mat = Material.objects.using('materials_db').get(id=layer['material_id'])
                     Layer.objects.using('materials_db').create(
@@ -739,6 +777,11 @@ def api_constructions_create(request):
                     # skip missing materials
                     print(f"Warning: material {layer.get('material_id')} not found")
             elif layer.get('glazing_id'):
+                # validate UUID
+                try:
+                    uuid.UUID(str(layer['glazing_id']))
+                except Exception:
+                    return JsonResponse({'error': f"Invalid glazing_id in layer: {layer.get('glazing_id')}"}, status=400)
                 try:
                     win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
                     Layer.objects.using('materials_db').create(
@@ -844,6 +887,11 @@ def api_construction_detail(request, id):
             for layer in data.get('layers', []):
                 layer_order = layer.get('layer_order', 1)
                 if layer.get('material_id'):
+                    # validate UUID
+                    try:
+                        uuid.UUID(str(layer['material_id']))
+                    except Exception:
+                        return JsonResponse({'error': f"Invalid material_id in layer: {layer.get('material_id')}"}, status=400)
                     try:
                         mat = Material.objects.using('materials_db').get(id=layer['material_id'])
                         Layer.objects.using('materials_db').create(
@@ -854,7 +902,14 @@ def api_construction_detail(request, id):
                         )
                     except Material.DoesNotExist:
                         print(f"Warning: material {layer.get('material_id')} not found")
+                    except (ValueError, DjangoValidationError) as e:
+                        return JsonResponse({'error': f"Invalid material_id in layer: {layer.get('material_id')} - {str(e)}"}, status=400)
                 elif layer.get('glazing_id'):
+                    # validate UUID
+                    try:
+                        uuid.UUID(str(layer['glazing_id']))
+                    except Exception:
+                        return JsonResponse({'error': f"Invalid glazing_id in layer: {layer.get('glazing_id')}"}, status=400)
                     try:
                         win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
                         Layer.objects.using('materials_db').create(
@@ -865,6 +920,8 @@ def api_construction_detail(request, id):
                         )
                     except WindowGlazing.DoesNotExist:
                         print(f"Warning: glazing {layer.get('glazing_id')} not found")
+                    except (ValueError, DjangoValidationError) as e:
+                        return JsonResponse({'error': f"Invalid glazing_id in layer: {layer.get('glazing_id')} - {str(e)}"}, status=400)
 
         return JsonResponse({'status': 'updated'})
 

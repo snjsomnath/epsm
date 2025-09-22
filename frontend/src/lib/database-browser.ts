@@ -43,7 +43,7 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting window glazing via API:', id);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/v2/window-glazing/${id}/`, {
+  const response = await fetch(`${this.baseUrl}/window-glazing/${id}`, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
@@ -180,29 +180,16 @@ class BrowserDatabaseService {
   // Window Glazing
   async getWindowGlazing(): Promise<WindowGlazing[]> {
     try {
-      return [
-        {
-          id: '1',
-          name: 'Double Glazing',
-          thickness_m: 0.006,
-          conductivity_w_mk: 1.0,
-          solar_transmittance: 0.7,
-          visible_transmittance: 0.8,
-          infrared_transmittance: 0.0,
-          front_ir_emissivity: 0.84,
-          back_ir_emissivity: 0.84,
-          gwp_kgco2e_per_m2: 15.5,
-          cost_sek_per_m2: 450.0,
-          author_id: 'demo-user',
-          date_created: new Date().toISOString(),
-          date_modified: new Date().toISOString(),
-          source: 'Demo Data',
-          created_at: new Date().toISOString()
-        }
-      ];
+      const response = await fetch(`${this.baseUrl}/window-glazing`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const glazings = await response.json();
+      return glazings;
     } catch (error) {
       console.error('Error fetching window glazing:', error);
-      throw error;
+      // Fallback to empty list if API is not available
+      return [];
     }
   }
 

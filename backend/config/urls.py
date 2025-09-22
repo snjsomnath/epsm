@@ -103,6 +103,7 @@ urlpatterns = [
         path('api/constructions/', simulation_views.api_constructions_create, name='api_constructions_create'),
         path('api/constructions/<uuid:id>/', simulation_views.api_construction_detail, name='api_construction_detail'),
     path('api/construction-sets/', simulation_views.api_construction_sets, name='api_construction_sets'),
+    path('api/window-glazing', simulation_views.api_window_glazing, name='api_window_glazing'),
     
     # Direct endpoints
     path('api/parse/idf/', simulation_views.parse_idf, name='parse_idf'),
