@@ -42,7 +42,8 @@ import {
   Search, 
   Plus, 
   Edit, 
-  Info, 
+  Eye, 
+  Copy,
   X,
   ArrowUp, 
   ArrowDown, 
@@ -82,7 +83,10 @@ const defaultConstruction: ConstructionInsert = {
 
 const ConstructionsTab = () => {
   const { isAuthenticated } = useAuth();
-  const { constructions, materials, windowGlazing, addConstruction, updateConstruction, error: dbError } = useDatabase();
+  const { constructions, materials, windowGlazing, addConstruction, updateConstruction, /*deleteConstructionSet,*/ refreshData, error: dbError } = useDatabase();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [constructionToDelete, setConstructionToDelete] = useState<Construction | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [openModal, setOpenModal] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,6 +131,36 @@ const ConstructionsTab = () => {
     const detail = await getConstruction(construction.id);
     setSelectedConstruction(detail || construction);
     setOpenDetailsDialog(true);
+  };
+
+  const handleConfirmDelete = (construction: Construction) => {
+    setConstructionToDelete(construction);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConstruction = async (id: string) => {
+    try {
+      setDeleting(true);
+      const csrfToken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1];
+      const response = await fetch(`/api/constructions/${id}/`, {
+        method: 'DELETE',
+        headers: {
+          ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      await refreshData();
+      setDeleteDialogOpen(false);
+      setConstructionToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete construction', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleCopy = async (construction: Construction) => {
@@ -720,12 +754,30 @@ const ConstructionsTab = () => {
                         <Edit size={18} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Details">
+                    <Tooltip title="View">
                       <IconButton 
                         size="small"
                         onClick={() => handleViewDetails(construction)}
                       >
-                        <Info size={18} />
+                        <Eye size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Copy">
+                      <IconButton size="small" onClick={() => handleCopy(construction)}>
+                        <Copy size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Edit">
+                      <IconButton 
+                        size="small"
+                        onClick={() => handleEdit(construction)}
+                      >
+                        <Edit size={18} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => handleConfirmDelete(construction)} sx={{ color: 'error.main' }}>
+                        <Trash2 size={18} />
                       </IconButton>
                     </Tooltip>
                   </TableCell>
@@ -997,6 +1049,20 @@ const ConstructionsTab = () => {
             disabled={loading}
           >
             {editingConstruction ? 'Save Changes' : 'Add Construction'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Construction?</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete <b>{constructionToDelete?.name}</b>?
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => constructionToDelete && handleDeleteConstruction(constructionToDelete.id)} disabled={deleting}>
+            {deleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
