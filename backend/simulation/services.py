@@ -183,6 +183,17 @@ class EnergyPlusSimulator:
                     dst_path = os.path.join(simulation_dir, dst_name)
                     os.rename(src_path, dst_path)
 
+            # Ensure a canonical output.html exists: if only output.htm is present,
+            # copy it to output.html so clients requesting output.html succeed.
+            out_html = os.path.join(simulation_dir, 'output.html')
+            out_htm = os.path.join(simulation_dir, 'output.htm')
+            try:
+                if not os.path.exists(out_html) and os.path.exists(out_htm):
+                    shutil.copy2(out_htm, out_html)
+            except Exception:
+                # Non-fatal; we already saved run_output.log and other outputs.
+                pass
+
             return output_log
 
         except subprocess.TimeoutExpired:

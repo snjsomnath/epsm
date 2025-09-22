@@ -23,6 +23,10 @@ from pathlib import Path
 import sqlite3
 import time
 from threading import Lock
+from django.http import FileResponse, Http404
+import mimetypes
+import zipfile
+import io
 
 # Add a simple in-memory rate limiter for parse_idf endpoint
 _parse_idf_last_call = 0
@@ -568,6 +572,51 @@ def parallel_simulation_results(request, simulation_id):
         return JsonResponse({
             'error': str(e)
         }, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def simulation_download(request, simulation_id):
+    """Serve the primary HTML report (or .htm) for a simulation, or a zip of the result folder.
+
+    Order of preference:
+    1. media/simulation_results/<id>/base/output.html
+    2. media/simulation_results/<id>/base/output.htm
+    3. zip the entire simulation_results/<id>/ directory and return as attachment
+    """
+    try:
+        # Build expected paths
+        base_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_results', str(simulation_id))
+        base_sub = os.path.join(base_dir, 'base')
+
+        # Prefer output.html, otherwise output.htm
+        html_path = os.path.join(base_sub, 'output.html')
+        htm_path = os.path.join(base_sub, 'output.htm')
+
+        if os.path.exists(html_path):
+            return FileResponse(open(html_path, 'rb'), content_type='text/html')
+        if os.path.exists(htm_path):
+            return FileResponse(open(htm_path, 'rb'), content_type='text/html')
+
+        # If no HTML/HTM, create an in-memory zip of the simulation folder
+        if os.path.exists(base_dir):
+            mem_file = io.BytesIO()
+            with zipfile.ZipFile(mem_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+                for root, dirs, files in os.walk(base_dir):
+                    for f in files:
+                        full = os.path.join(root, f)
+                        arcname = os.path.relpath(full, base_dir)
+                        zf.write(full, arcname)
+            mem_file.seek(0)
+            response = FileResponse(mem_file, as_attachment=True, filename=f'simulation_{simulation_id}_results.zip')
+            return response
+
+        raise Http404('Simulation results not found')
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 # Simple endpoint to return window glazing rows from the materials_db
