@@ -598,26 +598,28 @@ const WindowGlazingTab = () => {
                   <TableCell align="right">{glazing.gwp_kgco2e_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="right">{glazing.cost_sek_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="center">
-                    <Tooltip title="View">
-                      <IconButton size="small" onClick={() => handleViewDetails(glazing)}>
-                        <Eye size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Copy">
-                      <IconButton size="small" onClick={() => handleCopy(glazing)}>
-                        <Copy size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit">
-                      <IconButton size="small" onClick={() => handleEdit(glazing)}>
-                        <Edit size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => { setGlazingToDelete(glazing); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
-                        <Trash2 size={18} />
-                      </IconButton>
-                    </Tooltip>
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap', minWidth: 120 }}>
+                      <Tooltip title="View">
+                        <IconButton size="small" onClick={() => handleViewDetails(glazing)}>
+                          <Eye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Copy">
+                        <IconButton size="small" onClick={() => handleCopy(glazing)}>
+                          <Copy size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" onClick={() => handleEdit(glazing)}>
+                          <Edit size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => { setGlazingToDelete(glazing); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
