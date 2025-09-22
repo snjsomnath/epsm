@@ -73,33 +73,91 @@ def parse_idf(request):
             
             # Add database comparison for materials
             for material in file_data['materials']:
-                material_name = material['name']
-                material['existsInDatabase'] = check_material_exists(material_name)
-                if not material['existsInDatabase']:
-                    material['source'] = f"Extracted from {file.name}"
-                
+                material_name = material.get('name') or material.get('Name') or 'Unknown'
+
+                # Normalize properties into the shape the frontend expects
+                def _get_first_numeric(d, keys):
+                    for k in keys:
+                        if k in d and d[k] is not None:
+                            try:
+                                return float(d[k])
+                            except Exception:
+                                try:
+                                    # sometimes values are strings with commas
+                                    return float(str(d[k]).replace(',', ''))
+                                except Exception:
+                                    continue
+                    return None
+
+                props = {}
+                props['thickness'] = _get_first_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
+                props['conductivity'] = _get_first_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
+                props['density'] = _get_first_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg_m3'])
+                # specific heat may be named specific_heat or Specific_Heat or specificHeat
+                props['specificHeat'] = _get_first_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
+
+                # Other non-numeric properties
+                props['roughness'] = material.get('roughness') or material.get('Roughness')
+                props['thermalAbsorptance'] = material.get('thermal_absorptance') or material.get('Thermal_Absorptance')
+                props['solarAbsorptance'] = material.get('solar_absorptance') or material.get('Solar_Absorptance')
+                props['visibleAbsorptance'] = material.get('visible_absorptance') or material.get('Visible_Absorptance')
+
+                normalized_material = {
+                    'name': material_name,
+                    'type': material.get('type', 'Material'),
+                    'properties': props,
+                }
+
+                # DB existence and source metadata
+                exists = check_material_exists(material_name)
+                normalized_material['existsInDatabase'] = exists
+                if not exists:
+                    normalized_material['source'] = f"Extracted from {file.name}"
+
                 # Generate a unique key for this material
-                material['uniqueKey'] = f"{material_name}_{file_index}_{file.name}"
-                
+                normalized_material['uniqueKey'] = f"{material_name}_{file_index}_{file.name}"
+
                 # Only add if not already added (or replace with the current one)
                 if material_name not in materials_dict:
-                    materials_dict[material_name] = material
+                    materials_dict[material_name] = normalized_material
             
             # Add database comparison for constructions
             for construction in file_data['constructions']:
-                construction_name = construction['name']
-                construction['existsInDatabase'] = check_construction_exists(construction_name)
+                construction_name = construction.get('name') or construction.get('Name') or 'Unknown'
 
-                
-                if not construction['existsInDatabase']:
-                    construction['source'] = f"Extracted from {file.name}"
-                
-                # Generate a unique key for this construction
-                construction['uniqueKey'] = f"{construction_name}_{file_index}_{file.name}"
-                
-                # Only add if not already added (or replace with the current one)
+                # Extract layers — parsers may provide 'layers' list or field names
+                layers = []
+                if isinstance(construction.get('layers'), list):
+                    layers = construction.get('layers')
+                else:
+                    # Sometimes constructions come with numbered Layer_1, Layer_2... or a 'fields' list
+                    if 'fields' in construction and isinstance(construction['fields'], list):
+                        # Heuristic: first field is name, remaining are layers
+                        if len(construction['fields']) > 1:
+                            layers = construction['fields'][1:]
+                    else:
+                        # Fallback: try to collect any keys that look like layer names
+                        for k, v in construction.items():
+                            if k.lower().startswith('layer') and v:
+                                layers.append(v)
+
+                normalized_construction = {
+                    'name': construction_name,
+                    'type': construction.get('type', 'Construction'),
+                    'properties': {
+                        'layers': layers
+                    }
+                }
+
+                exists = check_construction_exists(construction_name)
+                normalized_construction['existsInDatabase'] = exists
+                if not exists:
+                    normalized_construction['source'] = f"Extracted from {file.name}"
+
+                normalized_construction['uniqueKey'] = f"{construction_name}_{file_index}_{file.name}"
+
                 if construction_name not in constructions_dict:
-                    constructions_dict[construction_name] = construction
+                    constructions_dict[construction_name] = normalized_construction
             
             # Add zones with unique names
             for zone in file_data['zones']:
