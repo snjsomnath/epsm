@@ -410,13 +410,13 @@ const ConstructionsTab = () => {
   );
 
   // Get benchmark status
-  const getBenchmarkStatus = (value: number, type: 'u-value' | 'gwp' | 'cost') => {
+  const getBenchmarkStatus = (value: number, type: 'u-value' | 'gwp' | 'cost') : { color: 'error' | 'primary' | 'secondary' | 'info' | 'success' | 'warning' | 'default', label: string } => {
     const benchmarks = {
       'u-value': { low: 0.2, high: 0.5 },
       'gwp': { low: 50, high: 100 },
       'cost': { low: 500, high: 1000 }
     };
-
+    
     const threshold = benchmarks[type];
     
     if (value <= threshold.low) return { color: 'success', label: 'Low' };
@@ -746,40 +746,34 @@ const ConstructionsTab = () => {
                   <TableCell align="right">{construction.gwp_kgco2e_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="right">{construction.cost_sek_per_m2.toFixed(2)}</TableCell>
                   <TableCell align="center">
-                    <Tooltip title="Edit">
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleEdit(construction)}
-                      >
-                        <Edit size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="View">
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleViewDetails(construction)}
-                      >
-                        <Eye size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Copy">
-                      <IconButton size="small" onClick={() => handleCopy(construction)}>
-                        <Copy size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit">
-                      <IconButton 
-                        size="small"
-                        onClick={() => handleEdit(construction)}
-                      >
-                        <Edit size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => handleConfirmDelete(construction)} sx={{ color: 'error.main' }}>
-                        <Trash2 size={18} />
-                      </IconButton>
-                    </Tooltip>
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap', minWidth: 120 }}>
+                      <Tooltip title="Edit">
+                        <IconButton 
+                          size="small"
+                          onClick={() => handleEdit(construction)}
+                        >
+                          <Edit size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="View">
+                        <IconButton 
+                          size="small"
+                          onClick={() => handleViewDetails(construction)}
+                        >
+                          <Eye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Copy">
+                        <IconButton size="small" onClick={() => handleCopy(construction)}>
+                          <Copy size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => handleConfirmDelete(construction)} sx={{ color: 'error.main' }}>
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
