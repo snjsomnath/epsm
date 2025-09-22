@@ -39,6 +39,7 @@ import {
   Upload,
   Check
 } from 'lucide-react';
+// history-related icons removed; history UI moved to Baseline page
 import SimulationResultsView from './SimulationResultsView';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useSimulation } from '../../context/SimulationContext';
@@ -57,7 +58,7 @@ import IdfUploadArea from '../baseline/IdfUploadArea';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData, updateUploadedFiles } = useSimulation();
+  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
@@ -81,7 +82,7 @@ const SimulationPage = () => {
   const [networkHistory, setNetworkHistory] = useState<Array<{index: number, value: number, time: string}>>([]);
   const MAX_HISTORY_POINTS = 60; // Store last 60 data points
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [_wsConnected, setWsConnected] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
 
   // Check backend availability
@@ -114,12 +115,7 @@ const SimulationPage = () => {
     setWsError(null);
     setWsConnected(false);
 
-    const ws = new ReconnectingWebSocket(wsUrl, [], {
-      debug: true,
-      reconnectInterval: 3000,
-      maxReconnectInterval: 10000,
-      reconnectDecay: 1.5,
-    });
+    const ws = new ReconnectingWebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log("WebSocket connection established");
@@ -162,8 +158,8 @@ const SimulationPage = () => {
   useEffect(() => {
     // Try to get number of variants from parsedData or scenario
     let numVariants = 1;
-    if (parsedData && parsedData.constructionVariants) {
-      numVariants = parsedData.constructionVariants.length;
+    if (parsedData && (parsedData as any).constructionVariants) {
+      numVariants = (parsedData as any).constructionVariants.length;
     } else if (selectedScenario) {
       const scenario = scenarios.find(s => s.id === selectedScenario);
       // Use total_simulations instead of total_variants
@@ -321,12 +317,16 @@ const SimulationPage = () => {
           setProgress(statusData.progress ?? 0);
           setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
 
-          if (statusData.status === 'completed') {
+      if (statusData.status === 'completed') {
             clearInterval(pollInterval);
             stopped = true;
             const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
             const resultsData = await resultsResponse.json();
-            setResults(resultsData);
+        // cache and rehydrate via context when available
+        setResults(resultsData);
+        if (typeof loadResults === 'function') {
+          try { await loadResults(simulationId); } catch (e) { /* ignore */ }
+        }
             setIsComplete(true);
             setIsRunning(false);
           } else if (statusData.status === 'failed') {
@@ -401,11 +401,10 @@ const SimulationPage = () => {
     try {
       // Update the context with the new files (not as a function)
       if (typeof updateUploadedFiles === 'function') {
-        // Pass the files directly rather than using a callback function
         updateUploadedFiles(files);
         console.log('Updated files through context:', files);
       } else {
-        console.error('updateUploadedFiles function not found in context');
+        console.warn('updateUploadedFiles function not found in context');
       }
     } catch (error) {
       console.error('Error processing IDF files:', error);
@@ -553,7 +552,7 @@ const SimulationPage = () => {
                             onDelete={() => {
                               const newFiles = (localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).filter((_, i) => i !== index);
                               setLocalIdfFiles(newFiles);
-                              updateUploadedFiles(newFiles);
+                              if (typeof updateUploadedFiles === 'function') updateUploadedFiles(newFiles);
                             }}
                           />
                         ))}
@@ -750,6 +749,8 @@ const SimulationPage = () => {
             <Typography variant="h6" gutterBottom>
               Simulation Progress
             </Typography>
+
+            {/* Recent simulations moved to Baseline page (baselineHistory) */}
             
             {error && (
               <Alert severity="error" sx={{ mb: 2 }}>
@@ -1148,11 +1149,7 @@ const SimulationPage = () => {
         <DialogActions>
           <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
           {/* Add logs before rendering the button to check conditions */}
-          {console.log('Button conditions:', { 
-            uploadedFilesLength: uploadedFiles.length, 
-            hasWeatherFile: !!weatherFile,
-            isDisabled: !uploadedFiles.length || !weatherFile
-          })}
+          {/* Button conditions logged in developer console only */}
           <Button
             variant="contained"
             onClick={() => setUploadDialogOpen(false)}

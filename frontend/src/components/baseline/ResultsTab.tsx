@@ -13,15 +13,13 @@ import {
   TableRow,
   Button,
   Divider,
-  Chip,
   Alert,
-  Stack,
   Grid,
   Card,
   CardContent,
   CardActions
 } from '@mui/material';
-import { BarChart3, Download, FileDown, FileText } from 'lucide-react';
+import { Download, FileText, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -52,7 +50,7 @@ interface ResultsTabProps {
 const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: ResultsTabProps) => {
   const [tabValue, setTabValue] = useState(0);
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
@@ -163,40 +161,6 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     }
   ];
 
-  // Helper to build chart data for each indicator
-  const buildIndicatorChartData = (indicatorKey: string, label: string, color: string, borderColor: string) => {
-    return {
-      labels: resultsArray.map(r => r.fileName || 'Result'),
-      datasets: [
-        {
-          label,
-          data: resultsArray.map(r => r[indicatorKey] ?? 0),
-          backgroundColor: color,
-          borderColor: borderColor,
-          borderWidth: 1,
-        }
-      ]
-    };
-  };
-
-  const indicatorChartOptions = (label: string) => ({
-    indexAxis: 'y' as const,
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      title: { display: true, text: label }
-    },
-    scales: {
-      x: {
-        beginAtZero: true,
-        title: { display: true, text: label }
-      },
-      y: {
-        title: { display: false }
-      }
-    }
-  });
 
   // Helper to build a stacked bar chart where each indicator is a group and each IDF is a stack
   const buildStackedBarChartData = () => {
@@ -224,19 +188,6 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     'rgba(100, 100, 100, 0.8)'
   ];
 
-  // Helper to build grouped bar chart data: indicators on x, bars per file
-  const buildGroupedBarChartData = () => {
-    return {
-      labels: indicatorConfigs.map(ind => ind.label),
-      datasets: resultsArray.map((result, idx) => ({
-        label: result.fileName || `Result ${idx+1}`,
-        data: indicatorConfigs.map(ind => result[ind.key] ?? 0),
-        backgroundColor: fileColors[idx % fileColors.length],
-        borderColor: fileColors[idx % fileColors.length].replace('0.8', '1'),
-        borderWidth: 1
-      }))
-    };
-  };
 
   const groupedBarChartOptions = {
     responsive: true,
@@ -259,24 +210,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
 
   // Add this definition if you still need stackedBarChartOptions for legacy code,
   // or remove all references to stackedBarChartOptions if you only want the grouped bar chart.
-  const stackedBarChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: 'top' as const },
-      title: { display: true, text: 'Key Performance Indicators by File' }
-    },
-    scales: {
-      x: {
-        stacked: true,
-        title: { display: false }
-      },
-      y: {
-        stacked: true,
-        title: { display: true, text: 'kWh/m²' }
-      }
-    }
-  };
+  
 
   if (uploadedFiles.length === 0) {
     return (
@@ -327,35 +261,35 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 
                 <Grid container spacing={2} sx={{ mt: 1 }}>
                   <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Total Energy Use:
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Zap size={16} /> Total Energy:
                     </Typography>
                     <Typography variant="h5">
-                      {result.totalEnergyUse ? result.totalEnergyUse.toFixed(1) : '0.0'} kWh/m²
+                      {(Number(result.totalEnergy ?? result.totalEnergyUse ?? result.totalEnergyUse_kwh ?? 0)).toFixed(1)} kWh/m²
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Simulation Runtime:
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Clock size={16} /> Simulation Runtime:
                     </Typography>
                     <Typography variant="h5">
-                      {result.runTime ? result.runTime.toFixed(1) : '0.0'} seconds
+                      {(Number(result.runTime ?? result.run_time ?? result.elapsedSeconds ?? 0)).toFixed(1)} seconds
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Heating Demand:
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Thermometer size={16} /> Heating:
                     </Typography>
                     <Typography variant="h6" color="error.main">
-                      {result.heatingDemand ? result.heatingDemand.toFixed(1) : '0.0'} kWh/m²
+                      {(Number(result.heating ?? result.heatingDemand ?? 0)).toFixed(1)} kWh/m²
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
-                    <Typography variant="subtitle2" color="text.secondary">
-                      Cooling Demand:
+                    <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Snowflake size={16} /> Cooling:
                     </Typography>
                     <Typography variant="h6" color="info.main">
-                      {result.coolingDemand ? result.coolingDemand.toFixed(1) : '0.0'} kWh/m²
+                      {(Number(result.cooling ?? result.coolingDemand ?? 0)).toFixed(1)} kWh/m²
                     </Typography>
                   </Grid>
                 </Grid>
@@ -422,11 +356,11 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                     {resultsArray.map((result, idx) => (
                       <TableRow key={`summary-row-${idx}-${result.simulationId}`}>
                         <TableCell>{result.fileName || `Result ${idx+1}`}</TableCell>
-                        <TableCell align="right">{result.totalEnergyUse ? result.totalEnergyUse.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.heatingDemand ? result.heatingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.coolingDemand ? result.coolingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.lightingDemand ? result.lightingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.equipmentDemand ? result.equipmentDemand.toFixed(1) : '0.0'}</TableCell>
+                        <TableCell align="right">{(Number(result.totalEnergy ?? result.totalEnergyUse ?? 0)).toFixed(1)}</TableCell>
+                        <TableCell align="right">{(Number(result.heating ?? result.heatingDemand ?? 0)).toFixed(1)}</TableCell>
+                        <TableCell align="right">{(Number(result.cooling ?? result.coolingDemand ?? 0)).toFixed(1)}</TableCell>
+                        <TableCell align="right">{(Number(result.lightingDemand ?? result.lighting_demand ?? 0)).toFixed(1)}</TableCell>
+                        <TableCell align="right">{(Number(result.equipmentDemand ?? result.equipment_demand ?? 0)).toFixed(1)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
