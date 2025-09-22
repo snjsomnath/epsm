@@ -64,7 +64,7 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting construction via API:', id);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/v2/constructions/${id}/`, {
+      const response = await fetch(`${this.baseUrl}/constructions/${id}/`, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
@@ -84,7 +84,8 @@ class BrowserDatabaseService {
 
   constructor() {
     // Point to our local API server that serves real PostgreSQL data
-  this.baseUrl = 'http://localhost:8000/api'; 
+    const envUrl = (import.meta as any).env?.VITE_BACKEND_URL;
+    this.baseUrl = envUrl ? envUrl.replace(/\/$/, '') : 'http://localhost:8000/api';
   }
 
   // Materials
