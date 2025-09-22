@@ -965,3 +965,72 @@ def api_construction_sets(request):
         return JsonResponse({
             'error': str(e)
         }, status=500)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([AllowAny])
+def api_construction_set_detail(request, id):
+    """Handle GET/PUT/DELETE for a single construction set."""
+    try:
+        from database.models import ConstructionSet
+
+        try:
+            cs = ConstructionSet.objects.using('materials_db').get(id=id)
+        except ConstructionSet.DoesNotExist:
+            return JsonResponse({'error': 'ConstructionSet not found'}, status=404)
+
+        if request.method == 'GET':
+            return JsonResponse({
+                'id': cs.id,
+                'name': cs.name,
+                'description': cs.description,
+                'wall_construction_id': cs.wall_construction.id if cs.wall_construction else None,
+                'roof_construction_id': cs.roof_construction.id if cs.roof_construction else None,
+                'floor_construction_id': cs.floor_construction.id if cs.floor_construction else None,
+                'window_construction_id': cs.window_construction.id if cs.window_construction else None,
+                'date_created': cs.date_created.isoformat() if cs.date_created else None,
+                'date_modified': cs.date_modified.isoformat() if cs.date_modified else None,
+                'source': cs.source
+            })
+
+        if request.method == 'DELETE':
+            cs.delete()
+            return JsonResponse({'status': 'deleted'})
+
+        # PUT - update fields
+        data = json.loads(request.body.decode('utf-8'))
+        cs.name = data.get('name', cs.name)
+        cs.description = data.get('description', cs.description)
+        # Update foreign keys if provided
+        if 'wall_construction_id' in data:
+            from database.models import Construction
+            try:
+                cs.wall_construction = Construction.objects.using('materials_db').get(id=data['wall_construction_id']) if data['wall_construction_id'] else None
+            except Construction.DoesNotExist:
+                return JsonResponse({'error': 'Wall construction not found'}, status=400)
+        if 'roof_construction_id' in data:
+            from database.models import Construction
+            try:
+                cs.roof_construction = Construction.objects.using('materials_db').get(id=data['roof_construction_id']) if data['roof_construction_id'] else None
+            except Construction.DoesNotExist:
+                return JsonResponse({'error': 'Roof construction not found'}, status=400)
+        if 'floor_construction_id' in data:
+            from database.models import Construction
+            try:
+                cs.floor_construction = Construction.objects.using('materials_db').get(id=data['floor_construction_id']) if data['floor_construction_id'] else None
+            except Construction.DoesNotExist:
+                return JsonResponse({'error': 'Floor construction not found'}, status=400)
+        if 'window_construction_id' in data:
+            from database.models import Construction
+            try:
+                cs.window_construction = Construction.objects.using('materials_db').get(id=data['window_construction_id']) if data['window_construction_id'] else None
+            except Construction.DoesNotExist:
+                return JsonResponse({'error': 'Window construction not found'}, status=400)
+
+        cs.save(using='materials_db')
+        return JsonResponse({'status': 'updated'})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
