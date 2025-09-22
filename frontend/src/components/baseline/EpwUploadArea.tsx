@@ -3,6 +3,7 @@ import {
   Box, 
   Paper, 
   Typography, 
+  Button,
   Chip,
   Stack,
   Alert,
@@ -99,6 +100,57 @@ const EpwUploadArea = ({ onFileUploaded }: EpwUploadAreaProps) => {
     setError(null);
   };
 
+  const handleUseDefault = async () => {
+    setValidating(true);
+    setError(null);
+
+    try {
+
+      const candidates = [
+        '/epw/SWE_VG_Goteborg.City.AP.025120_TMYx.2009-2023.epw'
+      ];
+
+      let resp: Response | null = null;
+      let usedUrl = '';
+      for (const url of candidates) {
+        // try each candidate until one succeeds
+        // eslint-disable-next-line no-await-in-loop
+        const r = await fetch(url);
+        if (r.ok) {
+          resp = r;
+          usedUrl = url;
+          break;
+        }
+      }
+
+      if (!resp) throw new Error('Default EPW not found');
+
+      const blob = await resp.blob();
+      const fileName = usedUrl.split('/').pop() || 'default.epw';
+      const file = new File([blob], fileName, { type: 'application/octet-stream' });
+
+      const isBundled = usedUrl.startsWith('/epw/');
+
+      if (isBundled) {
+        // Bundled files are trusted (part of the app); skip strict content validation
+        setEpwFile(file);
+        onFileUploaded(file);
+      } else {
+        const isValid = await validateWeatherFile(file);
+        if (!isValid) throw new Error('Default EPW failed validation');
+
+        setEpwFile(file);
+        onFileUploaded(file);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load default EPW');
+      setEpwFile(null);
+      onFileUploaded(null);
+    } finally {
+      setValidating(false);
+    }
+  };
+
   return (
     <Box>
       <Box
@@ -148,6 +200,19 @@ const EpwUploadArea = ({ onFileUploaded }: EpwUploadAreaProps) => {
             <Typography variant="body2" color="text.secondary">
               or click to browse
             </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleUseDefault();
+                }}
+                disabled={validating}
+                variant="outlined"
+                size="small"
+              >
+                Use default EPW
+              </Button>
+            </Box>
           </>
         )}
       </Box>
