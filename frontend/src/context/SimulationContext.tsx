@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 const makeFriendlyName = (opts?: { separator?: string }) => {
   try {
