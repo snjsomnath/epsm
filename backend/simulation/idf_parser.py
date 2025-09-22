@@ -231,10 +231,37 @@ class EnergyPlusIDFParser:
                         current_fields.append(line.replace(';', '').strip())
                     
                     if current_object == 'MATERIAL' and current_fields:
+                        # Heuristic: IDF MATERIAL fields are ordered as
+                        # Name, Roughness, Thickness, Conductivity, Density, Specific Heat,
+                        # Thermal Absorptance, Solar Absorptance, Visible Absorptance
+                        vals = [v for v in current_fields]
+                        name = vals[0] if len(vals) > 0 else 'Unknown'
+                        roughness = vals[1] if len(vals) > 1 else None
+                        def _to_float(v):
+                            try:
+                                return float(str(v).strip())
+                            except Exception:
+                                return None
+
+                        thickness = _to_float(vals[2]) if len(vals) > 2 else None
+                        conductivity = _to_float(vals[3]) if len(vals) > 3 else None
+                        density = _to_float(vals[4]) if len(vals) > 4 else None
+                        specific_heat = _to_float(vals[5]) if len(vals) > 5 else None
+                        thermal_absorptance = _to_float(vals[6]) if len(vals) > 6 else None
+                        solar_absorptance = _to_float(vals[7]) if len(vals) > 7 else None
+                        visible_absorptance = _to_float(vals[8]) if len(vals) > 8 else None
+
                         materials.append({
-                            'name': current_fields[0] if current_fields else 'Unknown',
+                            'name': name,
                             'type': 'Material',
-                            'fields': current_fields
+                            'roughness': roughness,
+                            'thickness': thickness,
+                            'conductivity': conductivity,
+                            'density': density,
+                            'specific_heat': specific_heat,
+                            'thermal_absorptance': thermal_absorptance,
+                            'solar_absorptance': solar_absorptance,
+                            'visible_absorptance': visible_absorptance,
                         })
                     elif current_object == 'ZONE' and current_fields:
                         zones.append({
