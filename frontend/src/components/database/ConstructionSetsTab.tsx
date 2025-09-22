@@ -237,11 +237,6 @@ const ConstructionSetsTab = () => {
                   <Typography variant="h6" component="div" gutterBottom>
                     {set.name}
                   </Typography>
-                  <Chip 
-                    size="small" 
-                    label={`ID: ${set.id}`} 
-                    variant="outlined" 
-                  />
                 </Box>
                 
                 {set.description && (
@@ -316,14 +311,7 @@ const ConstructionSetsTab = () => {
               </CardContent>
               
               <Box sx={{ mt: 'auto', p: 1.5, pt: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Avatar sx={{ width: 24, height: 24, mr: 1, fontSize: '0.75rem', bgcolor: 'primary.main' }}>
-                    {user?.email?.charAt(0).toUpperCase() || '?'}
-                  </Avatar>
-                  <Typography variant="caption" color="text.secondary">
-                    {user?.email || 'Unknown Author'}
-                  </Typography>
-                </Box>
+                {/* Compact card: author & uuid moved to detailed dialog view */}
                 
                 <CardActions sx={{ p: 0 }}>
                   <IconButton 
@@ -398,7 +386,7 @@ const ConstructionSetsTab = () => {
         <DialogTitle>
           {editingSet ? 'Edit Construction Set' : 'Add New Construction Set'}
         </DialogTitle>
-        <DialogContent>
+  <DialogContent>
           {formError && (
             <Alert severity="error" sx={{ mb: 2, mt: 2 }}>
               {formError}
@@ -406,6 +394,24 @@ const ConstructionSetsTab = () => {
           )}
 
           <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* Show metadata (ID and author) in detailed view */}
+            {(viewOnly || editingSet) && (
+              <Grid item xs={12}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  {editingSet && (
+                    <Chip label={`ID: ${editingSet}`} variant="outlined" />
+                  )}
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Avatar sx={{ width: 28, height: 28, mr: 1, fontSize: '0.8rem', bgcolor: 'primary.main' }}>
+                      {user?.email?.charAt(0).toUpperCase() || '?'}
+                    </Avatar>
+                    <Typography variant="body2" color="text.secondary">
+                      {formData.author_id ? `Author ID: ${formData.author_id}` : (user?.email || 'Unknown Author')}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <TextField
                 fullWidth
