@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Grid,
@@ -25,7 +25,7 @@ import {
   MenuItem,
   Alert
 } from '@mui/material';
-import { Search, Plus, Edit, Trash2, X, Copy } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, Copy, Eye } from 'lucide-react';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
 import type { ConstructionSetInsert, ConstructionSet } from '../../lib/database.types';
@@ -50,14 +50,16 @@ const defaultConstructionSet: ConstructionSetInsert = {
 
 const ConstructionSetsTab = () => {
   const { isAuthenticated, user } = useAuth();
-  const { constructions, constructionSets, addConstructionSet, updateConstructionSet, deleteConstructionSet, error: dbError } = useDatabase();
+  const { constructions, constructionSets, addConstructionSet, updateConstructionSet, deleteConstructionSet, error: dbError, refreshData } = useDatabase();
   const [searchTerm, setSearchTerm] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<ConstructionSetInsert>(defaultConstructionSet);
   const [editingSet, setEditingSet] = useState<string | null>(null);
+  const [viewOnly, setViewOnly] = useState<boolean>(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleInputChange = (field: keyof ConstructionSetInsert, value: any) => {
     setFormData(prev => ({
@@ -78,6 +80,22 @@ const ConstructionSetsTab = () => {
       author_id: set.author_id
     });
     setOpenDialog(true);
+    setViewOnly(false);
+  };
+
+  const handleView = (set: typeof constructionSets[0]) => {
+    setEditingSet(set.id);
+    setFormData({
+      name: set.name,
+      description: set.description,
+      wall_construction_id: set.wall_construction_id,
+      roof_construction_id: set.roof_construction_id,
+      floor_construction_id: set.floor_construction_id,
+      window_construction_id: set.window_construction_id,
+      author_id: set.author_id
+    });
+    setViewOnly(true);
+    setOpenDialog(true);
   };
 
   const handleCopy = (set: typeof constructionSets[0]) => {
@@ -95,12 +113,41 @@ const ConstructionSetsTab = () => {
 
   const handleDelete = async (id: string) => {
     try {
+      setDeleting(true);
       await deleteConstructionSet(id);
+      try {
+        await refreshData();
+      } catch (refreshErr) {
+        console.warn('Failed to refresh construction sets after delete:', refreshErr);
+      }
       setConfirmDelete(null);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to delete construction set');
+    } finally {
+      setDeleting(false);
     }
   };
+
+  // Fallback: if the MUI dialog doesn't appear for some reason, show a native confirm after a short delay
+  useEffect(() => {
+    if (!confirmDelete) return;
+
+    console.log('ConstructionSetsTab: confirmDelete set ->', confirmDelete);
+
+    const timer = setTimeout(async () => {
+      // If still set after 500ms, show a native confirm as a fallback
+      if (!confirmDelete) return;
+      const setName = constructionSets.find(s => s.id === confirmDelete)?.name || '';
+      const ok = window.confirm(`Delete construction set "${setName}"? This cannot be undone.`);
+      if (ok) {
+        await handleDelete(confirmDelete);
+      } else {
+        setConfirmDelete(null);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
 
   const handleSubmit = async () => {
     try {
@@ -313,10 +360,17 @@ const ConstructionSetsTab = () => {
                   >
                     <Copy size={18} />
                   </IconButton>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    onClick={() => handleView(set)}
+                  >
+                    <Eye size={18} />
+                  </IconButton>
                   <IconButton 
                     size="small" 
-                    color="error"
-                    onClick={() => setConfirmDelete(set.id)}
+                    onClick={() => { console.log('ConstructionSetsTab: delete clicked for', set.id); setConfirmDelete(set.id); }}
+                    sx={{ color: 'error.main' }}
                   >
                     <Trash2 size={18} />
                   </IconButton>
@@ -379,6 +433,7 @@ const ConstructionSetsTab = () => {
                 required
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
+                disabled={viewOnly}
               />
             </Grid>
             <Grid item xs={12}>
@@ -389,6 +444,7 @@ const ConstructionSetsTab = () => {
                 rows={2}
                 value={formData.description || ''}
                 onChange={(e) => handleInputChange('description', e.target.value)}
+                disabled={viewOnly}
               />
             </Grid>
 
@@ -399,6 +455,7 @@ const ConstructionSetsTab = () => {
                   value={formData.wall_construction_id || ''}
                   label="Wall Construction"
                   onChange={(e) => handleInputChange('wall_construction_id', e.target.value)}
+                  disabled={viewOnly}
                 >
                   <MenuItem value="">
                     <em>None</em>
@@ -419,6 +476,7 @@ const ConstructionSetsTab = () => {
                   value={formData.roof_construction_id || ''}
                   label="Roof Construction"
                   onChange={(e) => handleInputChange('roof_construction_id', e.target.value)}
+                  disabled={viewOnly}
                 >
                   <MenuItem value="">
                     <em>None</em>
@@ -439,6 +497,7 @@ const ConstructionSetsTab = () => {
                   value={formData.floor_construction_id || ''}
                   label="Floor Construction"
                   onChange={(e) => handleInputChange('floor_construction_id', e.target.value)}
+                  disabled={viewOnly}
                 >
                   <MenuItem value="">
                     <em>None</em>
@@ -459,6 +518,7 @@ const ConstructionSetsTab = () => {
                   value={formData.window_construction_id || ''}
                   label="Window Construction"
                   onChange={(e) => handleInputChange('window_construction_id', e.target.value)}
+                  disabled={viewOnly}
                 >
                   <MenuItem value="">
                     <em>None</em>
@@ -493,17 +553,22 @@ const ConstructionSetsTab = () => {
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete this construction set? This action cannot be undone.
+            Are you sure you want to delete this construction set?
           </Typography>
+          <Typography sx={{ mt: 1, fontWeight: 600 }}>
+            {confirmDelete ? (constructionSets.find(s => s.id === confirmDelete)?.name ?? '') : ''}
+          </Typography>
+          {formError && <Alert severity="error" sx={{ mt: 2 }}>{formError}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button onClick={() => setConfirmDelete(null)} disabled={deleting}>Cancel</Button>
           <Button 
             variant="contained" 
             color="error" 
             onClick={() => confirmDelete && handleDelete(confirmDelete)}
+            disabled={deleting}
           >
-            Delete
+            {deleting ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
