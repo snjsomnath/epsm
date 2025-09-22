@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
 
 interface ThemeContextType {
@@ -103,6 +103,18 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
         styleOverrides: {
           root: {
             backgroundImage: 'none',
+          },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            fontSize: '0.95rem',
+            textTransform: 'none',
+            padding: '8px 12px',
+          },
+          wrapped: {
+            gap: '8px',
           },
         },
       },
