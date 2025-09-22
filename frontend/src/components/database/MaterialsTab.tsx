@@ -486,26 +486,28 @@ const MaterialsTab = () => {
                     </Stack>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip title="View">
-                      <IconButton size="small" onClick={() => handleViewDetails(material)}>
-                        <Eye size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Copy">
-                      <IconButton size="small" onClick={() => handleCopy(material)}>
-                        <Copy size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Edit">
-                      <IconButton size="small" onClick={() => handleEdit(material)}>
-                        <Edit size={18} />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => { setMaterialToDelete(material); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
-                        <Trash2 size={18} />
-                      </IconButton>
-                    </Tooltip>
+                    <Box sx={{ display: 'flex', flexDirection: 'row', gap: 0.5, justifyContent: 'center', alignItems: 'center', flexWrap: 'nowrap', minWidth: 120 }}>
+                      <Tooltip title="View">
+                        <IconButton size="small" onClick={() => handleViewDetails(material)}>
+                          <Eye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Copy">
+                        <IconButton size="small" onClick={() => handleCopy(material)}>
+                          <Copy size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" onClick={() => handleEdit(material)}>
+                          <Edit size={18} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => { setMaterialToDelete(material); setDeleteDialogOpen(true); }} sx={{ color: 'error.main' }}>
+                          <Trash2 size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
