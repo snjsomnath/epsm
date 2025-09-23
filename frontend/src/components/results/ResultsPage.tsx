@@ -1,5 +1,5 @@
 // frontend/src/components/results/ResultsPage.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -8,12 +8,7 @@ import {
   Card,
   CardContent,
   Button,
-  Table,
-  TableBody,
-  TableCell,
   TableContainer,
-  TableHead,
-  TableRow,
   Chip,
   Stack,
   Alert,
@@ -23,7 +18,13 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  TextField,
+  InputAdornment,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import { 
   
@@ -33,10 +34,10 @@ import {
   Maximize2,
   TrendingUp,
   TrendingDown,
-  Minus
+  Minus,
+  Search
 } from 'lucide-react';
 import {
-  
   XAxis,
   YAxis,
   CartesianGrid,
@@ -45,6 +46,8 @@ import {
   ComposedChart,
   Scatter
 } from 'recharts';
+import ReactECharts from 'echarts-for-react';
+import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useSimulation } from '../../context/SimulationContext';
 
@@ -52,8 +55,16 @@ const ResultsPage = () => {
   const { scenarios } = useDatabase();
   const { loadResults, addToBaselineRun, cachedResults, lastResults, history: runHistory } = useSimulation();
   const [results, setResults] = useState<any[]>([]);
+  // DataGrid / server-driven state
+  const [rows, setRows] = useState<any[]>([]);
+  const [rowCount, setRowCount] = useState(0);
+  const [paginationModel, setPaginationModel] = useState<any>({ page: 0, pageSize: 100 });
+  const [sortModel, setSortModel] = useState<any>([{ field: 'energy', sort: 'asc' }]);
+  // quickFilter removed — server toolbar quick filter is used directly
+  const [facet, setFacet] = useState<{scenario?: string; energy?: [number, number]; cost?: [number, number]; gwp?: [number, number]}>({});
   const [loading, setLoading] = useState(true);
   const [error] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedResultDetail, setSelectedResultDetail] = useState<any>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -64,8 +75,9 @@ const ResultsPage = () => {
     const fetchResults = async () => {
       try {
         setLoading(true);
-        // Fetch results from your backend
-        const response = await fetch('http://localhost:8000/api/simulation/results/');
+  // Fetch results from your backend
+  const API_BASE = (import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:8000';
+  const response = await fetch(`${API_BASE.replace(/\/$/, '')}/api/simulation/results/`);
         if (!response.ok) {
           // If API not available, fall back to locally cached results from SimulationContext
           if (response.status === 404) {
@@ -92,8 +104,11 @@ const ResultsPage = () => {
           return;
         }
 
-        const data = await response.json();
-        setResults(data);
+  const data = await response.json();
+  // normalize server response: accept either an array or a paginated object { items, total }
+  const items = Array.isArray(data) ? data : (data?.items || []);
+  console.debug('[ResultsPage] fetched results count:', items.length, 'rawType=', typeof data, 'hasItems=', !!data?.items);
+  setResults(items);
       } catch (err) {
         console.warn('Failed to fetch simulation results; falling back to local cache', err);
         const fallback: any[] = [];
@@ -127,6 +142,189 @@ const ResultsPage = () => {
       (String(r.id || '')?.toLowerCase().indexOf(t) !== -1) ||
       (String(r.scenario || r.scenario_id || '')?.toLowerCase().indexOf(t) !== -1);
   });
+
+  // server-driven fetch for grid
+  const fetchGrid = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(paginationModel.page + 1),
+        page_size: String(paginationModel.pageSize),
+        sort: sortModel[0]?.field || 'energy',
+        dir: sortModel[0]?.sort || 'asc',
+        q: '',
+        scenario: facet.scenario || '',
+        energy_min: String(facet.energy?.[0] ?? ''),
+        energy_max: String(facet.energy?.[1] ?? ''),
+        cost_min: String(facet.cost?.[0] ?? ''),
+        cost_max: String(facet.cost?.[1] ?? ''),
+        gwp_min: String(facet.gwp?.[0] ?? ''),
+        gwp_max: String(facet.gwp?.[1] ?? ''),
+      });
+      console.debug('[ResultsPage] fetchGrid params:', params.toString(), 'results.length=', results.length);
+  const API_BASE = (import.meta.env?.VITE_API_BASE_URL) || 'http://localhost:8000';
+  const url = `${API_BASE.replace(/\/$/, '')}/api/simulation/results/?${params.toString()}`;
+  console.debug('[ResultsPage] fetchGrid url=', url);
+  const res = await fetch(url);
+      if (!res.ok) {
+        // fallback to local results if backend missing
+        const slice = filteredResults.slice(paginationModel.page * paginationModel.pageSize, (paginationModel.page + 1) * paginationModel.pageSize);
+        console.debug('[ResultsPage] backend missing — using fallback slice length=', slice.length, 'total filtered=', filteredResults.length);
+        setRows(slice);
+        setRowCount(filteredResults.length);
+        setUsingFallback(true);
+        return;
+      }
+      const json = await res.json();
+      console.debug('[ResultsPage] server returned items=', json?.items?.length ?? 0, 'total=', json?.total);
+      const serverItems = json.items || [];
+      setRows(serverItems);
+      setRowCount(json.total || (serverItems ? serverItems.length : 0));
+      setUsingFallback(!(serverItems && serverItems.length > 0));
+    } catch (e) {
+      const slice2 = filteredResults.slice(paginationModel.page * paginationModel.pageSize, (paginationModel.page + 1) * paginationModel.pageSize);
+      console.debug('[ResultsPage] fetchGrid error — using fallback slice length=', slice2.length, e);
+      setRows(slice2);
+      setRowCount(filteredResults.length);
+      setUsingFallback(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [paginationModel, sortModel, facet, results]);
+
+  useEffect(() => { fetchGrid(); }, [fetchGrid]);
+
+  // If server-driven `rows` is empty, fall back to client-side `filteredResults` page slice
+  const normalizeRow = (r: any) => {
+    // ensure stable id field (DataGrid expects `id` or we supply getRowId)
+    const id = r?.id || r?.simulationId || r?.simulation_id || r?.run_id || r?.runId || r?.simulationId || r?.simulation_id || (r?.simulation_id ? String(r.simulation_id) : undefined) || undefined;
+    const energyUse = r?.energyUse ?? r?.totalEnergy ?? r?.totalEnergyUse ?? (typeof r?.energy_use === 'object' ? (
+      // try to compute a simple total from energy_use totals if present
+      Object.values(r.energy_use).reduce((acc: number, v: any) => acc + (v?.total ?? 0), 0)
+    ) : undefined);
+    const scenario = r?.scenario_name || r?.scenario || r?.scenario_id || r?.scenarioId || r?.building || r?.originalFileName || r?.fileName || '';
+    const totalEnergy = r?.totalEnergy ?? r?.totalEnergyUse ?? energyUse;
+    return {
+      ...r,
+      id: id || String(r?.simulationId || r?.simulation_id || r?.originalFileName || Math.random()),
+      simulation_id: r?.simulationId || r?.simulation_id,
+      energyUse,
+      totalEnergy,
+      scenario,
+      name: r?.name || r?.fileName || r?.originalFileName || r?.building || r?.simulationId
+    };
+  };
+
+  const rawPage = (rows && rows.length > 0)
+    ? rows
+    : filteredResults.slice((paginationModel.page || 0) * (paginationModel.pageSize || 100), ((paginationModel.page || 0) + 1) * (paginationModel.pageSize || 100));
+  const mapped = rawPage.map(normalizeRow);
+  // dedupe by id to avoid duplicate React keys
+  const seenIds = new Set<string>();
+  const deduped: any[] = [];
+  mapped.forEach((r: any) => {
+    const key = String(r?.id);
+    if (!seenIds.has(key)) {
+      seenIds.add(key);
+      deduped.push(r);
+    }
+  });
+  if (mapped.length !== deduped.length) console.debug('[ResultsPage] removed duplicate rows', mapped.length, '->', deduped.length);
+  const displayRows = deduped;
+
+  // ECharts options for Energy vs Runtime
+  const echartsEnergyData = rows.map(r => ({ name: r.name || r.id, value: [r.energyUse ?? r.totalEnergy ?? 0, r.runTime ?? r.runtime ?? r.elapsed ?? 0, r.id] }));
+  const energyOpts = {
+    grid: { left: 48, right: 16, top: 16, bottom: 36 },
+    tooltip: { trigger: 'item', formatter: (p:any) => `${p.data.name}<br/>E: ${p.data.value[0]}<br/>t: ${p.data.value[1]}s` },
+    xAxis: { name: 'Energy (kWh/m²)' },
+    yAxis: { name: 'Runtime (s)' },
+    brush: { toolbox: ['rect', 'polygon', 'clear'], throttleType: 'debounce', throttleDelay: 100 },
+    series: [{
+      type: 'scatter', symbolSize: 4, large: true, progressive: 4000,
+      data: echartsEnergyData
+    }]
+  };
+
+  const onChartReady = (chart: any) => {
+    try {
+      chart.on('brushSelected', (e: any) => {
+        const batch = e.batch?.[0];
+        const indices: number[] = (batch?.selected || []).flatMap((s: any) => s.dataIndex || []);
+        const selectedIds = indices.map(i => rows[i]?.id || rows[i]?.simulation_id || rows[i]?.run_id).filter(Boolean);
+        if (selectedIds.length) {
+          // apply a quick filter to the grid by setting facet to include selected ids (client-side)
+          setFacet(prev => ({ ...prev, selectedIds } as any));
+        }
+      });
+    } catch (e) {}
+  };
+
+  const openDetails = async (row: any) => {
+    setSelectedResult(row);
+    setDetailsOpen(true);
+    if (typeof loadResults === 'function') {
+      const id = row.simulation_id || row.id || row.run_id;
+      try {
+        const detail = await loadResults(String(id));
+        setSelectedResultDetail(detail || row);
+      } catch (e) {
+        setSelectedResultDetail(row);
+      }
+    } else {
+      setSelectedResultDetail(row);
+    }
+  };
+
+  const downloadRow = (row: any) => {
+    const blob = new Blob([JSON.stringify(row, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `simulation-${row.id || row.simulation_id || 'result'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const addToBaseline = (row: any) => {
+    const id = String(row.simulation_id || row.id || row.run_id || '');
+    if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, row.name || row.fileName || id, { source: 'resultsPage' });
+  };
+
+  const cols: any[] = [
+  { field: 'scenario', headerName: 'Scenario', flex: 1, minWidth: 160, valueGetter: (params: any) => params?.row ? (params.row.scenario_name || params.row.scenario || params.row.scenario_id) : undefined },
+  { field: 'energy', headerName: 'Energy (kWh/m²)', type: 'number', width: 160, valueGetter: (params: any) => params?.row ? (params.row.energyUse ?? params.row.totalEnergy) : undefined },
+  { field: 'cost', headerName: 'Cost (SEK/m²)', type: 'number', width: 150, valueGetter: (params: any) => params?.row ? params.row.cost : undefined },
+  { field: 'gwp', headerName: 'GWP (kgCO₂e/m²)', type: 'number', width: 170, valueGetter: (params: any) => params?.row ? params.row.gwp : undefined },
+  { field: 'variant', headerName: 'Variant', width: 110, valueGetter: (params: any) => params?.row ? (params.row.variant_idx ?? params.row.variant) : undefined },
+  { field: 'weather', headerName: 'Weather', flex: 1, minWidth: 160, valueGetter: (params: any) => params?.row ? (params.row.weather_file || params.row.epw) : undefined },
+    {
+      field: 'actions', headerName: 'Actions', width: 140, sortable: false,
+      renderCell: (params: any) => (
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="View Details"><IconButton size="small" onClick={() => openDetails(params?.row)}><Info size={18} /></IconButton></Tooltip>
+          <Tooltip title="Download"><IconButton size="small" onClick={() => downloadRow(params?.row)}><Download size={18} /></IconButton></Tooltip>
+          <Tooltip title="Set Baseline"><IconButton size="small" onClick={() => addToBaseline(params?.row)}><FileText size={18} /></IconButton></Tooltip>
+        </Stack>
+      )
+    },
+    // small KPI column to ensure status helpers are used
+    {
+      field: 'kpi', headerName: 'KPI', width: 120, sortable: false,
+  valueGetter: (p: any) => p?.row ? (p.row.energyUse ?? p.row.totalEnergy) : undefined,
+      renderCell: (p: any) => {
+        const v = p?.value ?? 0;
+        const icon = getStatusIcon(v, 100);
+        return (
+          <Stack direction="row" spacing={1} alignItems="center">
+            {icon}
+            <Chip size="small" label={v} color={getStatusColor(v, 'energy') as any} />
+          </Stack>
+        );
+      }
+    }
+  ];
 
   const getStatusColor = (value: number, type: 'energy' | 'cost' | 'gwp') => {
     const thresholds = {
@@ -171,8 +369,8 @@ const ResultsPage = () => {
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6">Run History</Typography>
+          <Paper sx={{ p: 3, mb: 3, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>Run History</Typography>
             <Stack spacing={1} sx={{ mt: 1, maxHeight: 420, overflow: 'auto' }}>
               {(runHistory || []).map(h => (
                 <Box key={String(h.id) + '-' + String(h.ts)} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -181,7 +379,7 @@ const ResultsPage = () => {
                     <Typography variant="caption" color="text.secondary">{new Date(h.ts).toLocaleString()}</Typography>
                   </Box>
                   <Box>
-                    <Button size="small" onClick={async () => {
+                    <Button size="small" variant="text" onClick={async () => {
                       const found = results.find(r => String(r.id) === String(h.id) || String(r.simulation_id) === String(h.id));
                       if (found) {
                         setSelectedResult(found);
@@ -205,193 +403,145 @@ const ResultsPage = () => {
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Stack spacing={2} sx={{ mb: 1 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-              <Box sx={{ flex: 1 }}>
-                <input
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Stack spacing={2} sx={{ mb: 1 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+                <TextField
+                  variant="outlined"
+                  size="small"
                   placeholder="Search results by name, id, or scenario"
                   value={filterText}
                   onChange={(e) => setFilterText(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--mui-palette-divider)' }}
+                  fullWidth
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Search size={14} /></InputAdornment> }}
                 />
-              </Box>
-              <Box sx={{ width: 240 }}>
-                <select value={scenarioFilter} onChange={(e) => setScenarioFilter(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6 }}>
-                  <option value="">All scenarios</option>
-                  {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </Box>
+
+                <FormControl size="small" sx={{ width: 240 }}>
+                  <InputLabel id="scenario-select-label">Scenario</InputLabel>
+                  <Select
+                    labelId="scenario-select-label"
+                    label="Scenario"
+                    value={scenarioFilter}
+                    onChange={(e) => setScenarioFilter(String(e.target.value))}
+                  >
+                    <MenuItem value="">All scenarios</MenuItem>
+                    {scenarios.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Stack>
+
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>Energy vs Runtime</Typography>
+                    <Box sx={{ height: { xs: 260, md: 360 } }}>
+                      <ReactECharts option={energyOpts} onChartReady={onChartReady} style={{ height: '100%', width: '100%' }} />
+                    </Box>
+                  </Paper>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, height: '100%' }}>
+                    <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>GWP vs Cost</Typography>
+                    <Box sx={{ height: { xs: 260, md: 360 } }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={filteredResults.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" tick={{ fontSize: 12 }} />
+                          <YAxis dataKey="y" name="Cost (SEK/m²)" tick={{ fontSize: 12 }} />
+                          <RechartsTooltip />
+                          <Scatter data={filteredResults.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#1976d2" />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={3} sx={{ mt: 1 }}>
+                <Grid item xs={12} md={4}>
+                  <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>Total Simulations</Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 700 }}>{filteredResults.length}</Typography>
+                      <Typography variant="body2" color="text.secondary">Across {scenarios.length} scenarios</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>Average Energy Savings</Typography>
+                      <Typography variant="h4" color="success.main" sx={{ fontWeight: 700 }}>24.5%</Typography>
+                      <Typography variant="body2" color="text.secondary">Compared to baseline</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>Best Performing Scenario</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 700 }}>High Performance Set</Typography>
+                      <Typography variant="body2" color="text.secondary">35.2% energy reduction</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+                  <TableContainer sx={{ px: 1, py: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="caption" color="text.secondary">Rows: {rows?.length ?? 0} • RowCount: {rowCount ?? 0} • Fallback: {String(usingFallback)}</Typography>
+                      <Typography variant="caption" color="text.secondary">Page {paginationModel?.page ? paginationModel.page + 1 : 1} • {paginationModel?.pageSize ?? ''} per page</Typography>
+                    </Box>
+
+                    <Box sx={{ height: { xs: 420, md: 680 }, width: '100%' }}>
+                      <DataGrid
+                        rows={displayRows}
+                        columns={cols as any}
+                        rowCount={rowCount}
+                        loading={loading}
+                        paginationMode="server"
+                        sortingMode="server"
+                        filterMode="server"
+                        onPaginationModelChange={(m: any) => setPaginationModel(m)}
+                        onSortModelChange={(m: any) => setSortModel(m)}
+                        slots={{ toolbar: GridToolbar }}
+                        slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 400 } } as any }}
+                        getRowId={(r: any) => String(r?.id)}
+                        disableRowSelectionOnClick
+                        density="compact"
+                      />
+                    </Box>
+                  </TableContainer>
+                </Paper>
+              </Grid>
             </Stack>
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>Energy vs Runtime (scatter)</Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name || r.fileName }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="Energy (kWh/m²)" tick={{ fontSize: 12 }} />
-                        <YAxis dataKey="y" name="Runtime (s)" tick={{ fontSize: 12 }} />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name }))} fill="#8884d8" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>GWP vs Cost (scatter)</Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" tick={{ fontSize: 12 }} />
-                        <YAxis dataKey="y" name="Cost (SEK/m²)" tick={{ fontSize: 12 }} />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#ff7300" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
-
-            <Grid container spacing={3} sx={{ mt: 1 }}>
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Total Simulations</Typography>
-                    <Typography variant="h3">{results.length}</Typography>
-                    <Typography variant="body2" color="text.secondary">Across {scenarios.length} scenarios</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Average Energy Savings</Typography>
-                    <Typography variant="h3" color="success.main">24.5%</Typography>
-                    <Typography variant="body2" color="text.secondary">Compared to baseline</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Best Performing Scenario</Typography>
-                    <Typography variant="h5">High Performance Set</Typography>
-                    <Typography variant="body2" color="text.secondary">35.2% energy reduction</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-
-            <Grid item xs={12} sx={{ mt: 2 }}>
-              <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                <TableContainer>
-                  <Table stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Scenario</TableCell>
-                        <TableCell align="right">Energy Use (kWh/m²)</TableCell>
-                        <TableCell align="right">Cost (SEK/m²)</TableCell>
-                        <TableCell align="right">GWP (kg CO₂e/m²)</TableCell>
-                        <TableCell align="right">Variant</TableCell>
-                        <TableCell align="right">Weather</TableCell>
-                        <TableCell align="right">Savings vs. Baseline</TableCell>
-                        <TableCell align="center">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredResults.map((result) => (
-                        <TableRow key={String(result.id || result.simulation_id || result.run_id || Math.random())} hover>
-                          <TableCell>
-                            <Stack>
-                              <Typography variant="body2">{result.name || result.fileName || result.id}</Typography>
-                              <Typography variant="caption" color="text.secondary">{String(result.scenario_name || result.scenario || result.scenario_id || '')}</Typography>
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.energyUse ?? result.totalEnergy ?? '-'} color={getStatusColor(result.energyUse ?? result.totalEnergy ?? 0, 'energy') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.cost ?? '-'} color={getStatusColor(result.cost ?? 0, 'cost') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.gwp ?? '-'} color={getStatusColor(result.gwp ?? 0, 'gwp') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">{result.variant_idx ?? result.variant ?? '-'}</TableCell>
-                          <TableCell align="right">{result.weather_file || result.epw || '-'}</TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              {result.savings ?? '-'}%
-                              {getStatusIcon(result.energyUse ?? result.totalEnergy ?? 0, 150)}
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Tooltip title="View Details">
-                              <IconButton size="small" onClick={async () => {
-                                setSelectedResult(result);
-                                setDetailsOpen(true);
-                                if (typeof loadResults === 'function') {
-                                  const id = result.simulation_id || result.id || result.run_id;
-                                  try {
-                                    const detail = await loadResults(String(id));
-                                    setSelectedResultDetail(detail || result);
-                                  } catch (e) {
-                                    setSelectedResultDetail(result);
-                                  }
-                                } else {
-                                  setSelectedResultDetail(result);
-                                }
-                              }}>
-                                <Info size={18} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Download Results">
-                              <IconButton size="small" onClick={() => {
-                                const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `simulation-${result.id || result.simulation_id || 'result'}.json`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}>
-                                <Download size={18} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Add to Baseline">
-                              <IconButton size="small" onClick={() => {
-                                const id = String(result.simulation_id || result.id || result.run_id || '');
-                                if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, result.name || result.fileName || id, { source: 'resultsPage' });
-                              }}>
-                                <FileText size={18} />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </Grid>
-          </Stack>
+          </Paper>
         </Grid>
       </Grid>
+
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="contained"
+          startIcon={<Download />}
+          onClick={() => {
+            const blob = new Blob([JSON.stringify(results || [], null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'simulation-results.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+        >
+          Export Results
+        </Button>
+      </Box>
 
       {/* Details Dialog */}
       <Dialog
