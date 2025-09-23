@@ -31,11 +31,11 @@ import {
 import { Plus, Save, Trash2, Copy, Edit, HelpCircle, CalculatorIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useDatabase } from '../../context/DatabaseContext';
-import type { Scenario, Construction } from '../../lib/database.types';
+import type { Scenario, Construction, ConstructionSet } from '../../lib/database.types';
 
 const ScenarioPage = () => {
   const { user } = useAuth();
-  const { constructions, scenarios, addScenario, updateScenario, deleteScenario, error: dbError } = useDatabase();
+  const { constructions, constructionSets, scenarios, addScenario, updateScenario, deleteScenario, error: dbError } = useDatabase();
   const [selectedConstructions, setSelectedConstructions] = useState<{
     walls: string[];
     roofs: string[];
@@ -52,6 +52,7 @@ const ScenarioPage = () => {
     description: ''
   });
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
+  const [selectedSets, setSelectedSets] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,12 +64,23 @@ const ScenarioPage = () => {
     window: constructions.filter(c => c.element_type === 'window')
   };
 
+  // Calculate total number of non-empty combinatorial combinations across element types.
+  // For each element type we can either pick one of the selected options or pick none.
+  // Total combinations = product_over_types(1 + count_options) - 1 (exclude the all-none case).
   const calculateTotalSimulations = () => {
-    const wallCount = selectedConstructions.walls.length || 1;
-    const roofCount = selectedConstructions.roofs.length || 1;
-    const floorCount = selectedConstructions.floors.length || 1;
-    const windowCount = selectedConstructions.windows.length || 1;
-    return wallCount * roofCount * floorCount * windowCount;
+    const counts = [
+      selectedConstructions.walls.length,
+      selectedConstructions.roofs.length,
+      selectedConstructions.floors.length,
+      selectedConstructions.windows.length
+    ];
+
+    // If no options selected at all, return 0
+    const totalOptions = counts.reduce((a, b) => a + b, 0);
+    if (totalOptions === 0) return 0;
+
+    const product = counts.reduce((acc, c) => acc * (1 + (c || 0)), 1);
+    return Math.max(0, product - 1);
   };
 
   const handleSaveScenario = async () => {
@@ -126,7 +138,7 @@ const ScenarioPage = () => {
     });
 
     // Group constructions by type
-    const constructionsByType = scenario.scenario_constructions?.reduce((acc, sc) => {
+    const constructionsByType = scenario.scenario_constructions?.reduce((acc: Record<string, string[]>, sc: { element_type: string; construction_id: string }) => {
       const type = sc.element_type + 's' as keyof typeof selectedConstructions;
       acc[type] = [...(acc[type] || []), sc.construction_id];
       return acc;
@@ -159,7 +171,7 @@ const ScenarioPage = () => {
     });
 
     // Copy constructions
-    const constructionsByType = scenario.scenario_constructions?.reduce((acc, sc) => {
+    const constructionsByType = scenario.scenario_constructions?.reduce((acc: Record<string, string[]>, sc: { element_type: string; construction_id: string }) => {
       const type = sc.element_type + 's' as keyof typeof selectedConstructions;
       acc[type] = [...(acc[type] || []), sc.construction_id];
       return acc;
@@ -193,8 +205,8 @@ const ScenarioPage = () => {
         <Grid item xs={12} md={7}>
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
-              {editingScenario ? 'Edit Scenario' : 'New Scenario'}
-              <Tooltip title="Select multiple construction options for each building element. The total number of simulations will be the product of all selections.">
+              {editingScenario ? 'Edit Scenario' : 'New Combinatorial Scenario'}
+              <Tooltip title="Select multiple construction options for each building element. The scenario will run the combinatorial set of permutations (every non-empty combination across selected element options).">
                 <IconButton size="small" sx={{ ml: 1, mb: 1 }}>
                   <HelpCircle size={16} />
                 </IconButton>
@@ -221,6 +233,63 @@ const ScenarioPage = () => {
                   multiline
                   rows={1}
                 />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Construction Sets</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedSets}
+                    onChange={(e) => {
+                      const newSets = e.target.value as string[];
+                      setSelectedSets(newSets);
+                      // Merge constructions from selected sets into selectedConstructions
+                      const merged: { walls: string[]; roofs: string[]; floors: string[]; windows: string[] } = {
+                        walls: [...selectedConstructions.walls],
+                        roofs: [...selectedConstructions.roofs],
+                        floors: [...selectedConstructions.floors],
+                        windows: [...selectedConstructions.windows]
+                      };
+
+                      newSets.forEach(setId => {
+                        const setObj = constructionSets.find(cs => cs.id === setId) as any;
+                        if (!setObj) return;
+                        // sets return fields like wall_construction_id, roof_construction_id, etc.
+                        const map: { key: keyof typeof merged; field: string }[] = [
+                          { key: 'walls', field: 'wall_construction_id' },
+                          { key: 'roofs', field: 'roof_construction_id' },
+                          { key: 'floors', field: 'floor_construction_id' },
+                          { key: 'windows', field: 'window_construction_id' }
+                        ];
+                        map.forEach(m => {
+                          const cid = setObj[m.field];
+                          if (cid) {
+                            // avoid duplicates
+                            if (!merged[m.key].includes(cid)) merged[m.key].push(cid);
+                          }
+                        });
+                      });
+
+                      setSelectedConstructions(merged);
+                    }}
+                    input={<OutlinedInput label="Construction Sets" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {(selected as string[]).map((value) => {
+                          const setObj = constructionSets.find(cs => cs.id === value);
+                          return setObj ? <Chip key={value} label={setObj.name} size="small" /> : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {constructionSets.map((cs) => (
+                      <MenuItem key={cs.id} value={cs.id}>
+                        <Checkbox checked={selectedSets.indexOf(cs.id) > -1} />
+                        <ListItemText primary={cs.name} secondary={cs.description || ''} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
               
               <Grid item xs={12} sm={6}>
@@ -428,7 +497,7 @@ const ScenarioPage = () => {
             <Divider sx={{ mb: 2 }} />
             
             {!scenarios || scenarios.length === 0 ? (
-              <Alert severity="info\" sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mt: 2 }}>
                 No scenarios saved yet. Create your first scenario using the form.
               </Alert>
             ) : (
@@ -453,25 +522,25 @@ const ScenarioPage = () => {
                           {scenario.scenario_constructions && (
                             <>
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'wall').length || 0} Walls`} 
+                                label={`${scenario.scenario_constructions.filter((sc: { element_type: string }) => sc.element_type === 'wall').length || 0} Walls`} 
                                 size="small" 
                                 color="primary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'roof').length || 0} Roofs`} 
+                                label={`${scenario.scenario_constructions.filter((sc: { element_type: string }) => sc.element_type === 'roof').length || 0} Roofs`} 
                                 size="small" 
                                 color="secondary"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'floor').length || 0} Floors`} 
+                                label={`${scenario.scenario_constructions.filter((sc: { element_type: string }) => sc.element_type === 'floor').length || 0} Floors`} 
                                 size="small" 
                                 color="success"
                                 variant="outlined"
                               />
                               <Chip 
-                                label={`${scenario.scenario_constructions.filter(sc => sc.element_type === 'window').length || 0} Windows`} 
+                                label={`${scenario.scenario_constructions.filter((sc: { element_type: string }) => sc.element_type === 'window').length || 0} Windows`} 
                                 size="small" 
                                 color="info"
                                 variant="outlined"

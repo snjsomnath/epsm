@@ -1124,6 +1124,25 @@ def api_scenarios(request):
             except Exception:
                 author_obj = None
 
+        # Compute combinatorial total_simulations from provided constructions if not explicitly provided
+        def compute_combinatorial(constructions_list):
+            # group by element type
+            counts = {}
+            for sc in constructions_list:
+                et = sc.get('elementType') or sc.get('element_type')
+                if not et:
+                    continue
+                counts[et] = counts.get(et, 0) + 1
+            if not counts:
+                return 0
+            product = 1
+            for c in counts.values():
+                product *= (1 + int(c))
+            return max(0, product - 1)
+
+        if total_simulations is None:
+            total_simulations = compute_combinatorial(constructions)
+
         # Create scenario
         scenario = Scenario.objects.using('materials_db').create(
             name=name,
@@ -1201,11 +1220,33 @@ def api_scenario_detail(request, id):
             except Exception:
                 # ignore invalid author id and leave author unchanged
                 pass
+        # If total_simulations not provided, compute combinatorial from constructions payload
         if 'total_simulations' in data:
             try:
                 s.total_simulations = int(data.get('total_simulations'))
             except Exception:
                 pass
+        else:
+            # compute from provided constructions list if available
+            if 'constructions' in data:
+                def compute_combinatorial_from_payload(constructions_list):
+                    counts = {}
+                    for sc in constructions_list:
+                        et = sc.get('elementType') or sc.get('element_type')
+                        if not et:
+                            continue
+                        counts[et] = counts.get(et, 0) + 1
+                    if not counts:
+                        return 0
+                    product = 1
+                    for c in counts.values():
+                        product *= (1 + int(c))
+                    return max(0, product - 1)
+
+                try:
+                    s.total_simulations = compute_combinatorial_from_payload(data.get('constructions', []))
+                except Exception:
+                    pass
         s.save(using='materials_db')
 
         if 'constructions' in data:
