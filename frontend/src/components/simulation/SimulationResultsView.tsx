@@ -226,9 +226,11 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                     <Paper key={resKey} variant="outlined" sx={{ p: 0, mb: 1, display: 'flex', flexDirection: 'column' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, height: 48, minHeight: 48 }}>
                         <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.95rem' }} title={result.fileName}>
-                            {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
-                          </Typography>
+                          <Tooltip title={result.fileName} enterDelay={0} leaveDelay={50}>
+                            <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.95rem', cursor: 'default' }}>
+                              {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
+                            </Typography>
+                          </Tooltip>
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                             {fmt(result.totalEnergyPerArea)} kWh/m² • {fmt(result.runTime)}s
                           </Typography>
@@ -280,11 +282,15 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                                       <Paper variant="outlined" sx={{ p: 1 }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                           <Box sx={{ minWidth: 0 }}>
-                                            <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={cs.name}>{k.toUpperCase()}</Typography>
-                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={cs.name}>{cs.name}</Typography>
+                                            <Tooltip title={cs.name} enterDelay={0} leaveDelay={50}>
+                                              <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', cursor: 'default' }}>{k.toUpperCase()}</Typography>
+                                            </Tooltip>
+                                            <Tooltip title={cs.name} enterDelay={0} leaveDelay={50}>
+                                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', cursor: 'default' }}>{cs.name}</Typography>
+                                            </Tooltip>
                                           </Box>
                                           <Box>
-                                            <Tooltip title={isOpenCS ? 'Collapse' : 'Expand'}>
+                                            <Tooltip title={isOpenCS ? 'Collapse' : 'Expand'} enterDelay={0} leaveDelay={50}>
                                               <IconButton size="small" onClick={() => setOpenCS(prev => ({ ...prev, [key]: !prev[key] }))}>
                                                 {isOpenCS ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                               </IconButton>
