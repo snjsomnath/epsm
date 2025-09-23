@@ -24,6 +24,9 @@ interface SimulationContextType {
   cachedResults?: Record<string, any>;
   // load results from API or cache
   loadResults?: (simulationId: string) => Promise<any | null>;
+  // last results shown in the UI (persisted across tabs/sessions)
+  lastResults?: any[];
+  cacheLastResults?: (results: any[]) => void;
   // session-scoped run history (newest first)
   history?: Array<{id: string, title?: string, pinned?: boolean, favorite?: boolean, ts: number}>;
   addToHistory?: (simulationId: string, title?: string) => void;
@@ -83,6 +86,24 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const clearSimulationData = () => {
     setUploadedFiles([]);
     setParsedData(null);
+  };
+
+  const [lastResults, setLastResults] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('simulation_last_results');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const cacheLastResults = (results: any[]) => {
+    try {
+      setLastResults(results || []);
+      localStorage.setItem('simulation_last_results', JSON.stringify(results || []));
+    } catch (e) {
+      // ignore
+    }
   };
 
   const updateUploadedFiles = (files: File[]) => {
@@ -247,6 +268,8 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
         cachedResults,
         loadResults,
         history,
+    lastResults,
+    cacheLastResults,
         addToHistory,
         clearHistory,
         togglePin,
