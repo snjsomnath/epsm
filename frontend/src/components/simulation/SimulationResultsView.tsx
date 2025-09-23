@@ -14,7 +14,8 @@ import {
   Button,
   Alert,
   Stack,
-  Chip
+  Chip,
+  Grid
 } from '@mui/material';
 import { Download, FileDown, BarChart3 } from 'lucide-react';
 import {
@@ -94,6 +95,11 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
     }
   };
 
+  const fmt = (v: any, digits = 1) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
+    return Number(v).toFixed(digits);
+  };
+
   return (
     <Box>
       <Paper sx={{ mt: 3 }}>
@@ -129,10 +135,10 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                     {results.map((result, index) => (
                       <TableRow key={index}>
                         <TableCell>{result.fileName}</TableCell>
-                        <TableCell align="right">{result.totalEnergyUse.toFixed(1)}</TableCell>
-                        <TableCell align="right">{result.heatingDemand.toFixed(1)}</TableCell>
-                        <TableCell align="right">{result.coolingDemand.toFixed(1)}</TableCell>
-                        <TableCell align="right">{result.runTime.toFixed(1)}</TableCell>
+                        <TableCell align="right">{fmt(result.totalEnergyUse)}</TableCell>
+                        <TableCell align="right">{fmt(result.heatingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.coolingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.runTime)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -150,26 +156,47 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                 {results.map((result, index) => (
                   <Paper key={index} variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="subtitle1" gutterBottom>
-                      {result.fileName}
+                      {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
                     </Typography>
                     <Grid container spacing={2}>
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2" color="text.secondary">
-                          Building: {result.building}
+                          Building: {result.building || '-'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Total Area: {result.totalArea.toFixed(1)} m²
+                          Total Area: {fmt(result.totalArea)} m²
                         </Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Status: <Chip size="small" label={result.status} color="success" />
+                        <Typography variant="body2" color="text.secondary" component="div">
+                          <span>Status: </span>
+                          {result.status === 'error'
+                            ? <Chip size="small" label="error" color="error" />
+                            : <Chip size="small" label={result.status} color="success" />
+                          }
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Runtime: {result.runTime.toFixed(1)} seconds
+                          Runtime: {fmt(result.runTime)} seconds
                         </Typography>
                       </Grid>
                     </Grid>
+
+                    {/* Show logs for failed variants or for debugging */}
+                    {(result.run_output_log || result.output_err) && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2">Run Logs</Typography>
+                        {result.output_err && (
+                          <Paper variant="outlined" sx={{ p: 1, mb: 1, maxHeight: 200, overflow: 'auto', bgcolor: '#fff7f7' }}>
+                            <pre style={{ whiteSpace: 'pre-wrap' }}>{result.output_err}</pre>
+                          </Paper>
+                        )}
+                        {result.run_output_log && (
+                          <Paper variant="outlined" sx={{ p: 1, maxHeight: 200, overflow: 'auto' }}>
+                            <pre style={{ whiteSpace: 'pre-wrap' }}>{result.run_output_log}</pre>
+                          </Paper>
+                        )}
+                      </Box>
+                    )}
                   </Paper>
                 ))}
               </Stack>

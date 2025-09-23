@@ -128,6 +128,11 @@ const ConstructionSetsTab = () => {
     }
   };
 
+  const fmt = (v: any, digits = 3) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
+    return Number(v).toFixed(digits);
+  };
+
 
   const handleSubmit = async () => {
     try {
@@ -448,7 +453,7 @@ const ConstructionSetsTab = () => {
                   </MenuItem>
                   {wallConstructions.map((construction) => (
                     <MenuItem key={construction.id} value={construction.id}>
-                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                      {construction.name} (U: {fmt(construction.u_value_w_m2k, 3)} W/m²K)
                     </MenuItem>
                   ))}
                 </Select>
@@ -469,7 +474,7 @@ const ConstructionSetsTab = () => {
                   </MenuItem>
                   {roofConstructions.map((construction) => (
                     <MenuItem key={construction.id} value={construction.id}>
-                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                      {construction.name} (U: {fmt(construction.u_value_w_m2k, 3)} W/m²K)
                     </MenuItem>
                   ))}
                 </Select>
@@ -490,7 +495,7 @@ const ConstructionSetsTab = () => {
                   </MenuItem>
                   {floorConstructions.map((construction) => (
                     <MenuItem key={construction.id} value={construction.id}>
-                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                      {construction.name} (U: {fmt(construction.u_value_w_m2k, 3)} W/m²K)
                     </MenuItem>
                   ))}
                 </Select>
@@ -511,7 +516,7 @@ const ConstructionSetsTab = () => {
                   </MenuItem>
                   {windowConstructions.map((construction) => (
                     <MenuItem key={construction.id} value={construction.id}>
-                      {construction.name} (U: {construction.u_value_w_m2k.toFixed(3)} W/m²K)
+                      {construction.name} (U: {fmt(construction.u_value_w_m2k, 3)} W/m²K)
                     </MenuItem>
                   ))}
                 </Select>

@@ -14,5 +14,6 @@ urlpatterns = [
 
     # Existing endpoints
     path('parse/idf/', views.parse_idf, name='parse_idf'),
+    path('parse/idf/test/', views.parse_idf_test, name='parse_idf_test'),
     path('components/add/', views.add_components, name='add_components'),
 ]

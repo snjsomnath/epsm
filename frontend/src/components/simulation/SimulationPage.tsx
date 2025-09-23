@@ -109,16 +109,13 @@ const SimulationPage = () => {
     const wsPort = '8000'; // <-- hardcoded backend port
     const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
 
-    console.log("Connecting to WebSocket:", wsUrl);
-    
-    // Clear any previous errors
-    setWsError(null);
-    setWsConnected(false);
+  // Clear any previous errors
+  setWsError(null);
+  setWsConnected(false);
 
     const ws = new ReconnectingWebSocket(wsUrl);
 
     ws.onopen = () => {
-      console.log("WebSocket connection established");
       setWsConnected(true);
       setWsError(null);
     };
@@ -126,33 +123,34 @@ const SimulationPage = () => {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("WebSocket data:", data);
-        
         // Only update resource stats if we got valid data
         if (data && (data.cpu || data.memory)) {
           setResourceStats(data);
         }
       } catch (e) {
-        console.error("Error parsing WebSocket message:", e);
+        // Silently ignore malformed messages; surface a user-visible error if needed
+        setWsError('Received malformed monitoring data');
       }
     };
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    ws.onerror = (_error) => {
       setWsConnected(false);
       setWsError("Failed to connect to system monitoring service");
     };
 
     ws.onclose = () => {
-      console.log("WebSocket connection closed");
       setWsConnected(false);
     };
 
     return () => {
-      console.log("Closing WebSocket connection");
       ws.close();
     };
   }, [backendAvailable]);
+
+  const fmt = (v: any, digits = 1, fallback = '0') => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return fallback;
+    return Number(v).toFixed(digits);
+  };
 
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
@@ -288,18 +286,38 @@ const SimulationPage = () => {
       //formData.append('max_workers', '4');  // Let backend decide
       formData.append('batch_mode', 'true'); // Boolean as string
 
+      // Log the payload (file names instead of file bodies) before calling the batch API
+      try {
+        const payloadLog: any = {};
+        for (const pair of (formData as any).entries()) {
+          const [key, value] = pair;
+          if (!payloadLog[key]) payloadLog[key] = [];
+          if (value instanceof File) {
+            payloadLog[key].push(value.name);
+          } else {
+            payloadLog[key].push(value);
+          }
+        }
+        console.log('Calling batch simulation API', { url: 'http://localhost:8000/api/simulation/run/', payload: payloadLog });
+      } catch (logErr) {
+        console.warn('Failed to log batch simulation payload', logErr);
+      }
 
       const response = await fetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Batch simulation API responded', { status: response.status, ok: response.ok });
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('Batch simulation API error response', { status: response.status, statusText: response.statusText, body: errorText });
         throw new Error(`Server error: ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Batch simulation API success', data);
       const simulationId = data.simulation_id;
 
       // Use a slower polling interval to avoid 429 errors (Too Many Requests)
@@ -314,28 +332,46 @@ const SimulationPage = () => {
           }
           const statusData = await statusResponse.json();
 
+          console.debug('Simulation status update', { simulationId, status: statusData.status, progress: statusData.progress });
+
           setProgress(statusData.progress ?? 0);
           setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
 
       if (statusData.status === 'completed') {
             clearInterval(pollInterval);
             stopped = true;
-            const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
-            const resultsData = await resultsResponse.json();
-        // cache and rehydrate via context when available
-        setResults(resultsData);
-        if (typeof loadResults === 'function') {
-          try { await loadResults(simulationId); } catch (e) { /* ignore */ }
-        }
+            try {
+              const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+              if (!resultsResponse.ok) {
+                const bodyText = await resultsResponse.text();
+                console.error('Failed to fetch parallel results', { simulationId, status: resultsResponse.status, body: bodyText });
+              } else {
+                const resultsData = await resultsResponse.json();
+                console.log('Fetched parallel results', { simulationId, count: Array.isArray(resultsData) ? resultsData.length : undefined });
+                // cache and rehydrate via context when available
+                setResults(resultsData);
+                if (typeof loadResults === 'function') {
+                  try {
+                    await loadResults(simulationId);
+                    console.log('Rehydrated results via loadResults', { simulationId });
+                  } catch (e) {
+                    console.error('loadResults failed', { simulationId, error: e });
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Error fetching parallel results', { simulationId, error: e });
+            }
             setIsComplete(true);
             setIsRunning(false);
           } else if (statusData.status === 'failed') {
             clearInterval(pollInterval);
             stopped = true;
+            console.error('Simulation failed', { simulationId, error: statusData.error });
             throw new Error(statusData.error || 'Simulation failed');
           }
         } catch (err) {
-          // Optionally handle fetch errors here (network, etc)
+          console.error('Error while polling simulation status', err);
         }
       }, 2000);
 
@@ -838,7 +874,7 @@ const SimulationPage = () => {
                         {Math.round(resourceStats?.memory?.usage_percent || 0)}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {resourceStats?.memory?.used_gb?.toFixed(1) || 0} GB / {resourceStats?.memory?.total_gb?.toFixed(1) || 0} GB
+                        {fmt(resourceStats?.memory?.used_gb, 1, '0')} GB / {fmt(resourceStats?.memory?.total_gb, 1, '0')} GB
                       </Typography>
                     </CardContent>
                   </Card>
@@ -871,7 +907,7 @@ const SimulationPage = () => {
                         {Math.round(resourceStats?.disk?.usage_percent || 0)}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {resourceStats?.disk?.used_gb?.toFixed(1) || 0} GB / {resourceStats?.disk?.total_gb?.toFixed(1) || 0} GB
+                        {fmt(resourceStats?.disk?.used_gb, 1, '0')} GB / {fmt(resourceStats?.disk?.total_gb, 1, '0')} GB
                       </Typography>
                     </CardContent>
                   </Card>

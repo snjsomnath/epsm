@@ -45,8 +45,27 @@ class EnergyPlusSimulator:
         import subprocess
         import shutil
 
-        # Resolve stored file paths (SimulationFile uses `file_path` and `file_name`)
-        idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+        # Resolve stored file paths.
+        # Support multiple idf_file shapes:
+        # - SimulationFile model instance: has `file_path` relative to MEDIA_ROOT
+        # - Generated variant fake object: may have `file.path` or `.path` (absolute path)
+        idf_path = None
+        try:
+            if hasattr(idf_file, 'file_path') and getattr(idf_file, 'file_path'):
+                idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+            elif hasattr(idf_file, 'file') and hasattr(idf_file.file, 'path'):
+                idf_path = str(idf_file.file.path)
+            elif hasattr(idf_file, 'path'):
+                idf_path = str(idf_file.path)
+            elif isinstance(idf_file, str):
+                idf_path = idf_file
+        except Exception:
+            idf_path = None
+
+        if not idf_path:
+            raise FileNotFoundError('Could not resolve IDF file path for idf_file: %r' % (idf_file,))
+
+        # Weather file expected as SimulationFile model
         weather_path = os.path.join(settings.MEDIA_ROOT, weather_file.file_path)
 
         idf_basename = os.path.basename(idf_path)
@@ -241,7 +260,16 @@ class EnergyPlusSimulator:
         For each base IDF and each construction set, generate a new IDF with the construction set inserted,
         store it in a subfolder, and run all in parallel.
         """
-        from .idf_parser import IdfParser
+        # Prefer the older parser that provides `insert_construction_set` used for
+        # parametric generation. If it's not available, raise a clear error so
+        # the caller knows to install or restore `idf_parser_old.py`.
+        try:
+            from .idf_parser_old import IdfParser
+        except Exception as e:
+            raise ImportError(
+                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `idf_parser_old.py`. "
+                "Please ensure `backend/simulation/idf_parser_old.py` is present and importable."
+            )
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         generated_idf_paths = []
