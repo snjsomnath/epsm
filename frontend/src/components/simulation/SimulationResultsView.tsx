@@ -22,25 +22,16 @@ import {
 } from '@mui/material';
 import { FileDown, ChevronDown, ChevronUp } from 'lucide-react';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip as ChartTooltip,
-  Legend
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+} from 'recharts';
 
-// Register Chart.js components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  ChartTooltip,
-  Legend
-);
+// Using Recharts for scatter plots for scalability with many simulations.
 
 interface SimulationResultsViewProps {
   results: any[];
@@ -97,56 +88,15 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   }), [normalizedResults]);
 
   // Format data for chart (use normalized results)
-  const chartData = useMemo(() => ({
-    labels: resultsWithPerArea.map(r => r.fileName),
-    datasets: [
-      {
-        label: 'Total Energy Use',
-        data: resultsWithPerArea.map(r => r.totalEnergyPerArea),
-        backgroundColor: 'rgba(54, 162, 235, 0.8)',
-      },
-      {
-        label: 'Heating Demand',
-        data: resultsWithPerArea.map(r => r.heatingPerArea),
-        backgroundColor: 'rgba(255, 99, 132, 0.8)',
-      },
-      {
-        label: 'Cooling Demand',
-        data: resultsWithPerArea.map(r => r.coolingPerArea),
-        backgroundColor: 'rgba(75, 192, 192, 0.8)',
-      }
-    ]
-  }), [resultsWithPerArea]);
-
-  const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 0 },
-    plugins: {
-      tooltip: {
-        enabled: true,
-        mode: 'index' as const,
-        intersect: false,
-        position: 'nearest' as const
-      },
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: true,
-        text: 'Energy Performance Comparison'
-      }
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: {
-          display: true,
-          text: 'Energy (kWh/m²)'
-        }
-      }
-    }
-  }), [resultsWithPerArea]);
+  // Scatter plot data: x = totalEnergyPerArea, y = runTime
+  const scatterData = useMemo(() => resultsWithPerArea.map((r: any, i: number) => ({
+    x: Number(r.totalEnergyPerArea) || 0,
+    y: Number(r.runTime) || 0,
+    fileName: r.fileName,
+    heating: r.heatingPerArea,
+    cooling: r.coolingPerArea,
+    index: i
+  })), [resultsWithPerArea]);
 
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
@@ -172,7 +122,17 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                 <Alert severity="info">No simulation results to display.</Alert>
               ) : (
                 <Box sx={{ height: '400px', mb: 4 }}>
-                  <Bar data={chartData} options={chartOptions} />
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" dataKey="x" name="Energy (kWh/m²)" />
+                      <YAxis type="number" dataKey="y" name="Runtime (s)" />
+                      <RechartsTooltip formatter={(value: any, name: any) => {
+                        return [value, name];
+                      }} labelFormatter={(label: any) => `Value: ${label}`} />
+                      <Scatter data={scatterData} fill="#8884d8" />
+                    </ScatterChart>
+                  </ResponsiveContainer>
                 </Box>
               )}
 

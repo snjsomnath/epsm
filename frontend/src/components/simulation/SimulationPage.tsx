@@ -53,7 +53,7 @@ import IdfUploadArea from '../baseline/IdfUploadArea';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults } = useSimulation();
+  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults, lastResults, cacheLastResults } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
@@ -64,7 +64,7 @@ const SimulationPage = () => {
   const [totalSimulations, setTotalSimulations] = useState(0);
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<any[]>(() => lastResults || []);
   const [error, setError] = useState<string | null>(null);
   const [resourceStats, setResourceStats] = useState<any>(null);
   const [lastResourceAt, setLastResourceAt] = useState<number | null>(null);
@@ -455,6 +455,10 @@ const SimulationPage = () => {
                     console.error('loadResults failed', { simulationId, error: e });
                   }
                 }
+                // Persist last results in context/localStorage so returning to tab doesn't clear them
+                if (typeof cacheLastResults === 'function') {
+                  try { cacheLastResults(resultsData); } catch (e) { console.warn('cacheLastResults failed', e); }
+                }
               }
             } catch (e) {
               console.error('Error fetching parallel results', { simulationId, error: e });
@@ -548,6 +552,13 @@ const SimulationPage = () => {
   useEffect(() => {
     console.log('uploadedFiles state changed:', uploadedFiles);
   }, [uploadedFiles]);
+
+  // Persist results to simulation context/localStorage so they survive tab switches
+  useEffect(() => {
+    if (typeof cacheLastResults === 'function') {
+      try { cacheLastResults(results); } catch (e) { console.warn('cacheLastResults failed', e); }
+    }
+  }, [results, cacheLastResults]);
 
   // Add a useEffect to monitor weatherFile changes
   useEffect(() => {
