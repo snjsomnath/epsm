@@ -53,7 +53,9 @@ const ScenarioPage = () => {
   });
   const [editingScenario, setEditingScenario] = useState<Scenario | null>(null);
   const [selectedSets, setSelectedSets] = useState<string[]>([]);
+  const [selectedStackSets, setSelectedStackSets] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [stackFormData, setStackFormData] = useState({ name: '', description: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -485,6 +487,146 @@ const ScenarioPage = () => {
                 {editingScenario ? 'Update Scenario' : 'Save Scenario'}
               </Button>
             </Box>
+          </Paper>
+
+          {/* Stacked Scenario From Sets Section */}
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              New Scenario from Construction Sets
+              <Tooltip title="Select construction sets and stack them as separate simulations. Each chosen set produces one simulation (1 set = 1 simulation).">
+                <IconButton size="small" sx={{ ml: 1, mb: 1 }}>
+                  <HelpCircle size={16} />
+                </IconButton>
+              </Tooltip>
+            </Typography>
+            <Divider sx={{ mb: 3 }} />
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Scenario Name"
+                  value={stackFormData.name}
+                  onChange={(e) => setStackFormData(prev => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Description"
+                  value={stackFormData.description}
+                  onChange={(e) => setStackFormData(prev => ({ ...prev, description: e.target.value }))}
+                  multiline
+                  rows={1}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Construction Sets</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedStackSets}
+                    onChange={(e) => setSelectedStackSets(e.target.value as string[])}
+                    input={<OutlinedInput label="Construction Sets" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {(selected as string[]).map((value) => {
+                          const setObj = constructionSets.find(cs => cs.id === value);
+                          return setObj ? <Chip key={value} label={setObj.name} size="small" /> : null;
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {constructionSets.map((cs) => (
+                      <MenuItem key={cs.id} value={cs.id}>
+                        <Checkbox checked={selectedStackSets.indexOf(cs.id) > -1} />
+                        <ListItemText primary={cs.name} secondary={cs.description || ''} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  mt: 1, 
+                  p: 2, 
+                  backgroundColor: 'rgba(25, 118, 210, 0.04)', 
+                  borderRadius: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}>
+                  <Box>
+                    <Typography variant="subtitle1">
+                      Total Number of Simulations (stacked): <strong>{selectedStackSets.length}</strong>
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Each selected construction set will be run as a separate simulation.
+                    </Typography>
+                  </Box>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<Save size={18} />}
+                    onClick={async () => {
+                      try {
+                        setLoading(true);
+                        setError(null);
+
+                        if (!stackFormData.name) throw new Error('Please provide a name for the scenario');
+                        if (!selectedStackSets || selectedStackSets.length === 0) throw new Error('Select at least one construction set');
+
+                        // Build constructions array as union of constructions referenced by the selected sets
+                        const added = new Set<string>();
+                        const constructionsArray: { constructionId: string; elementType: string }[] = [];
+                        selectedStackSets.forEach(setId => {
+                          const setObj = constructionSets.find(cs => cs.id === setId) as any;
+                          if (!setObj) return;
+                          const map: { field: string; type: string }[] = [
+                            { field: 'wall_construction_id', type: 'wall' },
+                            { field: 'roof_construction_id', type: 'roof' },
+                            { field: 'floor_construction_id', type: 'floor' },
+                            { field: 'window_construction_id', type: 'window' }
+                          ];
+                          map.forEach(m => {
+                            const cid = setObj[m.field];
+                            if (cid) {
+                              const key = `${m.type}-${cid}`;
+                              if (!added.has(key)) {
+                                added.add(key);
+                                constructionsArray.push({ constructionId: cid, elementType: m.type });
+                              }
+                            }
+                          });
+                        });
+
+                        if (typeof addScenario !== 'function') throw new Error('addScenario is not available - check the DatabaseContext implementation');
+
+                        await addScenario({
+                          ...stackFormData,
+                          total_simulations: selectedStackSets.length,
+                          author_id: user?.id
+                        }, constructionsArray);
+
+                        // Reset
+                        setStackFormData({ name: '', description: '' });
+                        setSelectedStackSets([]);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Failed to save scenario');
+                        console.error('Error saving stacked scenario:', err);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading || !stackFormData.name || selectedStackSets.length === 0}
+                  >
+                    Save Stacked Scenario
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
           </Paper>
         </Grid>
         
