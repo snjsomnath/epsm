@@ -15,16 +15,19 @@ import {
   Alert,
   Stack,
   Chip,
-  Grid
+  Grid,
+  IconButton,
+  Collapse,
+  Tooltip
 } from '@mui/material';
-import { Download, FileDown, BarChart3 } from 'lucide-react';
+import { FileDown, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
   Title,
-  Tooltip,
+  Tooltip as ChartTooltip,
   Legend
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
@@ -35,7 +38,7 @@ ChartJS.register(
   LinearScale,
   BarElement,
   Title,
-  Tooltip,
+  ChartTooltip,
   Legend
 );
 
@@ -45,28 +48,71 @@ interface SimulationResultsViewProps {
 
 const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [tabValue, setTabValue] = useState(0);
+  const [openCS, setOpenCS] = useState<Record<string, boolean>>({});
+  const [openResult, setOpenResult] = useState<Record<string, boolean>>({});
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  // Format data for chart
+  // Normalize incoming results to support both snake_case and camelCase
+  const normalizedResults = (results || []).map((r: any) => {
+    const raw = r.raw_json || {};
+    const fileName = r.fileName || r.file_name || raw.fileName || raw.file_name || r.originalFileName || r.file || 'Unknown';
+    const totalEnergyUse = Number(
+      r.totalEnergyUse ?? r.total_energy_use ?? raw.totalEnergyUse ?? raw.total_energy_use ?? r.total_energy_use
+    ) || 0;
+    const heatingDemand = Number(
+      r.heatingDemand ?? r.heating_demand ?? raw.heatingDemand ?? raw.heating_demand
+    ) || 0;
+    const coolingDemand = Number(
+      r.coolingDemand ?? r.cooling_demand ?? raw.coolingDemand ?? raw.cooling_demand
+    ) || 0;
+    const runTime = Number(r.runTime ?? r.run_time ?? raw.runTime ?? raw.run_time ?? r.run_time) || 0;
+    const totalArea = Number(r.totalArea ?? r.total_area ?? raw.totalArea ?? raw.total_area ?? r.total_area) || 0;
+    const constructionSet = r.construction_set ?? r.constructionSet ?? raw.construction_set ?? raw.constructionSet ?? null;
+    return {
+      ...r,
+      fileName,
+      totalEnergyUse,
+      heatingDemand,
+      coolingDemand,
+      runTime,
+      totalArea
+      ,constructionSet
+    };
+  });
+
+  // Compute per-area metrics (kWh/m²) when area is available — chart expects kWh/m²
+  const resultsWithPerArea = normalizedResults.map((r: any) => {
+    const perArea = r.totalArea > 0 ? r.totalEnergyUse / r.totalArea : r.totalEnergyUse;
+    const heatingPerArea = r.totalArea > 0 ? r.heatingDemand / r.totalArea : r.heatingDemand;
+    const coolingPerArea = r.totalArea > 0 ? r.coolingDemand / r.totalArea : r.coolingDemand;
+    return {
+      ...r,
+      totalEnergyPerArea: perArea,
+      heatingPerArea,
+      coolingPerArea
+    };
+  });
+
+  // Format data for chart (use normalized results)
   const chartData = {
-    labels: results.map(r => r.fileName),
+    labels: resultsWithPerArea.map(r => r.fileName),
     datasets: [
       {
         label: 'Total Energy Use',
-        data: results.map(r => r.totalEnergyUse),
+        data: resultsWithPerArea.map(r => r.totalEnergyPerArea),
         backgroundColor: 'rgba(54, 162, 235, 0.8)',
       },
       {
         label: 'Heating Demand',
-        data: results.map(r => r.heatingDemand),
+        data: resultsWithPerArea.map(r => r.heatingPerArea),
         backgroundColor: 'rgba(255, 99, 132, 0.8)',
       },
       {
         label: 'Cooling Demand',
-        data: results.map(r => r.coolingDemand),
+        data: resultsWithPerArea.map(r => r.coolingPerArea),
         backgroundColor: 'rgba(75, 192, 192, 0.8)',
       }
     ]
@@ -75,6 +121,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+  animation: ({ duration: 0 } as any),
     plugins: {
       legend: {
         position: 'top' as const,
@@ -115,9 +162,19 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
               <Typography variant="h6" gutterBottom>
                 Simulation Results Summary
               </Typography>
-              
-              <Box sx={{ height: '400px', mb: 4 }}>
-                <Bar data={chartData} options={chartOptions} />
+              {!resultsWithPerArea || resultsWithPerArea.length === 0 ? (
+                <Alert severity="info">No simulation results to display.</Alert>
+              ) : (
+                <Box sx={{ height: '400px', mb: 4 }}>
+                  <Bar data={chartData} options={chartOptions} />
+                </Box>
+              )}
+
+              {/* Quick debug summary so users can see data present without opening Raw Data */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Found <strong>{resultsWithPerArea.length}</strong> result(s). First file: <strong>{resultsWithPerArea[0]?.fileName ?? '—'}</strong>
+                </Typography>
               </Box>
 
               <TableContainer>
@@ -132,12 +189,12 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {results.map((result, index) => (
+                    {resultsWithPerArea.map((result, index) => (
                       <TableRow key={index}>
                         <TableCell>{result.fileName}</TableCell>
-                        <TableCell align="right">{fmt(result.totalEnergyUse)}</TableCell>
-                        <TableCell align="right">{fmt(result.heatingDemand)}</TableCell>
-                        <TableCell align="right">{fmt(result.coolingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.totalEnergyPerArea)}</TableCell>
+                        <TableCell align="right">{fmt(result.heatingPerArea)}</TableCell>
+                        <TableCell align="right">{fmt(result.coolingPerArea)}</TableCell>
                         <TableCell align="right">{fmt(result.runTime)}</TableCell>
                       </TableRow>
                     ))}
@@ -153,52 +210,103 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                 Detailed Results
               </Typography>
               <Stack spacing={2}>
-                {results.map((result, index) => (
-                  <Paper key={index} variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
-                    </Typography>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="body2" color="text.secondary">
-                          Building: {result.building || '-'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Total Area: {fmt(result.totalArea)} m²
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="body2" color="text.secondary" component="div">
-                          <span>Status: </span>
-                          {result.status === 'error'
-                            ? <Chip size="small" label="error" color="error" />
-                            : <Chip size="small" label={result.status} color="success" />
-                          }
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Runtime: {fmt(result.runTime)} seconds
-                        </Typography>
-                      </Grid>
-                    </Grid>
-
-                    {/* Show logs for failed variants or for debugging */}
-                    {(result.run_output_log || result.output_err) && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2">Run Logs</Typography>
-                        {result.output_err && (
-                          <Paper variant="outlined" sx={{ p: 1, mb: 1, maxHeight: 200, overflow: 'auto', bgcolor: '#fff7f7' }}>
-                            <pre style={{ whiteSpace: 'pre-wrap' }}>{result.output_err}</pre>
-                          </Paper>
-                        )}
-                        {result.run_output_log && (
-                          <Paper variant="outlined" sx={{ p: 1, maxHeight: 200, overflow: 'auto' }}>
-                            <pre style={{ whiteSpace: 'pre-wrap' }}>{result.run_output_log}</pre>
-                          </Paper>
-                        )}
+                {resultsWithPerArea.map((result, index) => {
+                  const resKey = result.simulation_id ?? result.run_id ?? `${index}`;
+                  const expanded = !!openResult?.[resKey];
+                  return (
+                    <Paper key={resKey} variant="outlined" sx={{ p: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1 }}>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle1" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={result.fileName}>
+                            {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {fmt(result.totalEnergyPerArea)} kWh/m² • {fmt(result.runTime)}s
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <IconButton size="small" onClick={() => setOpenResult(prev => ({ ...prev, [resKey]: !prev[resKey] }))}>
+                            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </IconButton>
+                        </Box>
                       </Box>
-                    )}
-                  </Paper>
-                ))}
+
+                      <Collapse in={expanded} timeout="auto">
+                        <Box sx={{ p: 2 }}>
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary">
+                                Building: {result.building || '-'}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Total Area: {fmt(result.totalArea)} m²
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} sm={6}>
+                              <Typography variant="body2" color="text.secondary" component="div">
+                                <span>Status: </span>
+                                {result.status === 'error'
+                                  ? <Chip size="small" label="error" color="error" />
+                                  : <Chip size="small" label={result.status} color="success" />
+                                }
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Runtime: {fmt(result.runTime)} seconds
+                              </Typography>
+                            </Grid>
+                          </Grid>
+
+                          {/* Construction set (roof / floor / window) */}
+                          {result.constructionSet ? (
+                            <Box sx={{ mt: 2 }}>
+                              <Typography variant="subtitle2">Construction Set</Typography>
+                              <Grid container spacing={1} sx={{ mt: 1 }}>
+                                {['roof', 'floor', 'window'].map((k) => {
+                                  const cs = result.constructionSet[k];
+                                  if (!cs) return null;
+                                  const key = `${index}-${k}`;
+                                  const isOpenCS = !!openCS[key];
+                                  return (
+                                    <Grid item xs={12} sm={4} key={`${index}-cs-${k}`}>
+                                      <Paper variant="outlined" sx={{ p: 1 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                          <Box sx={{ minWidth: 0 }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={cs.name}>{k.toUpperCase()}</Typography>
+                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }} title={cs.name}>{cs.name}</Typography>
+                                          </Box>
+                                          <Box>
+                                            <Tooltip title={isOpenCS ? 'Collapse' : 'Expand'}>
+                                              <IconButton size="small" onClick={() => setOpenCS(prev => ({ ...prev, [key]: !prev[key] }))}>
+                                                {isOpenCS ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                              </IconButton>
+                                            </Tooltip>
+                                          </Box>
+                                        </Box>
+                                        <Collapse in={isOpenCS} timeout="auto">
+                                          <Box sx={{ mt: 1 }}>
+                                            {Array.isArray(cs.layers) && cs.layers.length > 0 ? (
+                                              cs.layers.map((layer: string, li: number) => (
+                                                <Typography key={li} variant="caption" display="block">- {layer}</Typography>
+                                              ))
+                                            ) : (
+                                              <Typography variant="caption" color="text.secondary">No layers</Typography>
+                                            )}
+                                          </Box>
+                                        </Collapse>
+                                      </Paper>
+                                    </Grid>
+                                  );
+                                })}
+                              </Grid>
+                            </Box>
+                          ) : (
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No construction set available.</Typography>
+                          )}
+                        </Box>
+                      </Collapse>
+                    </Paper>
+                  );
+                })}
               </Stack>
             </Box>
           )}
@@ -209,7 +317,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                 Raw Data
               </Typography>
               <Paper sx={{ p: 2, maxHeight: '500px', overflow: 'auto' }}>
-                <pre>{JSON.stringify(results, null, 2)}</pre>
+                <pre>{JSON.stringify(resultsWithPerArea, null, 2)}</pre>
               </Paper>
             </Box>
           )}
