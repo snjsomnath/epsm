@@ -16,8 +16,9 @@ import {
   Chip,
   Alert,
   Stack
+  ,Grid, Card, CardContent, CardActions
 } from '@mui/material';
-import { BarChart3, Download, FileDown } from 'lucide-react';
+import { BarChart3, Download, FileDown, FileText } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -158,6 +159,11 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
   // Get chart data from the first result (if multiple files)
   const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
 
+  const fmt = (v: any, digits = 1) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '0.0';
+    return Number(v).toFixed(digits);
+  };
+
   return (
     <Box>
       <Typography variant="h6" gutterBottom>
@@ -178,32 +184,32 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                     <Typography variant="subtitle2" color="text.secondary">
                       Total Energy Use:
                     </Typography>
-                    <Typography variant="h5">
-                      {result.totalEnergyUse ? result.totalEnergyUse.toFixed(1) : '0.0'} kWh/m²
+                      <Typography variant="h5">
+                      {fmt(result.totalEnergyUse)} kWh/m²
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="subtitle2" color="text.secondary">
                       Simulation Runtime:
                     </Typography>
-                    <Typography variant="h5">
-                      {result.runTime ? result.runTime.toFixed(1) : '0.0'} seconds
+                      <Typography variant="h5">
+                      {fmt(result.runTime)} seconds
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="subtitle2" color="text.secondary">
                       Heating Demand:
                     </Typography>
-                    <Typography variant="h6" color="error.main">
-                      {result.heatingDemand ? result.heatingDemand.toFixed(1) : '0.0'} kWh/m²
+                      <Typography variant="h6" color="error.main">
+                      {fmt(result.heatingDemand)} kWh/m²
                     </Typography>
                   </Grid>
                   <Grid item xs={6}>
                     <Typography variant="subtitle2" color="text.secondary">
                       Cooling Demand:
                     </Typography>
-                    <Typography variant="h6" color="info.main">
-                      {result.coolingDemand ? result.coolingDemand.toFixed(1) : '0.0'} kWh/m²
+                      <Typography variant="h6" color="info.main">
+                      {fmt(result.coolingDemand)} kWh/m²
                     </Typography>
                   </Grid>
                 </Grid>
@@ -251,7 +257,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
         <Box sx={{ p: 3 }}>
           {tabValue === 0 && (
             <Box>
-              <Typography variant="subtitle1\" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom>
                 Simulation Summary
               </Typography>
               <TableContainer>
@@ -270,11 +276,11 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                     {resultsArray.map((result, idx) => (
                       <TableRow key={`summary-row-${idx}-${result.simulationId}`}>
                         <TableCell>{result.fileName || `Result ${idx+1}`}</TableCell>
-                        <TableCell align="right">{result.totalEnergyUse ? result.totalEnergyUse.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.heatingDemand ? result.heatingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.coolingDemand ? result.coolingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.lightingDemand ? result.lightingDemand.toFixed(1) : '0.0'}</TableCell>
-                        <TableCell align="right">{result.equipmentDemand ? result.equipmentDemand.toFixed(1) : '0.0'}</TableCell>
+                        <TableCell align="right">{fmt(result.totalEnergyUse)}</TableCell>
+                        <TableCell align="right">{fmt(result.heatingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.coolingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.lightingDemand)}</TableCell>
+                        <TableCell align="right">{fmt(result.equipmentDemand)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -309,9 +315,9 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                       {Object.entries(resultsArray[0].energy_use).map(([endUse, values]: [string, any], idx) => (
                         <TableRow key={`energy-row-${idx}-${endUse}`}>
                           <TableCell>{endUse}</TableCell>
-                          <TableCell align="right">{values.electricity?.toFixed(1) || '0.0'}</TableCell>
-                          <TableCell align="right">{values.district_heating?.toFixed(1) || '0.0'}</TableCell>
-                          <TableCell align="right">{values.total?.toFixed(1) || '0.0'}</TableCell>
+                          <TableCell align="right">{fmt(values.electricity)}</TableCell>
+                          <TableCell align="right">{fmt(values.district_heating)}</TableCell>
+                          <TableCell align="right">{fmt(values.total)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

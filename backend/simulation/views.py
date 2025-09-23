@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import tempfile
 from django.http import JsonResponse
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.views.decorators.csrf import csrf_exempt
@@ -186,6 +187,43 @@ def parse_idf(request):
         traceback.print_exc()  # This will print the full stack trace
         return JsonResponse({"error": str(e)}, status=500)
 
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def parse_idf_test(request):
+    """Lightweight test endpoint for the parser that accepts JSON with keys:
+    - idf: string content of the IDF
+    - construction_set: a single construction_set dict
+
+    Returns the modified IDF content so it can be inspected via curl.
+    """
+    try:
+        data = request.data if hasattr(request, 'data') else json.loads(request.body.decode('utf-8') or '{}')
+        idf_content = data.get('idf')
+        construction_set = data.get('construction_set')
+        if not idf_content or not construction_set:
+            return JsonResponse({'error': 'Missing idf or construction_set in JSON body'}, status=400)
+
+        # Use the older parser for this lightweight test
+        from .idf_parser_old import IdfParser, generate_parametric_idfs
+        parser = IdfParser(idf_content)
+        parser.insert_construction_set(construction_set)
+
+        # Save to a temp file and return content
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.idf', mode='w', encoding='utf-8') as tmp:
+            parser.idf.saveas(tmp.name)
+            tmp.close()
+            with open(tmp.name, 'r', encoding='utf-8') as f:
+                out = f.read()
+            os.remove(tmp.name)
+
+        return JsonResponse({'modified_idf': out})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
+
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -347,14 +385,67 @@ def run_simulation(request):
         simulation.status = 'running'
         simulation.save()
         
-        # Start simulation in background thread
+        # Parse optional runtime parameters from the request form (multipart form data)
+        parallel = (request.POST.get('parallel') == 'true') or (request.data.get('parallel') == 'true') if hasattr(request, 'data') else (request.POST.get('parallel') == 'true')
+        batch_mode = (request.POST.get('batch_mode') == 'true') or (request.data.get('batch_mode') == 'true') if hasattr(request, 'data') else (request.POST.get('batch_mode') == 'true')
+        try:
+            max_workers = int(request.POST.get('max_workers') or request.data.get('max_workers') or 4)
+        except Exception:
+            max_workers = 4
+
+        # If a scenario_id was provided, construct a list of construction_sets
+        scenario_id = request.POST.get('scenario_id') or (request.data.get('scenario_id') if hasattr(request, 'data') else None)
+        construction_sets = None
+        if scenario_id:
+            try:
+                from database.models import ScenarioConstruction, Layer
+                import itertools
+
+                sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario_id=scenario_id)
+                groups = {}
+                for sc in sc_qs:
+                    c = sc.construction
+                    if not c:
+                        continue
+                    # collect ordered layer names for this construction
+                    layers = []
+                    for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+                        if getattr(L, 'material', None):
+                            layers.append(L.material.name)
+                        elif getattr(L, 'window', None):
+                            layers.append(L.window.name)
+
+                    groups.setdefault(sc.element_type, []).append({
+                        'name': c.name,
+                        'layers': layers
+                    })
+
+                if groups:
+                    # build cartesian product across element types to create construction_sets
+                    keys = list(groups.keys())
+                    lists = [groups[k] for k in keys]
+                    combos = list(itertools.product(*lists))
+                    construction_sets = []
+                    for combo in combos:
+                        cs = {}
+                        for k, chosen in zip(keys, combo):
+                            cs[k] = {'name': chosen['name'], 'layers': chosen['layers']}
+                        construction_sets.append(cs)
+
+                    # If we found construction_sets, ensure batch_mode is enabled
+                    if construction_sets:
+                        batch_mode = True
+            except Exception as e:
+                print(f"Warning: failed to build construction_sets for scenario {scenario_id}: {e}")
+
+        # Start simulation in background thread with configured options
         import threading
-        
+
         def run_sim_in_background():
             try:
                 from .services import EnergyPlusSimulator
                 simulator = EnergyPlusSimulator(simulation)
-                simulator.run_simulation()
+                simulator.run_simulation(parallel=parallel, max_workers=max_workers, batch_mode=batch_mode, construction_sets=construction_sets)
             except Exception as e:
                 import traceback
                 print(f"ERROR in background thread: {str(e)}")
@@ -362,7 +453,7 @@ def run_simulation(request):
                 simulation.status = 'failed'
                 simulation.error_message = str(e)
                 simulation.save()
-        
+
         # Start the background thread
         thread = threading.Thread(target=run_sim_in_background)
         thread.daemon = True
@@ -524,6 +615,22 @@ def parallel_simulation_results(request, simulation_id):
 
         # Convert to list format similar to SQLite version
         results_data = []
+
+        def _read_log_tail(path, max_chars=200000):
+            try:
+                if not os.path.exists(path):
+                    return None
+                size = os.path.getsize(path)
+                with open(path, 'rb') as f:
+                    if size > max_chars:
+                        f.seek(-max_chars, os.SEEK_END)
+                        raw = f.read()
+                    else:
+                        raw = f.read()
+                return raw.decode('utf-8', errors='replace')
+            except Exception as e:
+                return f"Error reading log: {e}"
+
         for result in results:
             result_dict = {
                 'id': result.id,
@@ -562,6 +669,21 @@ def parallel_simulation_results(request, simulation_id):
                     for energy in result.energy_uses.all()
                 ]
             }
+
+            # Try to attach recent run logs for this variant. The folder naming used by the simulator
+            # is 1-based (variant_1_idf_1), while DB stores 0-based indices, so add 1 when building path.
+            try:
+                variant_folder = f"variant_{int(result.variant_idx) + 1}_idf_{int(result.idf_idx) + 1}"
+            except Exception:
+                variant_folder = f"variant_{result.variant_idx}_idf_{result.idf_idx}"
+
+            result_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_results', str(simulation_id), variant_folder)
+            run_output_path = os.path.join(result_dir, 'run_output.log')
+            output_err_path = os.path.join(result_dir, 'output.err')
+
+            result_dict['run_output_log'] = _read_log_tail(run_output_path)
+            result_dict['output_err'] = _read_log_tail(output_err_path)
+
             results_data.append(result_dict)
             
         return JsonResponse(results_data, safe=False)

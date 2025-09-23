@@ -37,11 +37,12 @@ class SystemResourceConsumer(AsyncWebsocketConsumer):
                 except Exception as e:
                     print(f"Error getting resource data: {e}")
                     # Send minimal data if full data collection fails
-                    await self.send(text_data=json.dumps({
-                        "cpu": {"usage_percent": 0},
-                        "memory": {"usage_percent": 0}
-                    }))
-                
+
+                    #await self.send(text_data=json.dumps({
+                    #    "cpu": {"usage_percent": 0},
+                    #    "memory": {"usage_percent": 0}
+                    #}))
+
                 await asyncio.sleep(1)  # Send update every second
         except asyncio.CancelledError:
             # Expected on disconnect, no need to do anything
