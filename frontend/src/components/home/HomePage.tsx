@@ -17,7 +17,7 @@ import {
   Stack,
   Divider,
   Chip,
-  Avatar,
+  
   CircularProgress,
   LinearProgress,
   Tooltip
@@ -69,6 +69,23 @@ const HomePage = () => {
   // New state for system resources
   const [systemResources, setSystemResources] = useState<any>(null);
   const [loadingResources, setLoadingResources] = useState(false);
+
+  // Helper formatters for system resource display
+  const toNumber = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  
+
+  const clampPercent = (v: any) => {
+    const n = toNumber(v);
+    if (n < 0) return 0;
+    if (n > 100) return 100;
+    return Math.round(n);
+  };
+
+  const severityColor = (p: number) => (p > 80 ? 'error' : p > 60 ? 'warning' : 'success');
 
   useEffect(() => {
     if (showTourNextTime) {
@@ -328,7 +345,7 @@ const HomePage = () => {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card sx={{ minHeight: 260 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   System Status
@@ -432,21 +449,20 @@ const HomePage = () => {
                           primary={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               CPU Usage
-                              <Tooltip title={`${systemResources.cpu.usage_percent || 0}% used`}>
+                              <Tooltip title={`${clampPercent(systemResources.cpu.usage_percent)}% used`}>
                                 <Box sx={{ position: 'relative', display: 'inline-flex' }}>
                                   <CircularProgress
                                     variant="determinate"
-                                    value={systemResources.cpu.usage_percent || 0}
-                                    size={24}
+                                    value={clampPercent(systemResources.cpu.usage_percent)}
+                                    size={28}
                                     thickness={5}
-                                    color={(systemResources.cpu.usage_percent || 0) > 80 ? "error" : 
-                                          (systemResources.cpu.usage_percent || 0) > 60 ? "warning" : "success"}
+                                    color={severityColor(clampPercent(systemResources.cpu.usage_percent))}
                                   />
                                 </Box>
                               </Tooltip>
                             </Box>
                           }
-                          secondary={`${systemResources.cpu.physical_cores || 0} physical / ${systemResources.cpu.logical_cores || 0} logical cores`}
+                          secondary={`${systemResources.cpu.physical_cores || systemResources.cpu.logical_cores || 0} cores`}
                         />
                       </ListItem>
                       
@@ -459,21 +475,20 @@ const HomePage = () => {
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 Memory
-                                <Tooltip title={`${systemResources.memory.usage_percent || 0}% used`}>
+                                <Tooltip title={`${clampPercent(systemResources.memory.usage_percent)}% used`}>
                                   <Box sx={{ position: 'relative', display: 'inline-flex' }}>
                                     <CircularProgress
                                       variant="determinate"
-                                      value={systemResources.memory.usage_percent || 0}
-                                      size={24}
+                                      value={clampPercent(systemResources.memory.usage_percent)}
+                                      size={28}
                                       thickness={5}
-                                      color={(systemResources.memory.usage_percent || 0) > 80 ? "error" : 
-                                            (systemResources.memory.usage_percent || 0) > 60 ? "warning" : "success"}
+                                      color={severityColor(clampPercent(systemResources.memory.usage_percent))}
                                     />
                                   </Box>
                                 </Tooltip>
                               </Box>
                             }
-                            secondary={`${systemResources.memory.available_gb || 0} GB free of ${systemResources.memory.total_gb || 0} GB`}
+                            secondary={`${(Math.max(0, toNumber(systemResources.memory.total_gb) - toNumber(systemResources.memory.available_gb))).toFixed(1)} GB used of ${toNumber(systemResources.memory.total_gb).toFixed(1)} GB`}
                           />
                         </ListItem>
                       )}
@@ -487,21 +502,20 @@ const HomePage = () => {
                             primary={
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 Disk Space
-                                <Tooltip title={`${systemResources.disk.usage_percent || 0}% used`}>
+                                <Tooltip title={`${clampPercent(systemResources.disk.usage_percent)}% used`}>
                                   <Box sx={{ position: 'relative', display: 'inline-flex' }}>
                                     <CircularProgress
                                       variant="determinate"
-                                      value={systemResources.disk.usage_percent || 0}
-                                      size={24}
+                                      value={clampPercent(systemResources.disk.usage_percent)}
+                                      size={28}
                                       thickness={5}
-                                      color={(systemResources.disk.usage_percent || 0) > 80 ? "error" : 
-                                            (systemResources.disk.usage_percent || 0) > 60 ? "warning" : "success"}
+                                      color={severityColor(clampPercent(systemResources.disk.usage_percent))}
                                     />
                                   </Box>
                                 </Tooltip>
                               </Box>
                             }
-                            secondary={`${systemResources.disk.free_gb || 0} GB free of ${systemResources.disk.total_gb || 0} GB`}
+                            secondary={`${(Math.max(0, toNumber(systemResources.disk.total_gb) - toNumber(systemResources.disk.free_gb))).toFixed(1)} GB used of ${toNumber(systemResources.disk.total_gb).toFixed(1)} GB`}
                           />
                         </ListItem>
                       )}
