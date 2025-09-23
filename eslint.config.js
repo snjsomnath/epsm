@@ -1,1 +1,0 @@
-configs/eslint.config.js
