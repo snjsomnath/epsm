@@ -166,223 +166,8 @@ const ResultsPage = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Simulation Results
-          {/* Charts first: show interactive visualizations before numeric summaries */}
-          <Grid item xs={12}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Energy vs Runtime (scatter)
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name || r.fileName }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="Energy (kWh/m²)" />
-                        <YAxis dataKey="y" name="Runtime (s)" />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name }))} fill="#8884d8" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    GWP vs Cost (scatter)
-                  </Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" />
-                        <YAxis dataKey="y" name="Cost (SEK/m²)" />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#ff7300" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
-          </Grid>
-
-          {/* Summary Cards (numeric highlights) */}
-          <Grid item xs={12} sx={{ mt: 1 }}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Total Simulations
-                    </Typography>
-                    <Typography variant="h3">
-                      {results.length}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Across {scenarios.length} scenarios
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Average Energy Savings
-                    </Typography>
-                    <Typography variant="h3" color="success.main">
-                      24.5%
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Compared to baseline
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>
-                      Best Performing Scenario
-                    </Typography>
-                    <Typography variant="h5">
-                      High Performance Set
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      35.2% energy reduction
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </Grid>
-
-          {/* Results Table */}
-          <Grid item xs={12} sx={{ mt: 2 }}>
-            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-              <TableContainer>
-                <Table stickyHeader>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Scenario</TableCell>
-                      <TableCell align="right">Energy Use (kWh/m²)</TableCell>
-                      <TableCell align="right">Cost (SEK/m²)</TableCell>
-                      <TableCell align="right">GWP (kg CO₂e/m²)</TableCell>
-                      <TableCell align="right">Variant</TableCell>
-                      <TableCell align="right">Weather</TableCell>
-                      <TableCell align="right">Savings vs. Baseline</TableCell>
-                      <TableCell align="center">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {filteredResults.map((result) => (
-                      <TableRow key={String(result.id || result.simulation_id || result.run_id || Math.random())} hover>
-                        <TableCell>
-                          <Stack>
-                            <Typography variant="body2">{result.name || result.fileName || result.id}</Typography>
-                            <Typography variant="caption" color="text.secondary">{String(result.scenario_name || result.scenario || result.scenario_id || '')}</Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                            <Chip 
-                              size="small"
-                              label={result.energyUse ?? result.totalEnergy ?? '-'}
-                              color={getStatusColor(result.energyUse ?? result.totalEnergy ?? 0, 'energy') as any}
-                            />
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                            <Chip 
-                              size="small"
-                              label={result.cost ?? '-'}
-                              color={getStatusColor(result.cost ?? 0, 'cost') as any}
-                            />
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                            <Chip 
-                              size="small"
-                              label={result.gwp ?? '-'}
-                              color={getStatusColor(result.gwp ?? 0, 'gwp') as any}
-                            />
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="right">{result.variant_idx ?? result.variant ?? '-'}</TableCell>
-                        <TableCell align="right">{result.weather_file || result.epw || '-'}</TableCell>
-                        <TableCell align="right">
-                          <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                            {result.savings ?? '-'}%
-                            {getStatusIcon(result.energyUse ?? result.totalEnergy ?? 0, 150)}
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Tooltip title="View Details">
-                            <IconButton 
-                              size="small"
-                              onClick={async () => {
-                                setSelectedResult(result);
-                                setDetailsOpen(true);
-                                // Try to load detailed metadata using context helper
-                                if (typeof loadResults === 'function') {
-                                  const id = result.simulation_id || result.id || result.run_id;
-                                  try {
-                                    const detail = await loadResults(String(id));
-                                    setSelectedResultDetail(detail || result);
-                                  } catch (e) {
-                                    setSelectedResultDetail(result);
-                                  }
-                                } else {
-                                  setSelectedResultDetail(result);
-                                }
-                              }}
-                            >
-                              <Info size={18} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Download Results">
-                            <IconButton size="small" onClick={() => {
-                              const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `simulation-${result.id || result.simulation_id || 'result'}.json`;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                            }}>
-                              <Download size={18} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Add to Baseline">
-                            <IconButton size="small" onClick={() => {
-                              const id = String(result.simulation_id || result.id || result.run_id || '');
-                              if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, result.name || result.fileName || id, { source: 'resultsPage' });
-                            }}>
-                              <FileText size={18} />
-                            </IconButton>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </Grid>
-      </Typography>
-      <Typography variant="body1" paragraph>
-        View and analyze simulation results across different scenarios.
-      </Typography>
+      <Typography variant="h4" gutterBottom>Simulation Results</Typography>
+      <Typography variant="body1" paragraph>View and analyze simulation results across different scenarios.</Typography>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
@@ -397,24 +182,19 @@ const ResultsPage = () => {
                   </Box>
                   <Box>
                     <Button size="small" onClick={async () => {
-                      // try to find a matching result by id
                       const found = results.find(r => String(r.id) === String(h.id) || String(r.simulation_id) === String(h.id));
                       if (found) {
                         setSelectedResult(found);
                         setDetailsOpen(true);
-                        const id = h.id;
-                        if (typeof loadResults === 'function') {
-                          const detail = await loadResults(String(id));
-                          setSelectedResultDetail(detail || found);
-                        }
-                      } else {
-                        // try loadResults directly
                         if (typeof loadResults === 'function') {
                           const detail = await loadResults(String(h.id));
-                          setSelectedResult(detail || { id: h.id });
-                          setSelectedResultDetail(detail || { id: h.id });
-                          setDetailsOpen(true);
+                          setSelectedResultDetail(detail || found);
                         }
+                      } else if (typeof loadResults === 'function') {
+                        const detail = await loadResults(String(h.id));
+                        setSelectedResult(detail || { id: h.id });
+                        setSelectedResultDetail(detail || { id: h.id });
+                        setDetailsOpen(true);
                       }
                     }}>Open</Button>
                   </Box>
@@ -425,227 +205,191 @@ const ResultsPage = () => {
         </Grid>
 
         <Grid item xs={12} md={8}>
-          <Grid container spacing={3}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 1 }} alignItems="center">
-            <Box sx={{ flex: 1 }}>
-              <input
-                placeholder="Search results by name, id, or scenario"
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--mui-palette-divider)' }}
-              />
-            </Box>
-            <Box sx={{ width: 240 }}>
-              <select value={scenarioFilter} onChange={(e) => setScenarioFilter(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6 }}>
-                <option value="">All scenarios</option>
-                {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </Box>
-          </Stack>
-        </Grid>
-      </Grid>
-        {/* Summary Cards */}
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Total Simulations
-              </Typography>
-              <Typography variant="h3">
-                {results.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Across {scenarios.length} scenarios
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+          <Stack spacing={2} sx={{ mb: 1 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+              <Box sx={{ flex: 1 }}>
+                <input
+                  placeholder="Search results by name, id, or scenario"
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--mui-palette-divider)' }}
+                />
+              </Box>
+              <Box sx={{ width: 240 }}>
+                <select value={scenarioFilter} onChange={(e) => setScenarioFilter(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6 }}>
+                  <option value="">All scenarios</option>
+                  {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </Box>
+            </Stack>
 
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Average Energy Savings
-              </Typography>
-              <Typography variant="h3" color="success.main">
-                24.5%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Compared to baseline
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>Energy vs Runtime (scatter)</Typography>
+                  <Box sx={{ height: 400 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name || r.fileName }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="x" name="Energy (kWh/m²)" tick={{ fontSize: 12 }} />
+                        <YAxis dataKey="y" name="Runtime (s)" tick={{ fontSize: 12 }} />
+                        <RechartsTooltip />
+                        <Scatter data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name }))} fill="#8884d8" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Paper>
+              </Grid>
 
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Best Performing Scenario
-              </Typography>
-              <Typography variant="h5">
-                High Performance Set
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                35.2% energy reduction
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>GWP vs Cost (scatter)</Typography>
+                  <Box sx={{ height: 400 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" tick={{ fontSize: 12 }} />
+                        <YAxis dataKey="y" name="Cost (SEK/m²)" tick={{ fontSize: 12 }} />
+                        <RechartsTooltip />
+                        <Scatter data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#ff7300" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
 
-        {/* Results Table */}
-        <Grid item xs={12}>
-          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                      <TableCell>Scenario</TableCell>
-                    <TableCell align="right">Energy Use (kWh/m²)</TableCell>
-                    <TableCell align="right">Cost (SEK/m²)</TableCell>
-                    <TableCell align="right">GWP (kg CO₂e/m²)</TableCell>
-                      <TableCell align="right">Variant</TableCell>
-                      <TableCell align="right">Weather</TableCell>
-                    <TableCell align="right">Savings vs. Baseline</TableCell>
-                    <TableCell align="center">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredResults.map((result) => (
-                    <TableRow key={String(result.id || result.simulation_id || result.run_id || Math.random())} hover>
-                      <TableCell>
-                        <Stack>
-                          <Typography variant="body2">{result.name || result.fileName || result.id}</Typography>
-                          <Typography variant="caption" color="text.secondary">{String(result.scenario_name || result.scenario || result.scenario_id || '')}</Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                          <Chip 
-                            size="small"
-                            label={result.energyUse ?? result.totalEnergy ?? '-'}
-                            color={getStatusColor(result.energyUse ?? result.totalEnergy ?? 0, 'energy') as any}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                          <Chip 
-                            size="small"
-                            label={result.cost ?? '-'}
-                            color={getStatusColor(result.cost ?? 0, 'cost') as any}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                          <Chip 
-                            size="small"
-                            label={result.gwp ?? '-'}
-                            color={getStatusColor(result.gwp ?? 0, 'gwp') as any}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="right">{result.variant_idx ?? result.variant ?? '-'}</TableCell>
-                      <TableCell align="right">{result.weather_file || result.epw || '-'}</TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                          {result.savings ?? '-'}%
-                          {getStatusIcon(result.energyUse ?? result.totalEnergy ?? 0, 150)}
-                        </Stack>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Tooltip title="View Details">
-                          <IconButton 
-                            size="small"
-                            onClick={async () => {
-                              setSelectedResult(result);
-                              setDetailsOpen(true);
-                              // Try to load detailed metadata using context helper
-                              if (typeof loadResults === 'function') {
-                                const id = result.simulation_id || result.id || result.run_id;
-                                try {
-                                  const detail = await loadResults(String(id));
-                                  setSelectedResultDetail(detail || result);
-                                } catch (e) {
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+              <Grid item xs={12} md={4}>
+                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Total Simulations</Typography>
+                    <Typography variant="h3">{results.length}</Typography>
+                    <Typography variant="body2" color="text.secondary">Across {scenarios.length} scenarios</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Average Energy Savings</Typography>
+                    <Typography variant="h3" color="success.main">24.5%</Typography>
+                    <Typography variant="body2" color="text.secondary">Compared to baseline</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Best Performing Scenario</Typography>
+                    <Typography variant="h5">High Performance Set</Typography>
+                    <Typography variant="body2" color="text.secondary">35.2% energy reduction</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            <Grid item xs={12} sx={{ mt: 2 }}>
+              <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+                <TableContainer>
+                  <Table stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Scenario</TableCell>
+                        <TableCell align="right">Energy Use (kWh/m²)</TableCell>
+                        <TableCell align="right">Cost (SEK/m²)</TableCell>
+                        <TableCell align="right">GWP (kg CO₂e/m²)</TableCell>
+                        <TableCell align="right">Variant</TableCell>
+                        <TableCell align="right">Weather</TableCell>
+                        <TableCell align="right">Savings vs. Baseline</TableCell>
+                        <TableCell align="center">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filteredResults.map((result) => (
+                        <TableRow key={String(result.id || result.simulation_id || result.run_id || Math.random())} hover>
+                          <TableCell>
+                            <Stack>
+                              <Typography variant="body2">{result.name || result.fileName || result.id}</Typography>
+                              <Typography variant="caption" color="text.secondary">{String(result.scenario_name || result.scenario || result.scenario_id || '')}</Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                              <Chip size="small" label={result.energyUse ?? result.totalEnergy ?? '-'} color={getStatusColor(result.energyUse ?? result.totalEnergy ?? 0, 'energy') as any} />
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                              <Chip size="small" label={result.cost ?? '-'} color={getStatusColor(result.cost ?? 0, 'cost') as any} />
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                              <Chip size="small" label={result.gwp ?? '-'} color={getStatusColor(result.gwp ?? 0, 'gwp') as any} />
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="right">{result.variant_idx ?? result.variant ?? '-'}</TableCell>
+                          <TableCell align="right">{result.weather_file || result.epw || '-'}</TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                              {result.savings ?? '-'}%
+                              {getStatusIcon(result.energyUse ?? result.totalEnergy ?? 0, 150)}
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Tooltip title="View Details">
+                              <IconButton size="small" onClick={async () => {
+                                setSelectedResult(result);
+                                setDetailsOpen(true);
+                                if (typeof loadResults === 'function') {
+                                  const id = result.simulation_id || result.id || result.run_id;
+                                  try {
+                                    const detail = await loadResults(String(id));
+                                    setSelectedResultDetail(detail || result);
+                                  } catch (e) {
+                                    setSelectedResultDetail(result);
+                                  }
+                                } else {
                                   setSelectedResultDetail(result);
                                 }
-                              } else {
-                                setSelectedResultDetail(result);
-                              }
-                            }}
-                          >
-                            <Info size={18} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Download Results">
-                          <IconButton size="small" onClick={() => {
-                            const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `simulation-${result.id || result.simulation_id || 'result'}.json`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                          }}>
-                            <Download size={18} />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Add to Baseline">
-                          <IconButton size="small" onClick={() => {
-                            const id = String(result.simulation_id || result.id || result.run_id || '');
-                            if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, result.name || result.fileName || id, { source: 'resultsPage' });
-                          }}>
-                            <FileText size={18} />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-
-        {/* Charts */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Energy vs Runtime (scatter)
-            </Typography>
-            <Box sx={{ height: 400 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name || r.fileName }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="x" name="Energy (kWh/m²)" />
-                  <YAxis dataKey="y" name="Runtime (s)" />
-                  <RechartsTooltip />
-                  <Scatter data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name }))} fill="#8884d8" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              GWP vs Cost (scatter)
-            </Typography>
-            <Box sx={{ height: 400 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" />
-                  <YAxis dataKey="y" name="Cost (SEK/m²)" />
-                  <RechartsTooltip />
-                  <Scatter data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#ff7300" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </Box>
-          </Paper>
+                              }}>
+                                <Info size={18} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Download Results">
+                              <IconButton size="small" onClick={() => {
+                                const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `simulation-${result.id || result.simulation_id || 'result'}.json`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}>
+                                <Download size={18} />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Add to Baseline">
+                              <IconButton size="small" onClick={() => {
+                                const id = String(result.simulation_id || result.id || result.run_id || '');
+                                if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, result.name || result.fileName || id, { source: 'resultsPage' });
+                              }}>
+                                <FileText size={18} />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            </Grid>
+          </Stack>
         </Grid>
       </Grid>
 
