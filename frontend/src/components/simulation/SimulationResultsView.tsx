@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -56,7 +56,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   };
 
   // Normalize incoming results to support both snake_case and camelCase
-  const normalizedResults = (results || []).map((r: any) => {
+  const normalizedResults = useMemo(() => (results || []).map((r: any) => {
     const raw = r.raw_json || {};
     const fileName = r.fileName || r.file_name || raw.fileName || raw.file_name || r.originalFileName || r.file || 'Unknown';
     const totalEnergyUse = Number(
@@ -78,13 +78,13 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
       heatingDemand,
       coolingDemand,
       runTime,
-      totalArea
-      ,constructionSet
+      totalArea,
+      constructionSet
     };
-  });
+  }), [results]);
 
   // Compute per-area metrics (kWh/m²) when area is available — chart expects kWh/m²
-  const resultsWithPerArea = normalizedResults.map((r: any) => {
+  const resultsWithPerArea = useMemo(() => normalizedResults.map((r: any) => {
     const perArea = r.totalArea > 0 ? r.totalEnergyUse / r.totalArea : r.totalEnergyUse;
     const heatingPerArea = r.totalArea > 0 ? r.heatingDemand / r.totalArea : r.heatingDemand;
     const coolingPerArea = r.totalArea > 0 ? r.coolingDemand / r.totalArea : r.coolingDemand;
@@ -94,10 +94,10 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
       heatingPerArea,
       coolingPerArea
     };
-  });
+  }), [normalizedResults]);
 
   // Format data for chart (use normalized results)
-  const chartData = {
+  const chartData = useMemo(() => ({
     labels: resultsWithPerArea.map(r => r.fileName),
     datasets: [
       {
@@ -116,13 +116,19 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
         backgroundColor: 'rgba(75, 192, 192, 0.8)',
       }
     ]
-  };
+  }), [resultsWithPerArea]);
 
-  const chartOptions = {
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-  animation: ({ duration: 0 } as any),
+    animation: { duration: 0 },
     plugins: {
+      tooltip: {
+        enabled: true,
+        mode: 'index' as const,
+        intersect: false,
+        position: 'nearest' as const
+      },
       legend: {
         position: 'top' as const,
       },
@@ -140,7 +146,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
         }
       }
     }
-  };
+  }), [resultsWithPerArea]);
 
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
