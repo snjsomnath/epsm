@@ -14,7 +14,6 @@ import {
   Alert,
   LinearProgress,
   Stack,
-  Tooltip,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -22,7 +21,6 @@ import {
   DialogActions,
   IconButton,
   Chip,
-  CircularProgress,
   Divider
 } from '@mui/material';
 import { 
@@ -32,9 +30,7 @@ import {
   Cpu, 
   Clock, 
   BarChart3, 
-  Download, 
   Info,
-  AlertCircle,
   FileText,
   Upload,
   Check
@@ -51,8 +47,7 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip as RechartsTooltip, 
-  ResponsiveContainer,
-  Legend
+  ResponsiveContainer
 } from 'recharts';
 import IdfUploadArea from '../baseline/IdfUploadArea';
 
@@ -72,6 +67,8 @@ const SimulationPage = () => {
   const [results, setResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [resourceStats, setResourceStats] = useState<any>(null);
+  const [lastResourceAt, setLastResourceAt] = useState<number | null>(null);
+  const [monitorStale, setMonitorStale] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -115,6 +112,9 @@ const SimulationPage = () => {
 
     const ws = new ReconnectingWebSocket(wsUrl);
 
+    // Keep last raw message to avoid redundant state updates
+    const lastMsgRef = { current: '' } as { current: string };
+
     ws.onopen = () => {
       setWsConnected(true);
       setWsError(null);
@@ -122,13 +122,86 @@ const SimulationPage = () => {
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        // Only update resource stats if we got valid data
-        if (data && (data.cpu || data.memory)) {
-          setResourceStats(data);
-        }
+        const raw = JSON.parse(event.data);
+
+        // Deduplicate identical consecutive messages
+        const rawStr = JSON.stringify(raw);
+        if (rawStr === lastMsgRef.current) return;
+        lastMsgRef.current = rawStr;
+
+        // Normalize numeric fields
+        const cpu = raw.cpu ? {
+          usage_percent: clampPercent(raw.cpu.usage_percent),
+          physical_cores: toNumber(raw.cpu.physical_cores),
+          logical_cores: toNumber(raw.cpu.logical_cores),
+        } : undefined;
+
+        const memory = raw.memory ? {
+          total_gb: toNumber(raw.memory.total_gb),
+          available_gb: toNumber(raw.memory.available_gb),
+          usage_percent: clampPercent(raw.memory.usage_percent),
+        } : undefined;
+
+        const disk = raw.disk ? {
+          total_gb: toNumber(raw.disk.total_gb),
+          free_gb: toNumber(raw.disk.free_gb),
+          usage_percent: clampPercent(raw.disk.usage_percent),
+        } : undefined;
+
+        const network = raw.network ? {
+          bytes_sent_per_sec: toNumber(raw.network.bytes_sent_per_sec),
+          bytes_recv_per_sec: toNumber(raw.network.bytes_recv_per_sec),
+        } : undefined;
+
+        const normalized = {
+          cpu, memory, disk, network, received_at: new Date().toISOString()
+        };
+
+        // Only accept updates that contain at least one resource block
+        if (!(cpu || memory || disk || network)) return;
+
+  // Update latest snapshot
+  setResourceStats(normalized);
+  setLastResourceAt(Date.now());
+
+        // Update histories using a single functional update to historyIndex
+        setHistoryIndex(prevIndex => {
+          const next = prevIndex + 1;
+          const timeLabel = new Date().toLocaleTimeString();
+
+          if (cpu) {
+            setCpuHistory(prev => {
+              const newData = [...prev, { index: next, value: cpu.usage_percent || 0, time: timeLabel }];
+              return newData.slice(-MAX_HISTORY_POINTS);
+            });
+          }
+
+          if (memory) {
+            setMemoryHistory(prev => {
+              const newData = [...prev, { index: next, value: memory.usage_percent || 0, time: timeLabel }];
+              return newData.slice(-MAX_HISTORY_POINTS);
+            });
+          }
+
+          if (disk) {
+            setDiskHistory(prev => {
+              const newData = [...prev, { index: next, value: disk.usage_percent || 0, time: timeLabel }];
+              return newData.slice(-MAX_HISTORY_POINTS);
+            });
+          }
+
+          if (network) {
+            const netVal = network.bytes_sent_per_sec || network.bytes_recv_per_sec ? Math.round((network.bytes_sent_per_sec + network.bytes_recv_per_sec) / 1024) : 0;
+            setNetworkHistory(prev => {
+              const newData = [...prev, { index: next, value: netVal, time: timeLabel }];
+              return newData.slice(-MAX_HISTORY_POINTS);
+            });
+          }
+
+          return next;
+        });
+
       } catch (e) {
-        // Silently ignore malformed messages; surface a user-visible error if needed
         setWsError('Received malformed monitoring data');
       }
     };
@@ -147,10 +220,19 @@ const SimulationPage = () => {
     };
   }, [backendAvailable]);
 
-  const fmt = (v: any, digits = 1, fallback = '0') => {
-    if (v === null || v === undefined || Number.isNaN(Number(v))) return fallback;
-    return Number(v).toFixed(digits);
-  };
+  // Mark monitoring as stale if we haven't received an update recently
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!lastResourceAt) {
+        setMonitorStale(true);
+        return;
+      }
+      const age = Date.now() - lastResourceAt;
+      setMonitorStale(age > 5000); // stale if older than 5s
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [lastResourceAt]);
+
 
   // Helpers to normalize and format resource numbers
   const toNumber = (v: any) => {
@@ -165,7 +247,7 @@ const SimulationPage = () => {
     return Math.round(n);
   };
 
-  const severityColor = (p: number) => (p > 80 ? 'error' : p > 60 ? 'warning' : 'primary');
+  
 
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
@@ -856,6 +938,11 @@ const SimulationPage = () => {
                 <BarChart3 size={20} style={{ marginRight: 8 }} />
                 System Resources Monitor
               </Typography>
+              {monitorStale && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Resource monitoring appears stale or disconnected.
+                </Alert>
+              )}
               
               <Grid container spacing={2} sx={{ mb: 2 }}>
                 <Grid item xs={6} sm={3}>
