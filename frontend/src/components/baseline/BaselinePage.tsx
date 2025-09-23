@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material';
+import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField } from '@mui/material';
 import { Play, FileText, AlertCircle, BarChart2, Edit3, Trash2, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import EpwUploadArea from './EpwUploadArea';
@@ -21,6 +21,9 @@ const BaselinePage = () => {
 
   const { uploadedFiles, parsedData, setUploadedFiles, setParsedData, addToBaselineRun, updateBaselineRun, baselineHistory, removeBaselineRun, loadResults } = useSimulation();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
 
   // hydrate last baseline run when returning to page
   useEffect(() => {
@@ -324,7 +327,7 @@ const BaselinePage = () => {
                                     }
                                   } catch (e) { console.error(e); }
                                 }}>View</Button>
-                                <IconButton size="small" onClick={() => { const newTitle = prompt('Rename baseline run', run.metadata?.title || run.title || 'run'); if (newTitle && typeof updateBaselineRun === 'function') updateBaselineRun(run.id, { metadata: { title: newTitle } }); }}><Edit3 size={14} /></IconButton>
+                                <IconButton size="small" onClick={() => { setRenameTargetId(run.id); setRenameValue(run.metadata?.title || run.title || ''); setRenameDialogOpen(true); }}><Edit3 size={14} /></IconButton>
                                 <IconButton size="small" onClick={() => { if (typeof removeBaselineRun === 'function') removeBaselineRun(run.id); }}><Trash2 size={14} /></IconButton>
                               </Box>
                             </TableCell>
@@ -352,6 +355,25 @@ const BaselinePage = () => {
           </Paper>
         </Grid>
       </Grid>
+          {/* Rename Dialog (in-app) */}
+          <Dialog open={renameDialogOpen} onClose={() => setRenameDialogOpen(false)}>
+            <DialogTitle>Rename Baseline Run</DialogTitle>
+            <DialogContent>
+              <DialogContentText>Enter a new title for this baseline run.</DialogContentText>
+              <TextField autoFocus margin="dense" label="Title" fullWidth value={renameValue} onChange={(e) => setRenameValue(e.target.value)} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setRenameDialogOpen(false)}>Cancel</Button>
+              <Button variant="contained" onClick={() => {
+                if (renameTargetId && typeof updateBaselineRun === 'function') {
+                  updateBaselineRun(renameTargetId, { metadata: { title: renameValue } });
+                }
+                setRenameDialogOpen(false);
+                setRenameTargetId(null);
+                setRenameValue('');
+              }}>Save</Button>
+            </DialogActions>
+          </Dialog>
     </Box>
   );
 };
