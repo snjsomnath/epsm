@@ -211,21 +211,24 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
               </Typography>
               <Stack spacing={2}>
                 {resultsWithPerArea.map((result, index) => {
-                  const resKey = result.simulation_id ?? result.run_id ?? `${index}`;
+                  // Build a key that will be unique even when simulation_id is duplicated
+                  const baseId = result.simulation_id ?? result.run_id ?? result.id ?? 'res';
+                  const variantPart = result.variant_idx ?? result.variantIdx ?? 0;
+                  const resKey = `${baseId}-${variantPart}-${index}`;
                   const expanded = !!openResult?.[resKey];
                   return (
-                    <Paper key={resKey} variant="outlined" sx={{ p: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1 }}>
+                    <Paper key={resKey} variant="outlined" sx={{ p: 0, mb: 1, display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, height: 48, minHeight: 48 }}>
                         <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="subtitle1" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={result.fileName}>
+                          <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.95rem' }} title={result.fileName}>
                             {result.fileName} {result.variant_idx !== undefined ? `(variant ${result.variant_idx})` : ''}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary">
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                             {fmt(result.totalEnergyPerArea)} kWh/m² • {fmt(result.runTime)}s
                           </Typography>
                         </Box>
                         <Box>
-                          <IconButton size="small" onClick={() => setOpenResult(prev => ({ ...prev, [resKey]: !prev[resKey] }))}>
+                          <IconButton size="small" onClick={() => setOpenResult(prev => ({ ...prev, [resKey]: !prev[resKey] }))} sx={{ p: 0.25 }}>
                             {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </IconButton>
                         </Box>

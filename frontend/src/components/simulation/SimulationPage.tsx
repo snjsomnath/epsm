@@ -152,6 +152,21 @@ const SimulationPage = () => {
     return Number(v).toFixed(digits);
   };
 
+  // Helpers to normalize and format resource numbers
+  const toNumber = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const clampPercent = (v: any) => {
+    const n = toNumber(v);
+    if (n < 0) return 0;
+    if (n > 100) return 100;
+    return Math.round(n);
+  };
+
+  const severityColor = (p: number) => (p > 80 ? 'error' : p > 60 ? 'warning' : 'primary');
+
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
     // Try to get number of variants from parsedData or scenario
@@ -844,7 +859,7 @@ const SimulationPage = () => {
               
               <Grid container spacing={2} sx={{ mb: 2 }}>
                 <Grid item xs={6} sm={3}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ minHeight: 120 }}>
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Cpu size={18} style={{ marginRight: 8 }} />
@@ -853,16 +868,16 @@ const SimulationPage = () => {
                         </Typography>
                       </Box>
                       <Typography variant="h6">
-                        {Math.round(resourceStats?.cpu?.usage_percent || 0)}%
+                        {clampPercent(resourceStats?.cpu?.usage_percent)}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {resourceStats?.cpu?.physical_cores || 0} cores / {resourceStats?.cpu?.logical_cores || 0} threads
+                        {resourceStats?.cpu?.physical_cores || resourceStats?.cpu?.logical_cores || 0} cores
                       </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ minHeight: 120 }}>
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Clock size={18} style={{ marginRight: 8 }} />
@@ -871,16 +886,16 @@ const SimulationPage = () => {
                         </Typography>
                       </Box>
                       <Typography variant="h6">
-                        {Math.round(resourceStats?.memory?.usage_percent || 0)}%
+                        {clampPercent(resourceStats?.memory?.usage_percent)}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {fmt(resourceStats?.memory?.used_gb, 1, '0')} GB / {fmt(resourceStats?.memory?.total_gb, 1, '0')} GB
+                        {((toNumber(resourceStats?.memory?.total_gb) - toNumber(resourceStats?.memory?.available_gb)) || 0).toFixed(1)} GB / {toNumber(resourceStats?.memory?.total_gb).toFixed(1)} GB
                       </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ minHeight: 120 }}>
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <svg 
@@ -904,16 +919,16 @@ const SimulationPage = () => {
                         </Typography>
                       </Box>
                       <Typography variant="h6">
-                        {Math.round(resourceStats?.disk?.usage_percent || 0)}%
+                        {clampPercent(resourceStats?.disk?.usage_percent)}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {fmt(resourceStats?.disk?.used_gb, 1, '0')} GB / {fmt(resourceStats?.disk?.total_gb, 1, '0')} GB
+                        {((toNumber(resourceStats?.disk?.total_gb) - toNumber(resourceStats?.disk?.free_gb)) || 0).toFixed(1)} GB / {toNumber(resourceStats?.disk?.total_gb).toFixed(1)} GB
                       </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
                 <Grid item xs={6} sm={3}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ minHeight: 120 }}>
                     <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <svg 
@@ -935,12 +950,11 @@ const SimulationPage = () => {
                         </Typography>
                       </Box>
                       <Typography variant="h6">
-                        {resourceStats?.network?.bytes_sent_per_sec ? 
-                          Math.round((resourceStats.network.bytes_sent_per_sec + resourceStats.network.bytes_recv_per_sec) / 1024) : 0} KB/s
+                        {resourceStats?.network?.bytes_sent_per_sec ? Math.round((toNumber(resourceStats.network.bytes_sent_per_sec) + toNumber(resourceStats.network.bytes_recv_per_sec)) / 1024) : 0} KB/s
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        ↑ {resourceStats?.network?.bytes_sent_per_sec ? Math.round(resourceStats.network.bytes_sent_per_sec / 1024) : 0} KB/s  
-                        ↓ {resourceStats?.network?.bytes_recv_per_sec ? Math.round(resourceStats.network.bytes_recv_per_sec / 1024) : 0} KB/s
+                        ↑ {resourceStats?.network?.bytes_sent_per_sec ? Math.round(toNumber(resourceStats.network.bytes_sent_per_sec) / 1024) : 0} KB/s  
+                        ↓ {resourceStats?.network?.bytes_recv_per_sec ? Math.round(toNumber(resourceStats.network.bytes_recv_per_sec) / 1024) : 0} KB/s
                       </Typography>
                     </CardContent>
                   </Card>
