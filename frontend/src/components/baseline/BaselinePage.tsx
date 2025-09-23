@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton } from '@mui/material';
+import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody } from '@mui/material';
 import { Play, FileText, AlertCircle, BarChart2, Edit3, Trash2, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import EpwUploadArea from './EpwUploadArea';
@@ -265,60 +265,75 @@ const BaselinePage = () => {
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Recent Baseline Runs</Typography>
-                <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
-                  {baselineHistory.map((run: any) => {
-                    const title = run.metadata?.title || run.title || run.id.slice(0, 8);
-                    const ts = new Date(run.ts).toLocaleString();
-                    const prog = run.kpis?.progress ?? null;
-                    const isSelected = selectedRunId === run.id;
-                    return (
-                      <Card key={run.id} variant="outlined" sx={{ minWidth: 220, mr: 1, borderColor: isSelected ? 'primary.main' : undefined, boxShadow: isSelected ? 3 : undefined }}>
-                        <CardContent>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>{title}</Typography>
-                            <Typography variant="caption" color="text.secondary">{ts}</Typography>
-                          </Box>
-                          {prog !== null ? (
-                            <Box sx={{ mb: 1 }}>
-                              <LinearProgress variant="determinate" value={Math.min(Math.max(prog, 0), 100)} />
-                              <Typography variant="caption">{Math.round(prog)}%</Typography>
-                            </Box>
-                          ) : null}
-                          {/* show lightweight KPIs if present */}
-                          {(run.kpis && (run.kpis.totalEnergy || run.kpis.heating || run.kpis.cooling || run.kpis.runTime)) && (
-                            <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Zap size={12} /> {(Number(run.kpis.totalEnergy ?? run.kpis.total ?? 0)).toFixed(1)} kWh</Typography>
-                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Thermometer size={12} /> {(Number(run.kpis.heating ?? 0)).toFixed(1)}</Typography>
-                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Snowflake size={12} /> {(Number(run.kpis.cooling ?? 0)).toFixed(1)}</Typography>
-                              <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Clock size={12} /> {(Number(run.kpis.runTime ?? 0)).toFixed(0)}s</Typography>
-                            </Box>
-                          )}
-                          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                            <Button size="small" onClick={async () => {
-                              try {
-                                setSelectedRunId(run.id);
-                                let data = null;
-                                if (typeof loadResults === 'function') data = await loadResults(run.id);
-                                if (!data) {
-                                  const res = await fetch(`/api/simulation/${run.id}/results/`);
-                                  if (res.ok) data = await res.json();
-                                }
-                                if (data) {
-                                  setSimulationResults(data);
-                                  setSimulationComplete(true);
-                                  setTabIndex(0);
-                                }
-                              } catch (e) { console.error(e); }
-                            }}>View</Button>
-                            
-                            <IconButton size="small" onClick={() => { const newTitle = prompt('Rename baseline run', run.metadata?.title || run.title || 'run'); if (newTitle && typeof updateBaselineRun === 'function') updateBaselineRun(run.id, { metadata: { title: newTitle } }); }}><Edit3 size={14} /></IconButton>
-                            <IconButton size="small" onClick={() => { if (typeof removeBaselineRun === 'function') removeBaselineRun(run.id); }}><Trash2 size={14} /></IconButton>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Stack>
+                <TableContainer component={Paper} sx={{ mt: 1 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Sim Name</TableCell>
+                        <TableCell>IDF File</TableCell>
+                        <TableCell>KPIs</TableCell>
+                        <TableCell>Progress</TableCell>
+                        <TableCell>Time</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {baselineHistory.map((run: any) => {
+                        const simName = run.metadata?.generatedWord || (typeof run.title === 'string' ? String(run.title).split('-').slice(-1)[0] : run.id.slice(0, 8));
+                        const idfFile = run.metadata?.fileName || (typeof run.title === 'string' && run.title.includes('-') ? run.title.split('-').slice(0, -1).join('-') : run.metadata?.fileBase || '—');
+                        const ts = new Date(run.ts).toLocaleString();
+                        const prog = typeof run.kpis?.progress === 'number' ? Math.min(Math.max(run.kpis.progress, 0), 100) : null;
+                        const kpis = run.kpis || {};
+                        const isSelected = selectedRunId === run.id;
+                        return (
+                          <TableRow key={run.id} sx={{ backgroundColor: isSelected ? 'action.selected' : undefined }}>
+                            <TableCell sx={{ fontWeight: 600 }}>{simName}</TableCell>
+                            <TableCell>{idfFile}</TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Zap size={12} /> {(Number(kpis.totalEnergy ?? kpis.total ?? 0)).toFixed(1)} kWh</Typography>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Thermometer size={12} /> {(Number(kpis.heating ?? 0)).toFixed(1)}</Typography>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Snowflake size={12} /> {(Number(kpis.cooling ?? 0)).toFixed(1)}</Typography>
+                                <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}><Clock size={12} /> {(Number(kpis.runTime ?? 0)).toFixed(0)}s</Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell sx={{ minWidth: 180 }}>
+                              {prog !== null ? (
+                                <Box>
+                                  <LinearProgress variant="determinate" value={prog} />
+                                  <Typography variant="caption">{Math.round(prog)}%</Typography>
+                                </Box>
+                              ) : <Typography variant="caption" color="text.secondary">—</Typography>}
+                            </TableCell>
+                            <TableCell><Typography variant="caption" color="text.secondary">{ts}</Typography></TableCell>
+                            <TableCell align="right">
+                              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                <Button size="small" onClick={async () => {
+                                  try {
+                                    setSelectedRunId(run.id);
+                                    let data = null;
+                                    if (typeof loadResults === 'function') data = await loadResults(run.id);
+                                    if (!data) {
+                                      const res = await fetch(`/api/simulation/${run.id}/results/`);
+                                      if (res.ok) data = await res.json();
+                                    }
+                                    if (data) {
+                                      setSimulationResults(data);
+                                      setSimulationComplete(true);
+                                      setTabIndex(0);
+                                    }
+                                  } catch (e) { console.error(e); }
+                                }}>View</Button>
+                                <IconButton size="small" onClick={() => { const newTitle = prompt('Rename baseline run', run.metadata?.title || run.title || 'run'); if (newTitle && typeof updateBaselineRun === 'function') updateBaselineRun(run.id, { metadata: { title: newTitle } }); }}><Edit3 size={14} /></IconButton>
+                                <IconButton size="small" onClick={() => { if (typeof removeBaselineRun === 'function') removeBaselineRun(run.id); }}><Trash2 size={14} /></IconButton>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
               </CardContent>
             </Card>
           )}
