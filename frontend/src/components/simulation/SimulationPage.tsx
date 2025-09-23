@@ -53,7 +53,7 @@ import IdfUploadArea from '../baseline/IdfUploadArea';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults, lastResults, cacheLastResults } = useSimulation();
+  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults, lastResults, cacheLastResults, addToHistory } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
@@ -458,6 +458,10 @@ const SimulationPage = () => {
                 // Persist last results in context/localStorage so returning to tab doesn't clear them
                 if (typeof cacheLastResults === 'function') {
                   try { cacheLastResults(resultsData); } catch (e) { console.warn('cacheLastResults failed', e); }
+                }
+                // Record this run in the session history so ResultsPage can list it
+                if (typeof addToHistory === 'function') {
+                  try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { console.warn('addToHistory failed', e); }
                 }
               }
             } catch (e) {
