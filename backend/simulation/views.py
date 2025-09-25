@@ -422,14 +422,22 @@ def run_simulation(request):
 
                 if groups:
                     # build cartesian product across element types to create construction_sets
+                    # NOTE: frontend combinatorics counts (1 + count_per_type) - 1 to allow
+                    # omitting a type (no-change). To match that, include a None option
+                    # for each element type and skip the all-none case.
                     keys = list(groups.keys())
-                    lists = [groups[k] for k in keys]
+                    lists = [[None] + groups[k] for k in keys]
                     combos = list(itertools.product(*lists))
                     construction_sets = []
                     for combo in combos:
                         cs = {}
                         for k, chosen in zip(keys, combo):
+                            if chosen is None:
+                                continue
                             cs[k] = {'name': chosen['name'], 'layers': chosen['layers']}
+                        # skip the empty combination (all None) which represents baseline/no-change
+                        if not cs:
+                            continue
                         construction_sets.append(cs)
 
                     # If we found construction_sets, ensure batch_mode is enabled
