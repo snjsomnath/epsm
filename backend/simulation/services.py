@@ -264,7 +264,7 @@ class EnergyPlusSimulator:
         # parametric generation. If it's not available, raise a clear error so
         # the caller knows to install or restore `idf_parser_old.py`.
         try:
-            from .idf_parser_old import IdfParser
+            from .idf_parser_new import IdfParser
         except Exception as e:
             raise ImportError(
                 "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `idf_parser_old.py`. "

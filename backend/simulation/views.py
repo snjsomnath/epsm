@@ -206,7 +206,7 @@ def parse_idf_test(request):
             return JsonResponse({'error': 'Missing idf or construction_set in JSON body'}, status=400)
 
         # Use the older parser for this lightweight test
-        from .idf_parser_old import IdfParser, generate_parametric_idfs
+        from .idf_parser_new import IdfParser, generate_parametric_idfs
         parser = IdfParser(idf_content)
         parser.insert_construction_set(construction_set)
 
