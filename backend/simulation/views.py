@@ -512,9 +512,10 @@ def simulation_status(request, simulation_id):
         simulation = Simulation.objects.get(id=simulation_id)
         
         # Prefer an explicit stored progress value updated by the simulator.
-        # Fallback to the previous time-based heuristic only if progress is unset.
+        # Only fall back to the previous time-based heuristic if progress is truly unset (None).
+        # Respect a stored 0 value as a valid progress indicator (avoids an immediate jump to 99%).
         progress = getattr(simulation, 'progress', None)
-        if progress is None or progress == 0:
+        if progress is None:
             if simulation.status == 'running':
                 # For backward compatibility, fall back to a simple time-based estimate
                 from django.utils import timezone
@@ -524,6 +525,14 @@ def simulation_status(request, simulation_id):
                 progress = 100
             else:
                 progress = 0
+        else:
+            # Use the stored progress value. Ensure it's an int and clamp reasonable bounds.
+            try:
+                progress = int(progress)
+            except Exception:
+                progress = 0
+            if simulation.status == 'completed':
+                progress = 100
         
         # Include any stored error message so the frontend can display it
         error_msg = simulation.error_message if getattr(simulation, 'error_message', None) else None
