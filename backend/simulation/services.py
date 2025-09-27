@@ -587,6 +587,19 @@ class EnergyPlusSimulator:
             if html_path.exists():
                 # Extract results from HTML
                 results = parse_html_with_table_lookup(html_path, log_path, [idf_file])
+
+                # If a ReadVars CSV exists, attempt to parse hourly timeseries
+                csv_path = output_file.with_suffix('.csv')
+                if csv_path.exists():
+                    try:
+                        hourly_data = parse_readvars_csv(csv_path)
+                        if hourly_data:
+                            # attach hourly_data to the results so downstream
+                            # save_results_to_database can persist it
+                            results['hourly_timeseries'] = hourly_data
+                    except Exception:
+                        # Non-fatal: continue even if CSV parsing fails
+                        pass
                 
                 # Add original filename to results
                 results['originalFileName'] = idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else (idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path))
@@ -625,7 +638,7 @@ class EnergyPlusSimulator:
             try:
                 # Create main simulation result
                 simulation_result = SimulationResult.objects.create(
-                    simulation=self.simulation,
+                    simulation_id=self.simulation.id,
                     run_id=job_info.get("run_id") if job_info else str(self.simulation.id),
                     file_name=result.get("fileName", "unknown.idf"),
                     building_name=result.get("building", ""),
@@ -667,11 +680,130 @@ class EnergyPlusSimulator:
                         )
                 
                 print(f"Saved simulation result to database: {simulation_result.id}")
+                # If hourly timeseries were attached to the parsed result, save them
+                try:
+                    hourly_payload = result.get('hourly_timeseries')
+                    # Only persist when the parser detected an hourly-like file
+                    if hourly_payload and isinstance(hourly_payload, dict) and hourly_payload.get('is_hourly'):
+                        from .models import SimulationHourlyTimeseries
+                        # Persist as a single JSON blob for now
+                        SimulationHourlyTimeseries.objects.create(
+                            simulation_result=simulation_result,
+                            has_hourly=True,
+                            hourly_values=hourly_payload
+                        )
+                except Exception as e:
+                    print(f"Failed to save hourly timeseries for result {simulation_result.id}: {e}")
                 
             except Exception as e:
                 print(f"Error saving result to database: {e}")
                 import traceback
                 traceback.print_exc()
+
+
+def parse_readvars_csv(csv_path: str | Path) -> dict:
+    """Parse EnergyPlus ReadVars CSV (eplusout.csv) into a dict of timeseries.
+
+    Heuristics used:
+    - Skip the first header row(s) until the line that starts with "" (blank first cell)
+      followed by variable columns (older ReadVars sometimes include metadata rows).
+    - Detect whether the CSV is hourly by counting rows (>= 8000 rows is treated as yearly hourly).
+    - Return a dict mapping sanitized variable names to numeric arrays.
+
+    This implementation is conservative: it reads numeric columns only and limits
+    memory by only reading the first ~20000 rows.
+    """
+    import csv
+
+    csv_path = Path(csv_path)
+    series = {}
+    try:
+        with csv_path.open('r', encoding='utf-8', errors='replace') as fh:
+            reader = csv.reader(fh)
+            rows = []
+            # Read all rows up to a reasonable cap (protect memory)
+            max_rows = 20000
+            for i, row in enumerate(reader):
+                rows.append(row)
+                if i + 1 >= max_rows:
+                    break
+
+        if len(rows) < 2:
+            return {}
+
+        # Attempt to find the header row which contains variable names
+        header_idx = 0
+        # Common EnergyPlus ReadVars CSV has first column blank then variable labels
+        for idx, r in enumerate(rows[:10]):
+            # Heuristic: header row contains at least 2 non-empty cells and not numeric
+            non_empty = sum(1 for c in r if c and c.strip() != '')
+            if non_empty >= 2 and any(not _is_number_like(c) for c in r):
+                header_idx = idx
+                break
+
+        header = rows[header_idx]
+        data_rows = rows[header_idx+1:]
+
+        # If the first column is empty and second column looks like a number for the
+        # first data row, then columns from 1..N are variables
+        col_count = len(header)
+        if col_count < 2:
+            return {}
+
+        # Determine if this looks like an hourly file (approx 8760 rows)
+        hourly_like = len(data_rows) >= 8000
+
+        # For each column, try to parse numeric values
+        for col_idx in range(1, col_count):
+            var_name_raw = header[col_idx].strip() if header[col_idx] else f'col_{col_idx}'
+            var_name = _sanitize_variable_name(var_name_raw)
+            vals = []
+            for r in data_rows:
+                if col_idx >= len(r):
+                    vals.append(None)
+                    continue
+                v = r[col_idx].strip()
+                if v == '' or v == '\u00a0':
+                    vals.append(None)
+                    continue
+                try:
+                    vals.append(float(v))
+                except Exception:
+                    vals.append(None)
+            # If hourly_like but we have far fewer rows, skip this variable
+            if hourly_like and len([x for x in vals if x is not None]) < 100:
+                continue
+            series[var_name] = vals
+
+        # If nothing meaningful found, return empty
+        if not series:
+            return {}
+
+        # Attach metadata
+        return {
+            'is_hourly': hourly_like,
+            'rows': len(data_rows),
+            'series': series
+        }
+    except Exception:
+        return {}
+
+
+def _sanitize_variable_name(name: str) -> str:
+    # Remove units in parentheses and replace spaces with underscores
+    import re
+    s = re.sub(r"\(.*?\)", '', name).strip()
+    s = re.sub(r"[^0-9A-Za-z_]+", '_', s)
+    s = s.strip('_')
+    return s or name
+
+
+def _is_number_like(s: str) -> bool:
+    try:
+        float(s)
+        return True
+    except Exception:
+        return False
 
 def parse_html_with_table_lookup(html_path, log_path, idf_files):
     """Parse EnergyPlus HTML output and log to extract structured results."""

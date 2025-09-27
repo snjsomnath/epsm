@@ -120,6 +120,16 @@ DATABASES = {
         'HOST': os.getenv('MATERIALS_DB_HOST', 'database'),
         'PORT': os.getenv('MATERIALS_DB_PORT', '5432'),
     }
+    ,
+    'results_db': {
+        # Dedicated Postgres database for simulation results/time-series
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('RESULTS_DB_NAME', 'epsm_results'),
+        'USER': os.getenv('RESULTS_DB_USER', 'epsm_results_user'),
+        'PASSWORD': os.getenv('RESULTS_DB_PASSWORD', ''),
+        'HOST': os.getenv('RESULTS_DB_HOST', 'database'),
+        'PORT': os.getenv('RESULTS_DB_PORT', '5432'),
+    }
 }
 
 # Database routing

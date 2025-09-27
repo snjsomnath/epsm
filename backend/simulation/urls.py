@@ -11,6 +11,8 @@ urlpatterns = [
     path('<uuid:simulation_id>/results/', views.simulation_results, name='simulation_results'),
     path('<uuid:simulation_id>/parallel-results/', views.parallel_simulation_results, name='parallel_simulation_results'),
     path('<uuid:simulation_id>/download/', views.simulation_download, name='simulation_download'),
+    # Top-level listing endpoint for aggregated results
+    path('results/', views.list_simulation_results, name='list_simulation_results'),
 
     # Existing endpoints
     path('parse/idf/', views.parse_idf, name='parse_idf'),
