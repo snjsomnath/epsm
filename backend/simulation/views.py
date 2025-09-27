@@ -511,15 +511,19 @@ def simulation_status(request, simulation_id):
     try:
         simulation = Simulation.objects.get(id=simulation_id)
         
-        if simulation.status == 'running':
-            # For demo, generate a progress based on time elapsed
-            from django.utils import timezone
-            elapsed = (timezone.now() - simulation.updated_at).total_seconds()
-            progress = min(int((elapsed / 5) * 100), 99)
-        elif simulation.status == 'completed':
-            progress = 100
-        else:
-            progress = 0
+        # Prefer an explicit stored progress value updated by the simulator.
+        # Fallback to the previous time-based heuristic only if progress is unset.
+        progress = getattr(simulation, 'progress', None)
+        if progress is None or progress == 0:
+            if simulation.status == 'running':
+                # For backward compatibility, fall back to a simple time-based estimate
+                from django.utils import timezone
+                elapsed = (timezone.now() - simulation.updated_at).total_seconds()
+                progress = min(int((elapsed / 5) * 100), 99)
+            elif simulation.status == 'completed':
+                progress = 100
+            else:
+                progress = 0
         
         # Include any stored error message so the frontend can display it
         error_msg = simulation.error_message if getattr(simulation, 'error_message', None) else None
