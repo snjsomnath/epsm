@@ -1,483 +1,348 @@
-// frontend/src/components/results/ResultsPage.tsx
-import { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Grid,
-  Card,
-  CardContent,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Chip,
-  Stack,
-  Alert,
-  LinearProgress,
-  Tooltip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions
-} from '@mui/material';
-import { 
-  
-  Download, 
-  FileText, 
-  Info, 
-  Maximize2,
-  TrendingUp,
-  TrendingDown,
-  Minus
-} from 'lucide-react';
-import {
-  
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-  ComposedChart,
-  Scatter
-} from 'recharts';
+import React, { useEffect, useMemo, useState } from 'react';
+import { authenticatedFetch } from '../../lib/auth-api';
+import { Box, Typography, Grid, Paper, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Snackbar, Alert } from '@mui/material';
+import OverviewScatter from './OverviewScatter';
+import ResultsDetailsPanel from './ResultsDetailsPanel';
+import { normalizeResultMetrics } from './resultsUtils';
+import ExplorerTree from './ExplorerTree';
+import DrawerPane from './DrawerPane';
+// IdfsPane removed
+// VariantsPane removed
+import { useSelectionStore } from '../../state/selectionStore';
 import { useDatabase } from '../../context/DatabaseContext';
-import { useSimulation } from '../../context/SimulationContext';
 
-const ResultsPage = () => {
-  const { scenarios } = useDatabase();
-  const { loadResults, addToBaselineRun, cachedResults, lastResults, history: runHistory } = useSimulation();
+const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error] = useState<string | null>(null);
-  const [selectedResult, setSelectedResult] = useState<any>(null);
+  const selection = useSelectionStore();
   const [selectedResultDetail, setSelectedResultDetail] = useState<any>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [filterText, setFilterText] = useState('');
-  const [scenarioFilter, setScenarioFilter] = useState<string>('');
+  const { deleteScenario } = useDatabase();
+  // Helper to extract a UUID-like substring from scenario ids that may include suffixes like ':1'
+  const extractUuid = (s?: string | null) => {
+    if (!s) return undefined;
+    const m = String(s).match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+    if (m && m[0]) return m[0];
+    // fallback: split on colon and take first part
+    return String(s).split(':')[0];
+  };
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [toDeleteScenarioId, setToDeleteScenarioId] = useState<string | null>(null);
+  const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+
+  const metricOptions = [
+    { value: 'eui_total', label: 'Total EUI' },
+    { value: 'eui_heating', label: 'Heating EUI' },
+    { value: 'eui_cooling', label: 'Cooling EUI' },
+    { value: 'eui_equipment', label: 'Equipment EUI' },
+  ];
+  const [colorMetric, setColorMetric] = useState(metricOptions[0]);
+
+  // Extracted fetch so we can re-use it when scenarios change elsewhere
+  const fetchResults = async () => {
+    let mounted = true;
+    try {
+      setLoading(true);
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      const apiUrl = base ? `${base.replace(/\/$/, '')}/api/simulation/results/` : '/api/simulation/results/';
+      // Use authenticatedFetch so cookies/CSRF/auth headers are handled uniformly
+      const res = await authenticatedFetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      } as RequestInit);
+      if (!res.ok) throw new Error('no api');
+      const json = await res.json();
+      if (!mounted) return;
+      setResults(Array.isArray(json) ? json : []);
+    } catch (e) {
+      const fallback: any[] = [];
+      const uniq = new Map<string, any>();
+      fallback.forEach(item => uniq.set(String(item?.id ?? item?.simulation_id ?? Math.random()), item));
+      setResults(Array.from(uniq.values()));
+    } finally {
+      if (mounted) setLoading(false);
+    }
+    return () => { mounted = false; };
+  };
 
   useEffect(() => {
-    const fetchResults = async () => {
+    // initial load
+    fetchResults();
+
+    // refresh when other parts of app notify that scenarios changed
+    const onChanged = (ev: Event) => {
       try {
-        setLoading(true);
-        // Fetch results from your backend
-        const response = await fetch('http://localhost:8000/api/simulation/results/');
-        if (!response.ok) {
-          // If API not available, fall back to locally cached results from SimulationContext
-          if (response.status === 404) {
-            console.warn('Results endpoint not found; falling back to local cache');
-          } else {
-            console.warn('Results endpoint returned error', response.status);
-          }
-          const fallback: any[] = [];
-          if (Array.isArray(lastResults) && lastResults.length > 0) fallback.push(...lastResults);
-          // cachedResults is a map of id -> normalized result; flatten any arrays/objects
-          if (cachedResults) {
-            Object.values(cachedResults).forEach(v => {
-              if (Array.isArray(v)) fallback.push(...v);
-              else if (v) fallback.push(v);
-            });
-          }
-          // keep unique by id
-          const uniq = new Map<string, any>();
-          fallback.forEach(item => {
-            const id = String(item?.id || item?.simulation_id || item?.run_id || Math.random());
-            if (!uniq.has(id)) uniq.set(id, item);
-          });
-          setResults(Array.from(uniq.values()));
+        // If the event provides a detail with an id, try to remove matching runs in-memory
+        const detail = (ev as CustomEvent)?.detail;
+        const deletedId = detail?.id;
+        const uuid = extractUuid(deletedId);
+        if (uuid) {
+          setResults(prev => prev.filter(r => {
+            const candidate = extractUuid(String(r.simulation_id ?? r.scenario_id ?? r.scenario ?? ''));
+            return candidate !== uuid;
+          }));
           return;
         }
-
-        const data = await response.json();
-        setResults(data);
-      } catch (err) {
-        console.warn('Failed to fetch simulation results; falling back to local cache', err);
-        const fallback: any[] = [];
-        if (Array.isArray(lastResults) && lastResults.length > 0) fallback.push(...lastResults);
-        if (cachedResults) {
-          Object.values(cachedResults).forEach(v => {
-            if (Array.isArray(v)) fallback.push(...v);
-            else if (v) fallback.push(v);
-          });
-        }
-        const uniq = new Map<string, any>();
-        fallback.forEach(item => {
-          const id = String(item?.id || item?.simulation_id || item?.run_id || Math.random());
-          if (!uniq.has(id)) uniq.set(id, item);
-        });
-        setResults(Array.from(uniq.values()));
-      } finally {
-        setLoading(false);
+      } catch (e) {
+        // fallthrough to full refresh
       }
-    };
 
-    fetchResults();
+      // fallback: re-fetch from server
+      fetchResults();
+    };
+    window.addEventListener('scenarios:changed', onChanged as EventListener);
+    return () => {
+      window.removeEventListener('scenarios:changed', onChanged as EventListener);
+    };
   }, []);
 
-  // Derived filtered list
-  const filteredResults = results.filter(r => {
-    if (scenarioFilter && String(r.scenario_id || r.scenario || '').indexOf(scenarioFilter) === -1) return false;
-    if (!filterText) return true;
-    const t = filterText.toLowerCase();
-    return (String(r.name || r.fileName || r.file || '')?.toLowerCase().indexOf(t) !== -1) ||
-      (String(r.id || '')?.toLowerCase().indexOf(t) !== -1) ||
-      (String(r.scenario || r.scenario_id || '')?.toLowerCase().indexOf(t) !== -1);
-  });
+  const users = useMemo(() => {
+    const m = new Map<string, any>();
+    results.forEach((r) => {
+      // Prefer an explicit user email if provided on the result object, then user_id, then user, else anonymous
+      const email = r.user_email || (r.user && r.user.email) || null;
+  const uidRaw = email || (r.user_id ?? r.user ?? 'anonymous');
+      const uid = String(uidRaw);
+      const displayName = email || uid;
+      if (!m.has(uid)) m.set(uid, { id: uid, name: displayName, scenarios: new Map(), stats: { runs_total: 0 } });
+      const u = m.get(uid);
+      u.stats.runs_total += 1;
+      const sid = String(r.simulation_id ?? r.scenario_id ?? r.scenario ?? 'unspecified');
+      if (!u.scenarios.has(sid)) u.scenarios.set(sid, { id: sid, name: sid, runs: [] });
+      u.scenarios.get(sid).runs.push(r);
+    });
+    return Array.from(m.values());
+  }, [results]);
 
-  const getStatusColor = (value: number, type: 'energy' | 'cost' | 'gwp') => {
-    const thresholds = {
-      energy: { low: 100, high: 150 },
-      cost: { low: 500, high: 1000 },
-      gwp: { low: 20, high: 40 }
-    };
-
-    const threshold = thresholds[type];
-    if (value <= threshold.low) return 'success';
-    if (value >= threshold.high) return 'error';
-    return 'warning';
-  };
-
-  const getStatusIcon = (value: number, baseline: number) => {
-    const percentChange = ((value - baseline) / baseline) * 100;
-    if (percentChange <= -5) return <TrendingDown color="green" size={16} />;
-    if (percentChange >= 5) return <TrendingUp color="red" size={16} />;
-    return <Minus size={16} />;
-  };
-
-  if (loading) {
-    return (
-      <Box sx={{ width: '100%', mt: 4 }}>
-        <LinearProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mt: 4 }}>
-        {error}
-      </Alert>
-    );
-  }
+  if (loading) return <Box sx={{ mt: 4 }}>Loading…</Box>;
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Simulation Results</Typography>
-      <Typography variant="body1" paragraph>View and analyze simulation results across different scenarios.</Typography>
-
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6">Run History</Typography>
-            <Stack spacing={1} sx={{ mt: 1, maxHeight: 420, overflow: 'auto' }}>
-              {(runHistory || []).map(h => (
-                <Box key={String(h.id) + '-' + String(h.ts)} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Box>
-                    <Typography variant="body2">{h.title || h.id}</Typography>
-                    <Typography variant="caption" color="text.secondary">{new Date(h.ts).toLocaleString()}</Typography>
+        <Grid item xs={12} md={3}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <DrawerPane title="Users">
+              <ExplorerTree users={users} onSelectUser={(u: any) => selection.set('user', u.id)} selectedUserId={selection.userId} />
+            </DrawerPane>
+
+            <DrawerPane title="Scenarios">
+              {(() => {
+                const su = users.find((x: any) => x.id === selection.userId);
+                if (!su) return <Typography variant="caption">Select a user</Typography>;
+                return <Box>{Array.from((su.scenarios || new Map()).values()).map((s: any) => (
+                  <Box key={s.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Button fullWidth variant={selection.scenarioId === s.id ? 'contained' : 'text'} onClick={() => selection.set('scenario', s.id)}>{s.name}</Button>
+                    <IconButton size="small" color="error" onClick={() => { setToDeleteScenarioId(s.id); setConfirmOpen(true); }} aria-label={`Delete scenario ${s.name}`}>
+                      <span style={{ fontSize: 16, lineHeight: 1 }}>🗑️</span>
+                    </IconButton>
                   </Box>
-                  <Box>
-                    <Button size="small" onClick={async () => {
-                      const found = results.find(r => String(r.id) === String(h.id) || String(r.simulation_id) === String(h.id));
-                      if (found) {
-                        setSelectedResult(found);
-                        setDetailsOpen(true);
-                        if (typeof loadResults === 'function') {
-                          const detail = await loadResults(String(h.id));
-                          setSelectedResultDetail(detail || found);
-                        }
-                      } else if (typeof loadResults === 'function') {
-                        const detail = await loadResults(String(h.id));
-                        setSelectedResult(detail || { id: h.id });
-                        setSelectedResultDetail(detail || { id: h.id });
-                        setDetailsOpen(true);
-                      }
-                    }}>Open</Button>
-                  </Box>
-                </Box>
-              ))}
-            </Stack>
-          </Paper>
+                ))}</Box>;
+              })()}
+            </DrawerPane>
+
+            <DrawerPane title="Runs">
+              {(() => {
+                const sc = users.find((x: any) => x.id === selection.userId)?.scenarios?.get(selection.scenarioId);
+                if (!sc) return <Typography variant="caption">Select a scenario</Typography>;
+                return <Box>{(sc.runs || []).slice(0, 200).map((r: any) => {
+                  const nr = normalizeResultMetrics(r);
+                  const label = `${r.name || r.fileName || r.id} ${nr.has_hourly ? '· hourly' : ''}`;
+                  return (
+                    <Button key={r.id || r.run_id} fullWidth variant={selection.runId === (r.id || r.run_id) ? 'contained' : 'text'} onClick={() => { selection.set('run', r.id || r.run_id); setSelectedResultDetail(r); }}>{label}</Button>
+                  );
+                })}</Box>;
+              })()}
+            </DrawerPane>
+
+            {/* IdfsPane removed per UX decision */}
+
+            {/* Variants pane removed per user request */}
+          </Box>
         </Grid>
 
-        <Grid item xs={12} md={8}>
-          <Stack spacing={2} sx={{ mb: 1 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-              <Box sx={{ flex: 1 }}>
-                <input
-                  placeholder="Search results by name, id, or scenario"
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--mui-palette-divider)' }}
-                />
-              </Box>
-              <Box sx={{ width: 240 }}>
-                <select value={scenarioFilter} onChange={(e) => setScenarioFilter(e.target.value)} style={{ width: '100%', padding: '8px 10px', borderRadius: 6 }}>
-                  <option value="">All scenarios</option>
-                  {scenarios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </Box>
-            </Stack>
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>Energy vs Runtime (scatter)</Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name || r.fileName }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="Energy (kWh/m²)" tick={{ fontSize: 12 }} />
-                        <YAxis dataKey="y" name="Runtime (s)" tick={{ fontSize: 12 }} />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.totalEnergy ?? r.energyUse ?? 0, y: r.runTime ?? r.runtime ?? r.elapsed ?? 0, name: r.name }))} fill="#8884d8" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" gutterBottom>GWP vs Cost (scatter)</Typography>
-                  <Box sx={{ height: 400 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="x" name="GWP (kg CO₂e/m²)" tick={{ fontSize: 12 }} />
-                        <YAxis dataKey="y" name="Cost (SEK/m²)" tick={{ fontSize: 12 }} />
-                        <RechartsTooltip />
-                        <Scatter data={results.map(r => ({ x: r.gwp ?? 0, y: r.cost ?? 0, name: r.name }))} fill="#ff7300" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
-
-            <Grid container spacing={3} sx={{ mt: 1 }}>
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Total Simulations</Typography>
-                    <Typography variant="h3">{results.length}</Typography>
-                    <Typography variant="body2" color="text.secondary">Across {scenarios.length} scenarios</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Average Energy Savings</Typography>
-                    <Typography variant="h3" color="success.main">24.5%</Typography>
-                    <Typography variant="body2" color="text.secondary">Compared to baseline</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Card sx={{ minHeight: 140, transition: 'transform 200ms ease', '&:hover': { transform: 'translateY(-4px)' } }}>
-                  <CardContent>
-                    <Typography variant="h6" gutterBottom>Best Performing Scenario</Typography>
-                    <Typography variant="h5">High Performance Set</Typography>
-                    <Typography variant="body2" color="text.secondary">35.2% energy reduction</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-
-            <Grid item xs={12} sx={{ mt: 2 }}>
-              <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                <TableContainer>
-                  <Table stickyHeader>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Scenario</TableCell>
-                        <TableCell align="right">Energy Use (kWh/m²)</TableCell>
-                        <TableCell align="right">Cost (SEK/m²)</TableCell>
-                        <TableCell align="right">GWP (kg CO₂e/m²)</TableCell>
-                        <TableCell align="right">Variant</TableCell>
-                        <TableCell align="right">Weather</TableCell>
-                        <TableCell align="right">Savings vs. Baseline</TableCell>
-                        <TableCell align="center">Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredResults.map((result) => (
-                        <TableRow key={String(result.id || result.simulation_id || result.run_id || Math.random())} hover>
-                          <TableCell>
-                            <Stack>
-                              <Typography variant="body2">{result.name || result.fileName || result.id}</Typography>
-                              <Typography variant="caption" color="text.secondary">{String(result.scenario_name || result.scenario || result.scenario_id || '')}</Typography>
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.energyUse ?? result.totalEnergy ?? '-'} color={getStatusColor(result.energyUse ?? result.totalEnergy ?? 0, 'energy') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.cost ?? '-'} color={getStatusColor(result.cost ?? 0, 'cost') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              <Chip size="small" label={result.gwp ?? '-'} color={getStatusColor(result.gwp ?? 0, 'gwp') as any} />
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="right">{result.variant_idx ?? result.variant ?? '-'}</TableCell>
-                          <TableCell align="right">{result.weather_file || result.epw || '-'}</TableCell>
-                          <TableCell align="right">
-                            <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
-                              {result.savings ?? '-'}%
-                              {getStatusIcon(result.energyUse ?? result.totalEnergy ?? 0, 150)}
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Tooltip title="View Details">
-                              <IconButton size="small" onClick={async () => {
-                                setSelectedResult(result);
-                                setDetailsOpen(true);
-                                if (typeof loadResults === 'function') {
-                                  const id = result.simulation_id || result.id || result.run_id;
-                                  try {
-                                    const detail = await loadResults(String(id));
-                                    setSelectedResultDetail(detail || result);
-                                  } catch (e) {
-                                    setSelectedResultDetail(result);
-                                  }
-                                } else {
-                                  setSelectedResultDetail(result);
-                                }
-                              }}>
-                                <Info size={18} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Download Results">
-                              <IconButton size="small" onClick={() => {
-                                const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `simulation-${result.id || result.simulation_id || 'result'}.json`;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                              }}>
-                                <Download size={18} />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Add to Baseline">
-                              <IconButton size="small" onClick={() => {
-                                const id = String(result.simulation_id || result.id || result.run_id || '');
-                                if (id && typeof addToBaselineRun === 'function') addToBaselineRun(id, result.name || result.fileName || id, { source: 'resultsPage' });
-                              }}>
-                                <FileText size={18} />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+        <Grid item xs={12} md={9}>
+          <Box>
+            {selection.runId ? (
+              // when a specific run is selected, show detailed KPIs and hourly if present
+              <Paper sx={{ p: 2 }}>
+                <ResultsDetailsPanel result={selectedResultDetail} />
               </Paper>
-            </Grid>
-          </Stack>
+            ) : selection.scenarioId ? (
+              // when a scenario is selected but no run, show a scatter of the scenario's runs
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6">Scenario: {selection.scenarioId}</Typography>
+                  <Typography variant="caption" color="text.secondary">Runs for this scenario</Typography>
+                  <Box sx={{ mt: 2 }}>
+                    {(() => {
+                      const sc = users.find((x: any) => x.id === selection.userId)?.scenarios?.get(selection.scenarioId);
+                      const runs = sc?.runs || [];
+                      const data = runs.map((r: any) => ({
+                        id: r.id || r.run_id,
+                        eui_total: r.total_energy_use ?? r.totalEnergy ?? r.total_energy ?? 0,
+                        eui_heating: r.heating_demand ?? r.heating ?? r.eui_heating ?? 0,
+                        eui_cooling: r.cooling_demand ?? r.cooling ?? r.eui_cooling ?? 0,
+                        eui_equipment: r.equipment_demand ?? r.equipment ?? r.eui_equipment ?? 0,
+                        name: r.name || r.fileName || r.id,
+                        raw: r,
+                      }));
+                      return (
+                        <Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                            <Typography variant="subtitle2">Color points by:</Typography>
+                            <select
+                              value={colorMetric.value}
+                              onChange={(e) => {
+                                const found = metricOptions.find(m => m.value === e.target.value);
+                                if (found) setColorMetric(found);
+                              }}
+                            >
+                              {metricOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                              ))}
+                            </select>
+                          </Box>
+                          <OverviewScatter data={data} xKey="eui_total" yKey="eui_heating" onPointClick={(p) => {
+                            const payload = (p && (p.payload || p)) as any;
+                            const id = payload?.id;
+                            const match = runs.find((rr: any) => String(rr.id || rr.run_id) === String(id));
+                            if (match) { selection.set('run', match.id || match.run_id); setSelectedResultDetail(match); }
+                          }} colorKey={colorMetric.value} colorLabel={colorMetric.label} />
+                        </Box>
+                      );
+                    })()}
+                  </Box>
+                </Paper>
+            ) : selection.userId ? (
+              // when a user is selected (but no scenario/run), show summary info about that user's scenarios
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6">User: {(() => { const su = users.find((x: any) => x.id === selection.userId); return su ? su.name : selection.userId; })()}</Typography>
+                <Typography variant="caption" color="text.secondary" gutterBottom>Summary of scenarios and runs for this user</Typography>
+                {(() => {
+                  const su = users.find((x: any) => x.id === selection.userId);
+                  if (!su) return <Typography variant="body2">No data for this user.</Typography>;
+
+                  const scenariosArr = Array.from((su.scenarios || new Map()).values());
+                  const totalScenarios = scenariosArr.length;
+                  const totalRuns = scenariosArr.reduce((acc: number, s: any) => acc + (s.runs?.length || 0), 0);
+                  // earliest creation time across all runs (try created_at, created, timestamp fields)
+                  const allDates = scenariosArr.flatMap((s: any) => (s.runs || []).map((r: any) => r.created_at || r.created || r.timestamp || null).filter(Boolean));
+                  const earliest = allDates.length ? new Date(Math.min(...allDates.map((d: any) => new Date(d).getTime()))) : null;
+                  // unique idfs across all runs (try idf_idx, idf)
+                  const idfSet = new Set<string>();
+                  scenariosArr.forEach((s: any) => (s.runs || []).forEach((r: any) => {
+                    const idf = (r.idf_idx ?? r.idf ?? r.raw_json?.idf_idx ?? r.raw_json?.idf);
+                    if (idf != null) idfSet.add(String(idf));
+                  }));
+
+                  return (
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', gap: 3, mb: 2 }}>
+                        <Box>
+                          <Typography variant="subtitle2">Scenarios</Typography>
+                          <Typography variant="h6">{totalScenarios}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2">Total runs</Typography>
+                          <Typography variant="h6">{totalRuns}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2">Unique IDFs</Typography>
+                          <Typography variant="h6">{idfSet.size}</Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="subtitle2">Earliest run</Typography>
+                          <Typography variant="h6">{earliest ? earliest.toLocaleString() : '–'}</Typography>
+                        </Box>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Scenarios</Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 160px 120px 120px', gap: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Name / ID</Typography>
+                          <Typography variant="caption" color="text.secondary">Created</Typography>
+                          <Typography variant="caption" color="text.secondary">Runs</Typography>
+                          <Typography variant="caption" color="text.secondary">Unique IDFs</Typography>
+                        </Box>
+                        {scenariosArr.map((s: any) => {
+                          const runs = s.runs || [];
+                          const createds = runs.map((r: any) => r.created_at || r.created || r.timestamp).filter(Boolean);
+                          const created = createds.length ? new Date(Math.min(...createds.map((d: any) => new Date(d).getTime()))) : null;
+                          const sIdfSet = new Set<string>();
+                          runs.forEach((r: any) => {
+                            const idf = (r.idf_idx ?? r.idf ?? r.raw_json?.idf_idx ?? r.raw_json?.idf);
+                            if (idf != null) sIdfSet.add(String(idf));
+                          });
+                          return (
+                            <Box key={s.id} sx={{ display: 'grid', gridTemplateColumns: '1fr 160px 120px 120px', gap: 1, py: 1, borderTop: '1px solid rgba(0,0,0,0.04)' }}>
+                              <Box>
+                                <Typography variant="body2">{s.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">{s.id}</Typography>
+                              </Box>
+                              <Typography variant="body2">{created ? created.toLocaleString() : '–'}</Typography>
+                              <Typography variant="body2">{runs.length}</Typography>
+                              <Typography variant="body2">{sIdfSet.size}</Typography>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    </Box>
+                  );
+                })()}
+              </Paper>
+            ) : (
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>Overview</Typography>
+                <Box sx={{ height: 640 }}>
+                  <OverviewScatter data={results.map(r => ({ eui_total: r.totalEnergy ?? r.energyUse ?? 0, eui_heating: r.eui_heating ?? r.heating ?? 0, id: r.id, name: r.name }))} xKey="eui_total" yKey="eui_heating" onPointClick={(p) => {
+                    const payload = (p && (p.payload || p)) as any;
+                    const id = payload?.id || payload?.simulation_id;
+                    const match = results.find(rr => String(rr.id || rr.simulation_id || rr.run_id) === String(id));
+                    if (match) { selection.set('run', match.id || match.run_id); setSelectedResultDetail(match); }
+                  }} />
+                </Box>
+              </Paper>
+            )}
+          </Box>
         </Grid>
       </Grid>
+        {/* Confirmation dialog for inline delete */}
+        <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+          <DialogTitle>Delete scenario</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to delete this scenario? This is irreversible and will remove associated constructions from the database.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button color="error" onClick={async () => {
+              if (!toDeleteScenarioId) return;
+              try {
+                const uuidOnly = extractUuid(toDeleteScenarioId);
+                const res = await deleteScenario(String(uuidOnly));
+                if (selection.scenarioId === toDeleteScenarioId || selection.scenarioId === uuidOnly) selection.set('scenario', undefined);
+                if (res && res.status === 'not_found') {
+                  setSnack({ open: true, message: 'Scenario had already been removed', severity: 'success' });
+                } else {
+                  setSnack({ open: true, message: 'Scenario deleted', severity: 'success' });
+                }
+              } catch (err: any) {
+                setSnack({ open: true, message: err?.message || 'Failed to delete scenario', severity: 'error' });
+              } finally {
+                setConfirmOpen(false);
+                setToDeleteScenarioId(null);
+              }
+            }}>Delete</Button>
+          </DialogActions>
+        </Dialog>
 
-      {/* Details Dialog */}
-      <Dialog
-        open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Simulation Details
-          <IconButton
-            onClick={() => setDetailsOpen(false)}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <Maximize2 size={20} />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {selectedResult && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={8}>
-                <Typography variant="h6" gutterBottom>
-                  {selectedResult.name || selectedResult.fileName || selectedResult.id}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {selectedResult.description || selectedResult.summary || ''}
-                </Typography>
-
-                <Typography variant="subtitle2">Key Metrics</Typography>
-                <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-                  <Chip label={`Energy: ${selectedResult.energyUse ?? selectedResult.totalEnergy ?? '-'}`} />
-                  <Chip label={`Cost: ${selectedResult.cost ?? '-'}`} />
-                  <Chip label={`GWP: ${selectedResult.gwp ?? '-'}`} />
-                  <Chip label={`Runtime: ${selectedResult.runTime ?? selectedResult.elapsed ?? '-'}`} />
-                </Stack>
-
-                <Typography variant="subtitle2">Provenance</Typography>
-                <Stack spacing={1} sx={{ mb: 2 }}>
-                  <Typography variant="body2">Scenario: {selectedResult.scenario_name || selectedResult.scenario || selectedResult.scenario_id || '-'}</Typography>
-                  <Typography variant="body2">Variant: {selectedResult.variant_idx ?? selectedResult.variant ?? '-'}</Typography>
-                  <Typography variant="body2">Weather: {selectedResult.weather_file || selectedResult.epw || '-'}</Typography>
-                </Stack>
-
-                <Typography variant="subtitle2">Materials & Constructions</Typography>
-                <Paper variant="outlined" sx={{ p: 1, maxHeight: 220, overflow: 'auto' }}>
-                  {selectedResultDetail && selectedResultDetail.construction_set ? (
-                    Object.entries(selectedResultDetail.construction_set).map(([k, cs]: any) => (
-                      <Box key={String(k)} sx={{ mb: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{k}</Typography>
-                        <Typography variant="caption">{cs?.name || ''}</Typography>
-                        {Array.isArray(cs?.layers) && (
-                          <Box sx={{ mt: 0.5 }}>
-                            {cs.layers.map((l: any, i: number) => <Typography key={i} variant="caption" display="block">- {l}</Typography>)}
-                          </Box>
-                        )}
-                      </Box>
-                    ))
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">No construction data available in details.</Typography>
-                  )}
-                </Paper>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Typography variant="subtitle2">Files</Typography>
-                <Stack spacing={1} sx={{ mb: 2 }}>
-                  <Typography variant="body2">IDF: {selectedResult.fileName || selectedResult.id || '-'}</Typography>
-                  <Typography variant="body2">EPW: {selectedResult.weather_file || selectedResult.epw || '-'}</Typography>
-                  <Typography variant="body2">Construction Set: {selectedResult.construction_set?.name || '-'}</Typography>
-                </Stack>
-
-                <Typography variant="subtitle2">Raw JSON</Typography>
-                <Paper variant="outlined" sx={{ p: 1, maxHeight: 300, overflow: 'auto' }}>
-                  <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(selectedResultDetail || selectedResult, null, 2)}</pre>
-                </Paper>
-              </Grid>
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
-          <Button variant="contained" startIcon={<Download />}>
-            Export Details
-          </Button>
-        </DialogActions>
-      </Dialog>
+        <Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack({ ...snack, open: false })}>
+          <Alert severity={snack.severity} onClose={() => setSnack({ ...snack, open: false })}>
+            {snack.message}
+          </Alert>
+        </Snackbar>
     </Box>
   );
 };

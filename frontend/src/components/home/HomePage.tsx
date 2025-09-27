@@ -371,14 +371,8 @@ const HomePage = () => {
                     <>
                       <ListItem>
                         <ListItemText 
-                          primary="User ID"
-                          secondary={user.id}
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText 
-                          primary="Email"
-                          secondary={user.email}
+                          primary="User"
+                          secondary={user.email || user.id}
                         />
                       </ListItem>
                     </>

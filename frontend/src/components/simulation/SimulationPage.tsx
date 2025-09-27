@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authenticatedFetch } from '../../lib/auth-api';
 import { 
   Box, 
   Typography, 
@@ -87,8 +88,8 @@ const SimulationPage = () => {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/simulation/system-resources/');
-        setBackendAvailable(response.ok);
+        const response = await authenticatedFetch('http://localhost:8000/api/simulation/system-resources/');
+        setBackendAvailable(!!(response && response.ok));
       } catch (err) {
         console.warn('Backend not available:', err);
         setBackendAvailable(false);
@@ -412,9 +413,10 @@ const SimulationPage = () => {
         console.warn('Failed to log batch simulation payload', logErr);
       }
 
-      const response = await fetch('http://localhost:8000/api/simulation/run/', {
+      const response = await authenticatedFetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
         body: formData,
+        // let authenticatedFetch add credentials and headers
       });
 
       console.log('Batch simulation API responded', { status: response.status, ok: response.ok });
@@ -439,8 +441,8 @@ const SimulationPage = () => {
         if (pollInterval) return;
         pollInterval = setInterval(async () => {
           if (stopped) return;
-          try {
-            const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+            try {
+            const statusResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
             if (statusResponse.status === 429) return;
             const statusData = await statusResponse.json();
 
@@ -452,7 +454,7 @@ const SimulationPage = () => {
               if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
               stopped = true;
               try {
-                const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+                const resultsResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
                 if (resultsResponse.ok) {
                   const resultsData = await resultsResponse.json();
                   setResults(resultsData);
@@ -512,9 +514,9 @@ const SimulationPage = () => {
               setCompletedSimulations(Math.floor((data.progress / 100) * totalSimulations));
             }
             if (data.status === 'completed') {
-              (async () => {
+                (async () => {
                 try {
-                  const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+                  const resultsResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
                   if (resultsResponse.ok) {
                     const resultsData = await resultsResponse.json();
                     setResults(resultsData);

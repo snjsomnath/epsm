@@ -157,7 +157,8 @@ const ScenarioPage = () => {
   const handleDelete = async (id: string) => {
     try {
       setLoading(true);
-      await deleteScenario(id);
+  await deleteScenario(id);
+  // If backend returned not_found, deleteScenario treats it as success for UI
       setConfirmDelete(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete scenario');

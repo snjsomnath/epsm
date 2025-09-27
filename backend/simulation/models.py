@@ -50,8 +50,15 @@ class SimulationFile(models.Model):
         return f"{self.file_type} file for {self.simulation.name}"
 
 class SimulationResult(models.Model):
-    """Store individual simulation results replacing SQLite files"""
-    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name='results')
+    """Store individual simulation results replacing SQLite files
+
+    Note: store the owning Simulation's UUID in `simulation_id` (UUIDField) rather
+    than a cross-database ForeignKey so results can live in a separate Postgres
+    database without cross-db FK enforcement issues.
+    """
+    # Store simulation UUID explicitly to avoid cross-database FK constraints
+    # Make nullable to allow adding this field via migrations without a one-off default
+    simulation_id = models.UUIDField(db_index=True, null=True, blank=True)
     run_id = models.CharField(max_length=100, db_index=True)
     file_name = models.CharField(max_length=255)
     building_name = models.CharField(max_length=255, blank=True)
@@ -78,16 +85,19 @@ class SimulationResult(models.Model):
     construction_set_data = models.JSONField(null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
+    # Reference the owning user by id (nullable) rather than a cross-db FK
+    user_id = models.IntegerField(null=True, blank=True, db_index=True)
     
     class Meta:
         db_table = 'simulation_results'
         indexes = [
-            models.Index(fields=['simulation', 'run_id']),
+            models.Index(fields=['simulation_id', 'run_id']),
             models.Index(fields=['variant_idx', 'idf_idx']),
+            models.Index(fields=['user_id']),
         ]
     
     def __str__(self):
-        return f"Result for {self.file_name} - {self.simulation.name}"
+        return f"Result for {self.file_name} - simulation {self.simulation_id}"
 
 class SimulationZone(models.Model):
     """Store zone-specific results"""
@@ -116,3 +126,22 @@ class SimulationEnergyUse(models.Model):
     
     def __str__(self):
         return f"{self.end_use}: {self.total} kWh - {self.simulation_result.file_name}"
+
+
+class SimulationHourlyTimeseries(models.Model):
+    """Optional hourly timeseries for a simulation result (e.g., 8760 values)
+
+    Stored as a JSON array of numeric values. Kept optional to avoid forcing
+    large payloads when not required.
+    """
+    simulation_result = models.ForeignKey(SimulationResult, on_delete=models.CASCADE, related_name='hourly_timeseries')
+    has_hourly = models.BooleanField(default=False, db_index=True)
+    # Expect a list/array of floats length ~8760 when present
+    hourly_values = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'simulation_hourly_timeseries'
+
+    def __str__(self):
+        return f"Hourly timeseries for {self.simulation_result.file_name} (has_hourly={self.has_hourly})"
