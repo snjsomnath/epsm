@@ -247,6 +247,17 @@ const SimulationPage = () => {
     return Math.round(n);
   };
 
+  // Compute suggested resource allocations for the dialog (avoid hardcoded values)
+  const cpuPhysical = resourceStats?.cpu?.physical_cores ?? resourceStats?.cpu?.logical_cores ?? (navigator.hardwareConcurrency ? Math.floor(navigator.hardwareConcurrency / 2) : 4);
+  const cpuLogical = resourceStats?.cpu?.logical_cores ?? navigator.hardwareConcurrency ?? cpuPhysical;
+  // Suggest parallel workers: leave 1 core for system; at least 1, cap to a reasonable upper bound
+  const suggestedParallel = Math.max(1, Math.min( Math.max(1, (cpuLogical - 1)), 32));
+  // Estimate memory usage: prefer available_gb if present, otherwise assume half of total
+  const availableMem = toNumber(resourceStats?.memory?.available_gb);
+  const totalMem = toNumber(resourceStats?.memory?.total_gb);
+  const estMemGb = availableMem > 0 ? Math.max(1, Math.round(availableMem)) : (totalMem > 0 ? Math.max(1, Math.round(totalMem / 2)) : 4);
+  const estMemLabel = `${estMemGb} GB`;
+
   
 
   // Dynamically update totalSimulations based on IDFs and construction variants
@@ -417,67 +428,122 @@ const SimulationPage = () => {
       console.log('Batch simulation API success', data);
       const simulationId = data.simulation_id;
 
-      // Use a slower polling interval to avoid 429 errors (Too Many Requests)
-      let pollInterval: NodeJS.Timeout;
+      // Try WebSocket first for real-time progress updates, fall back to polling
+      let pollInterval: NodeJS.Timeout | null = null;
       let stopped = false;
-      pollInterval = setInterval(async () => {
-        if (stopped) return;
-        try {
-          const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
-          if (statusResponse.status === 429) {
-            return;
-          }
-          const statusData = await statusResponse.json();
+      let progWs: ReconnectingWebSocket | null = null;
+      let wsHandled = false;
 
-          console.debug('Simulation status update', { simulationId, status: statusData.status, progress: statusData.progress });
+      const startPolling = () => {
+        if (pollInterval) return;
+        pollInterval = setInterval(async () => {
+          if (stopped) return;
+          try {
+            const statusResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+            if (statusResponse.status === 429) return;
+            const statusData = await statusResponse.json();
 
-          setProgress(statusData.progress ?? 0);
-          setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
+            console.debug('Simulation status update (poll)', { simulationId, status: statusData.status, progress: statusData.progress });
+            setProgress(statusData.progress ?? 0);
+            setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
 
-      if (statusData.status === 'completed') {
-            clearInterval(pollInterval);
-            stopped = true;
-            try {
-              const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
-              if (!resultsResponse.ok) {
-                const bodyText = await resultsResponse.text();
-                console.error('Failed to fetch parallel results', { simulationId, status: resultsResponse.status, body: bodyText });
-              } else {
-                const resultsData = await resultsResponse.json();
-                console.log('Fetched parallel results', { simulationId, count: Array.isArray(resultsData) ? resultsData.length : undefined });
-                // cache and rehydrate via context when available
-                setResults(resultsData);
-                if (typeof loadResults === 'function') {
-                  try {
-                    await loadResults(simulationId);
-                    console.log('Rehydrated results via loadResults', { simulationId });
-                  } catch (e) {
-                    console.error('loadResults failed', { simulationId, error: e });
-                  }
+            if (statusData.status === 'completed') {
+              if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+              stopped = true;
+              try {
+                const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+                if (resultsResponse.ok) {
+                  const resultsData = await resultsResponse.json();
+                  setResults(resultsData);
+                  if (typeof cacheLastResults === 'function') { try { cacheLastResults(resultsData); } catch (e) { } }
+                  if (typeof addToHistory === 'function') { try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { } }
+                } else {
+                  const bodyText = await resultsResponse.text();
+                  console.error('Failed to fetch parallel results', { simulationId, status: resultsResponse.status, body: bodyText });
                 }
-                // Persist last results in context/localStorage so returning to tab doesn't clear them
-                if (typeof cacheLastResults === 'function') {
-                  try { cacheLastResults(resultsData); } catch (e) { console.warn('cacheLastResults failed', e); }
-                }
-                // Record this run in the session history so ResultsPage can list it
-                if (typeof addToHistory === 'function') {
-                  try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { console.warn('addToHistory failed', e); }
-                }
+              } catch (e) {
+                console.error('Error fetching parallel results', { simulationId, error: e });
               }
-            } catch (e) {
-              console.error('Error fetching parallel results', { simulationId, error: e });
+              setIsComplete(true);
+              setIsRunning(false);
+            } else if (statusData.status === 'failed') {
+              if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+              stopped = true;
+              console.error('Simulation failed', { simulationId, error: statusData.error });
+              setError(statusData.error || 'Simulation failed');
+              setIsRunning(false);
             }
-            setIsComplete(true);
-            setIsRunning(false);
-          } else if (statusData.status === 'failed') {
-            clearInterval(pollInterval);
-            stopped = true;
-            console.error('Simulation failed', { simulationId, error: statusData.error });
-            throw new Error(statusData.error || 'Simulation failed');
+          } catch (err) {
+            console.error('Error while polling simulation status', err);
           }
-        } catch (err) {
-          console.error('Error while polling simulation status', err);
-        }
+        }, 2000);
+      };
+
+      // Attempt to open WebSocket for progress updates
+      try {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsHost = window.location.hostname || 'localhost';
+        const wsPort = '8000';
+        const progUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/simulation-progress/${simulationId}/`;
+        progWs = new ReconnectingWebSocket(progUrl);
+
+        progWs.onopen = () => {
+          console.log('Connected to simulation progress WebSocket for', simulationId);
+          wsHandled = true;
+          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+        };
+
+        progWs.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            if (typeof data.progress !== 'undefined') {
+              setProgress(data.progress);
+              setCompletedSimulations(Math.floor((data.progress / 100) * totalSimulations));
+            }
+            if (data.status === 'completed') {
+              (async () => {
+                try {
+                  const resultsResponse = await fetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+                  if (resultsResponse.ok) {
+                    const resultsData = await resultsResponse.json();
+                    setResults(resultsData);
+                    if (typeof cacheLastResults === 'function') { try { cacheLastResults(resultsData); } catch (e) { } }
+                    if (typeof addToHistory === 'function') { try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { } }
+                  }
+                } catch (e) {
+                  console.error('Failed to fetch results after WS completion', e);
+                }
+                setIsComplete(true);
+                setIsRunning(false);
+              })();
+            }
+            if (data.status === 'failed') {
+              setIsRunning(false);
+              setIsComplete(true);
+              setError(data.error || 'Simulation failed');
+            }
+          } catch (e) {
+            console.warn('Malformed progress WS message', e);
+          }
+        };
+
+        progWs.onerror = (e) => {
+          console.warn('Progress WS error, falling back to polling', e);
+          if (!wsHandled) startPolling();
+        };
+
+        progWs.onclose = () => {
+          console.log('Progress WS closed, falling back to polling');
+          if (!wsHandled) startPolling();
+        };
+      } catch (e) {
+        console.warn('Failed to create progress websocket, using polling', e);
+        startPolling();
+      }
+
+      // If WS hasn't attached within 2s, ensure polling starts
+      setTimeout(() => {
+        if (!wsHandled) startPolling();
       }, 2000);
 
     } catch (err) {
@@ -1337,13 +1403,13 @@ const SimulationPage = () => {
             </Typography>
             <Stack spacing={1}>
               <Typography variant="body2">
-                • CPU Cores: {resourceStats?.cpu?.physical_cores || 8} of {resourceStats?.cpu?.logical_cores || 8} available
+                • CPU Cores: {cpuPhysical} of {cpuLogical} available
               </Typography>
               <Typography variant="body2">
-                • Parallel Simulations: 4
+                • Parallel Simulations: {suggestedParallel}
               </Typography>
               <Typography variant="body2">
-                • Estimated Memory Usage: ~4GB
+                • Estimated Memory Usage: ~{estMemGb} GB
               </Typography>
             </Stack>
           </Box>

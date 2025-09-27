@@ -24,6 +24,8 @@ class Simulation(models.Model):
     file_count = models.IntegerField(default=0)  # Track how many files are being simulated
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Progress percentage 0-100. Updated by simulator as runs complete.
+    progress = models.IntegerField(default=0)
 
     class Meta:
         db_table = 'simulation_runs'

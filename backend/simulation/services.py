@@ -13,6 +13,8 @@ import psutil
 
 import concurrent.futures
 import sqlite3
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 
 # Helper to determine default max workers based on available CPUs
@@ -79,6 +81,30 @@ class EnergyPlusSimulator:
         # Log the paths for debugging
         print(f"Simulation {simulation.id} results will be saved to: {self.results_dir}")
         print(f"Simulation {simulation.id} files will be saved to: {self.files_dir}")
+
+        # Precompute channel group name for progress pushes
+        self._channel_layer = get_channel_layer()
+        self._progress_group = f"simulation_progress_{self.run_id}"
+
+    def _push_progress(self, progress: int, status: str = None, extra: dict = None):
+        """Send a progress update to the Channels group so WebSocket clients receive pushes."""
+        payload = {"progress": int(progress)}
+        if status is not None:
+            payload['status'] = status
+        if extra:
+            payload.update(extra)
+
+        try:
+            async_to_sync(self._channel_layer.group_send)(
+                self._progress_group,
+                {
+                    'type': 'progress_update',
+                    'payload': payload
+                }
+            )
+        except Exception:
+            # Non-fatal: continue if channel layer is not available
+            pass
 
     def run_single_simulation(self, idf_file, weather_file, simulation_dir):
         """Run a single EnergyPlus simulation using Docker container"""
@@ -278,6 +304,8 @@ class EnergyPlusSimulator:
         logs = []
         if max_workers is None:
             max_workers = _default_max_workers()
+        total = len(idf_files)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for idf_file in idf_files:
                 idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
@@ -289,12 +317,36 @@ class EnergyPlusSimulator:
                     idf_file, weather_file, str(idf_results_dir)
                 )
                 futures.append((idf_file, future))
-            for idf_file, future in futures:
+            # Use as_completed to update progress as tasks finish
+            from concurrent.futures import as_completed as _as_completed
+            for fut in _as_completed([f for (_, f) in futures]):
+                # find the associated idf_file
+                pair = next(((idf, f) for (idf, f) in futures if f is fut), None)
                 try:
-                    log = future.result()
-                    logs.append((idf_file, log))
+                    log = fut.result()
+                    if pair:
+                        logs.append((pair[0], log))
+                    else:
+                        logs.append((None, log))
                 except Exception as e:
-                    logs.append((idf_file, {"error": str(e)}))
+                    if pair:
+                        logs.append((pair[0], {"error": str(e)}))
+                    else:
+                        logs.append((None, {"error": str(e)}))
+                # update progress on the simulation model
+                try:
+                    completed += 1
+                    pct = int((completed / total) * 100)
+                    self.simulation.progress = pct
+                    # Avoid writing end_time here; just update progress and updated_at
+                    self.simulation.save()
+                    # Push progress update to WebSocket clients if channel layer is available
+                    try:
+                        self._push_progress(pct, status='running')
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         return logs
 
     def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers: Optional[int]=None):
@@ -352,11 +404,13 @@ class EnergyPlusSimulator:
                     "variant_dir": variant_dir
                 })
 
-        # Run all generated IDFs in parallel
+        # Run all generated IDFs in parallel and update progress as each finishes
         logs = []
         results = []
         if max_workers is None:
             max_workers = _default_max_workers()
+        total = len(variant_map)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
             for entry in variant_map:
@@ -381,6 +435,14 @@ class EnergyPlusSimulator:
                         results.append(file_results)
                 except Exception as e:
                     results.append({"error": str(e), "variant_idx": entry["variant_idx"], "idf_idx": entry["idf_idx"]})
+                # update progress on the simulation model
+                try:
+                    completed += 1
+                    pct = int((completed / total) * 100) if total > 0 else 100
+                    self.simulation.progress = pct
+                    self.simulation.save()
+                except Exception:
+                    pass
 
         # Save all results to PostgreSQL database
         print(f"Saving batch results to database for simulation {self.simulation.id}")
@@ -408,6 +470,11 @@ class EnergyPlusSimulator:
         try:
             self.simulation.status = 'running'
             self.simulation.save()
+            # notify clients that simulation has started (progress may be 0)
+            try:
+                self._push_progress(self.simulation.progress or 0, status='running')
+            except Exception:
+                pass
 
             idf_files = self.simulation.files.filter(file_type='idf')
             weather_file = self.simulation.files.filter(file_type='weather').first()
@@ -450,6 +517,8 @@ class EnergyPlusSimulator:
                         all_results.append(file_results)
             else:
                 print("Running simulations in serial mode")
+                total = len(list(idf_files))
+                done = 0
                 for idf_file in idf_files:
                     idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
                     idf_basename = os.path.basename(idf_path)
@@ -461,6 +530,14 @@ class EnergyPlusSimulator:
                     file_results = self.process_file_results(results_path, idf_file)
                     if file_results:
                         all_results.append(file_results)
+                    # update progress
+                    try:
+                        done += 1
+                        pct = int((done / total) * 100) if total > 0 else 100
+                        self.simulation.progress = pct
+                        self.simulation.save()
+                    except Exception:
+                        pass
 
             # Save all results to a combined JSON file
             combined_results_path = self.results_dir / 'combined_results.json'
@@ -477,7 +554,12 @@ class EnergyPlusSimulator:
             rel_path = str(combined_results_path.relative_to(self.media_root))
             self.simulation.results_file = rel_path
             self.simulation.status = 'completed'
+            self.simulation.progress = 100
             self.simulation.save()
+            try:
+                self._push_progress(100, status='completed')
+            except Exception:
+                pass
 
             print(f"Simulation {self.simulation.id} completed successfully with {len(all_results)} result sets")
 
