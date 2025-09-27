@@ -50,10 +50,11 @@ import {
   ResponsiveContainer
 } from 'recharts';
 import IdfUploadArea from '../baseline/IdfUploadArea';
+import CoreLaneView from './CoreLaneView';
 
 const SimulationPage = () => {
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults, lastResults, cacheLastResults, addToHistory } = useSimulation();
+  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults: _loadResults, lastResults, cacheLastResults, addToHistory } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
@@ -256,7 +257,7 @@ const SimulationPage = () => {
   const availableMem = toNumber(resourceStats?.memory?.available_gb);
   const totalMem = toNumber(resourceStats?.memory?.total_gb);
   const estMemGb = availableMem > 0 ? Math.max(1, Math.round(availableMem)) : (totalMem > 0 ? Math.max(1, Math.round(totalMem / 2)) : 4);
-  const estMemLabel = `${estMemGb} GB`;
+  
 
   
 
@@ -430,8 +431,8 @@ const SimulationPage = () => {
 
       // Try WebSocket first for real-time progress updates, fall back to polling
       let pollInterval: NodeJS.Timeout | null = null;
-      let stopped = false;
-      let progWs: ReconnectingWebSocket | null = null;
+  let stopped = false;
+  let progWs: WebSocket | null = null;
       let wsHandled = false;
 
       const startPolling = () => {
@@ -479,23 +480,33 @@ const SimulationPage = () => {
         }, 2000);
       };
 
-      // Attempt to open WebSocket for progress updates
+      // Attempt a single native WebSocket for progress updates to avoid noisy reconnect logs
       try {
         const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsHost = window.location.hostname || 'localhost';
-        const wsPort = '8000';
-        const progUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/simulation-progress/${simulationId}/`;
-        progWs = new ReconnectingWebSocket(progUrl);
+        const host = window.location.host; // include port if present
+        const hostnameFallback = window.location.hostname || 'localhost';
+        const candidateUrls = [
+          // 1) try same origin (works when backend is proxied)
+          `${wsProtocol}://${host}/ws/simulation-progress/${simulationId}/`,
+          // 2) fall back to explicit backend port (common in local dev)
+          `${wsProtocol}://${hostnameFallback}:8000/ws/simulation-progress/${simulationId}/`,
+        ];
 
-        progWs.onopen = () => {
-          console.log('Connected to simulation progress WebSocket for', simulationId);
-          wsHandled = true;
-          if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-        };
+        // Try the candidate URLs in order by creating a WebSocket for the first one.
+        // Browser will emit its own low-level error if connection is refused; we avoid repeated warn logs.
+        let firstErrorLogged = false;
+        const tryUrl = (url: string) => {
+          progWs = new WebSocket(url);
 
-        progWs.onmessage = (ev) => {
+          progWs.onopen = () => {
+            console.log('Connected to simulation progress WebSocket for', simulationId, 'via', url);
+            wsHandled = true;
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+          };
+
+          progWs.onmessage = (ev: MessageEvent) => {
           try {
-            const data = JSON.parse(ev.data);
+            const data = JSON.parse(ev.data as string);
             if (typeof data.progress !== 'undefined') {
               setProgress(data.progress);
               setCompletedSimulations(Math.floor((data.progress / 100) * totalSimulations));
@@ -527,15 +538,25 @@ const SimulationPage = () => {
           }
         };
 
-        progWs.onerror = (e) => {
-          console.warn('Progress WS error, falling back to polling', e);
-          if (!wsHandled) startPolling();
+          progWs.onerror = (e) => {
+            // Avoid logging the browser-level connection failure repeatedly. Log once and start polling.
+            if (!firstErrorLogged) {
+              console.warn('Progress WS error, falling back to polling', e);
+              firstErrorLogged = true;
+            }
+            if (!wsHandled) startPolling();
+          };
+
+          progWs.onclose = () => {
+            if (!wsHandled) {
+              if (!firstErrorLogged) console.log('Progress WS closed, falling back to polling');
+              startPolling();
+            }
+          };
         };
 
-        progWs.onclose = () => {
-          console.log('Progress WS closed, falling back to polling');
-          if (!wsHandled) startPolling();
-        };
+        // Start with the first candidate URL; browser-level errors will appear in console if connection fails.
+        tryUrl(candidateUrls[0]);
       } catch (e) {
         console.warn('Failed to create progress websocket, using polling', e);
         startPolling();
@@ -1127,6 +1148,26 @@ const SimulationPage = () => {
                     </CardContent>
                   </Card>
                 </Grid>
+              </Grid>
+              {/* Dendrogram showing assignment of simulations to cores. Aggregates leaves when too many. */}
+              <Grid item xs={12}>
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                    Simulation Assignment
+                  </Typography>
+                  <Paper variant="outlined" sx={{ p: 1 }}>
+                    <Paper sx={{ p: 1, height: 360 }} variant="outlined">
+                      <CoreLaneView
+                        totalSimulations={totalSimulations}
+                        cpuCores={cpuLogical}
+                        completedSimulations={completedSimulations}
+                        maxSegments={160}
+                        width={900}
+                        height={320}
+                      />
+                    </Paper>
+                  </Paper>
+                </Box>
               </Grid>
               
               {/* Resource History Charts */}
