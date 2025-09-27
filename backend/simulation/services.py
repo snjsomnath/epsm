@@ -4,6 +4,7 @@ import json
 import tempfile
 import pathlib
 from pathlib import Path
+from typing import Optional
 from django.conf import settings
 from .models import Simulation, SimulationFile
 from eppy.modeleditor import IDF
@@ -12,6 +13,45 @@ import psutil
 
 import concurrent.futures
 import sqlite3
+
+
+# Helper to determine default max workers based on available CPUs
+def _detect_cpu_count() -> int:
+    """Return an integer CPU count suitable for deciding worker pool size.
+
+    Tries in order: psutil (physical cores), psutil logical, os.cpu_count().
+    This attempts to be robust inside containers; if detection fails, 1 is
+    returned.
+    """
+    try:
+        # Prefer physical cores when available
+        if 'psutil' in globals():
+            c = psutil.cpu_count(logical=False)
+            if c and c > 0:
+                return int(c)
+            c = psutil.cpu_count(logical=True)
+            if c and c > 0:
+                return int(c)
+    except Exception:
+        pass
+    try:
+        import os as _os
+        c = _os.cpu_count()
+        if c and c > 0:
+            return int(c)
+    except Exception:
+        pass
+    return 1
+
+
+def _default_max_workers() -> int:
+    """Return a safe default for max_workers: max(1, cpu_count - 1).
+
+    Subtracting one avoids saturating the machine and leaves room for the
+    event loop or other services. Always returns at least 1.
+    """
+    c = _detect_cpu_count()
+    return max(1, c - 1)
 
 class EnergyPlusSimulator:
     def __init__(self, simulation: Simulation):
@@ -230,12 +270,14 @@ class EnergyPlusSimulator:
                 "output_dir": str(simulation_dir)
             }
 
-    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers=4):
+    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers: Optional[int]=None):
         # Run multiple IDF files in parallel using ThreadPoolExecutor
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         futures = []
         logs = []
+        if max_workers is None:
+            max_workers = _default_max_workers()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for idf_file in idf_files:
                 idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
@@ -255,20 +297,17 @@ class EnergyPlusSimulator:
                     logs.append((idf_file, {"error": str(e)}))
         return logs
 
-    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers=4):
+    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers: Optional[int]=None):
         """
         For each base IDF and each construction set, generate a new IDF with the construction set inserted,
         store it in a subfolder, and run all in parallel.
         """
-        # Prefer the older parser that provides `insert_construction_set` used for
-        # parametric generation. If it's not available, raise a clear error so
-        # the caller knows to install or restore `idf_parser_old.py`.
         try:
-            from .idf_parser_new import IdfParser
+            from .unified_idf_parser import IdfParser
         except Exception as e:
             raise ImportError(
-                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `idf_parser_old.py`. "
-                "Please ensure `backend/simulation/idf_parser_old.py` is present and importable."
+                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `unified_idf_parser.py`. "
+                "Please ensure `backend/simulation/unified_idf_parser.py` is present and importable."
             )
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -288,7 +327,21 @@ class EnergyPlusSimulator:
                 variant_dir.mkdir(parents=True, exist_ok=True)
                 idf_name = f"idf_{idf_idx+1}_variant_{variant_idx+1}.idf"
                 idf_path = variant_dir / idf_name
-                parser.idf.saveas(str(idf_path))
+                # Some parser instances may not have an underlying eppy IDF
+                # object (e.g. when eppy/IDD isn't available). Prefer using
+                # the IDF object's saveas when present; otherwise fall back
+                # to the parser's `to_string()` output written to disk.
+                try:
+                    idf_obj = getattr(parser, 'idf', None)
+                    if idf_obj is not None and hasattr(idf_obj, 'saveas'):
+                        idf_obj.saveas(str(idf_path))
+                    else:
+                        with open(str(idf_path), 'w', encoding='utf-8') as _f:
+                            _f.write(parser.to_string())
+                except Exception:
+                    # Last-resort: attempt to write parser.to_string()
+                    with open(str(idf_path), 'w', encoding='utf-8') as _f:
+                        _f.write(parser.to_string())
                 generated_idf_paths.append(idf_path)
                 variant_map.append({
                     "idf_file": idf_file,
@@ -302,6 +355,8 @@ class EnergyPlusSimulator:
         # Run all generated IDFs in parallel
         logs = []
         results = []
+        if max_workers is None:
+            max_workers = _default_max_workers()
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
             for entry in variant_map:
@@ -346,7 +401,7 @@ class EnergyPlusSimulator:
 
         print(f"Batch parametric simulation completed: {len(results)} results")
 
-    def run_simulation(self, parallel=False, max_workers=4, batch_mode=False, construction_sets=None):
+    def run_simulation(self, parallel=False, max_workers: Optional[int]=None, batch_mode=False, construction_sets=None):
         """
         Main method to run simulations using Docker EnergyPlus containers.
         """
@@ -380,6 +435,8 @@ class EnergyPlusSimulator:
             logs = []
 
             if parallel:
+                if max_workers is None:
+                    max_workers = _default_max_workers()
                 print(f"Running simulations in parallel mode (max_workers={max_workers})")
                 logs = self.run_parallel_simulations(idf_files, weather_file, self.results_dir, max_workers=max_workers)
                 for idf_file, log in logs:
