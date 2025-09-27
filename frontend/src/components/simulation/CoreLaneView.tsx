@@ -5,6 +5,8 @@ type CoreLaneProps = {
   totalSimulations?: number;
   cpuCores?: number;
   completedSimulations?: number;
+  // overall percent progress (0-100). When provided, allows partial-fill within a segment
+  progress?: number;
   maxSegments?: number;
   width?: number;
   height?: number;
@@ -14,6 +16,8 @@ const CoreLaneView: React.FC<CoreLaneProps> = ({
   totalSimulations = 0,
   cpuCores = 1,
   completedSimulations = 0,
+  // overall percent progress (0-100). When provided, allows partial-fill within a segment
+  progress,
   maxSegments = 150,
   width = 900,
   height = 320,
@@ -31,27 +35,22 @@ const CoreLaneView: React.FC<CoreLaneProps> = ({
   const remainder = totalSimulations % cores;
   const coreCounts = Array.from({ length: cores }).map((_, i) => perCoreBase + (i < remainder ? 1 : 0));
 
-  // Distribute completed simulations proportionally across cores so progress appears concurrent
+  // Distribute completed simulations proportionally across cores so progress appears concurrent.
+  // If `progress` is provided (fractional 0-100), use it so we can display partial fills within a segment.
+  const fractionalTotalCompleted = (() => {
+    // prefer fractional progress if provided
+    if (typeof progress !== 'undefined' && Number.isFinite(progress as any)) {
+      return Math.max(0, (progress as any / 100) * totalSimulations);
+    }
+    return Math.max(0, Number.isFinite(completedSimulations as any) ? (completedSimulations as any) : 0);
+  })();
+
+  // raw (possibly fractional) allocation per core
   const completedDistribution = (() => {
-    const total = Math.max(0, Math.floor(completedSimulations));
+    const total = Math.max(0, fractionalTotalCompleted || 0);
     const totalSlots = coreCounts.reduce((s, c) => s + c, 0) || 1;
     if (total <= 0) return coreCounts.map(() => 0);
-
-    // ideal fractional allocation per core = coreSlots / totalSlots * total
-    const raw = coreCounts.map((c) => (c / totalSlots) * total);
-    // floor allocations and keep remainder to distribute fairly by largest fractional part
-    const floored = raw.map((r) => Math.floor(r));
-    let assigned = floored.reduce((s, v) => s + v, 0);
-    const remaining = total - assigned;
-    const fractional = raw.map((r, i) => ({ idx: i, frac: r - floored[i] }));
-    fractional.sort((a, b) => b.frac - a.frac);
-    const result = floored.slice();
-    for (let i = 0; i < remaining; i++) {
-      const pick = fractional[i % fractional.length].idx;
-      result[pick] = Math.min(coreCounts[pick], result[pick] + 1);
-    }
-    // ensure we never assign more than the core has
-    return result.map((v, i) => Math.min(v, coreCounts[i]));
+    return coreCounts.map((c) => (c / totalSlots) * total);
   })();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -92,7 +91,14 @@ const CoreLaneView: React.FC<CoreLaneProps> = ({
     return coreCounts.map((count, idx) => {
       const completed = completedDistribution[idx] || 0;
       if (count <= maxSegments) {
-        return Array.from({ length: count }).map((_, i) => ({ size: 1, completed: i < completed ? 1 : 0 }));
+        // allow fractional completed for a single segment (partial progress)
+        const full = Math.floor(completed);
+        const partial = Math.max(0, completed - full);
+        return Array.from({ length: count }).map((_, i) => {
+          if (i < full) return { size: 1, completed: 1 };
+          if (i === full && partial > 0) return { size: 1, completed: partial };
+          return { size: 1, completed: 0 };
+        });
       }
       const groups = Math.ceil(count / maxSegments);
       const base = Math.floor(count / groups);

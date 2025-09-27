@@ -1161,6 +1161,7 @@ const SimulationPage = () => {
                         totalSimulations={totalSimulations}
                         cpuCores={cpuLogical}
                         completedSimulations={completedSimulations}
+                        progress={progress}
                         maxSegments={160}
                         width={900}
                         height={320}
