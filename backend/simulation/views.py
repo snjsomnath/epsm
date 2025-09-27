@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-from .idf_parser import EnergyPlusIDFParser
+from .unified_idf_parser import EnergyPlusIDFParser
 #from database.models import Material, Construction
 from database.models import Material, Construction
 from .database_client import check_material_exists, check_construction_exists
@@ -73,39 +73,51 @@ def parse_idf(request):
         for file_index, file in enumerate(files):
             print("Processing file:", file.name)
             content = file.read().decode('utf-8')
-            parser = EnergyPlusIDFParser()
-            file_data = parser.parse(content)
+            # UnifiedIDFParser requires the raw content on construction.
+            # Call parse() with no arguments to get the parsed dict.
+            parser = EnergyPlusIDFParser(content)
+            file_data = parser.parse()
             
             # Add database comparison for materials
-            for material in file_data['materials']:
+            for material in file_data.get('materials', []):
+                # Support both parser shapes:
+                # - older idf_parser.py returns flat dicts with keys like 'thickness', 'conductivity', etc.
+                # - unified_idf_parser returns dicts with a nested 'properties' dict containing those fields
                 material_name = material.get('name') or material.get('Name') or 'Unknown'
 
-                # Normalize properties into the shape the frontend expects
-                def _get_first_numeric(d, keys):
-                    for k in keys:
-                        if k in d and d[k] is not None:
+                # Helper to read numeric fields from either top-level or nested properties
+                def _get_numeric(obj, names):
+                    # obj can be a dict with direct keys, or have obj['properties']
+                    props = obj.get('properties') if isinstance(obj.get('properties'), dict) else obj
+                    for n in names:
+                        if n in props and props[n] is not None:
                             try:
-                                return float(d[k])
+                                return float(props[n])
                             except Exception:
                                 try:
-                                    # sometimes values are strings with commas
-                                    return float(str(d[k]).replace(',', ''))
+                                    return float(str(props[n]).replace(',', ''))
                                 except Exception:
                                     continue
                     return None
 
                 props = {}
-                props['thickness'] = _get_first_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
-                props['conductivity'] = _get_first_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
-                props['density'] = _get_first_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg_m3'])
-                # specific heat may be named specific_heat or Specific_Heat or specificHeat
-                props['specificHeat'] = _get_first_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
+                props['thickness'] = _get_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
+                props['conductivity'] = _get_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
+                props['density'] = _get_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg/m3'])
+                props['specificHeat'] = _get_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
 
-                # Other non-numeric properties
-                props['roughness'] = material.get('roughness') or material.get('Roughness')
-                props['thermalAbsorptance'] = material.get('thermal_absorptance') or material.get('Thermal_Absorptance')
-                props['solarAbsorptance'] = material.get('solar_absorptance') or material.get('Solar_Absorptance')
-                props['visibleAbsorptance'] = material.get('visible_absorptance') or material.get('Visible_Absorptance')
+                # Non-numeric properties (fall back to nested properties as well)
+                def _get_str(obj, keys):
+                    props_src = obj.get('properties') if isinstance(obj.get('properties'), dict) else obj
+                    for k in keys:
+                        if k in props_src and props_src[k] is not None:
+                            return props_src[k]
+                    return None
+
+                props['roughness'] = _get_str(material, ['roughness', 'Roughness'])
+                props['thermalAbsorptance'] = _get_str(material, ['thermal_absorptance', 'Thermal_Absorptance'])
+                props['solarAbsorptance'] = _get_str(material, ['solar_absorptance', 'Solar_Absorptance'])
+                props['visibleAbsorptance'] = _get_str(material, ['visible_absorptance', 'Visible_Absorptance'])
 
                 normalized_material = {
                     'name': material_name,
@@ -122,28 +134,29 @@ def parse_idf(request):
                 # Generate a unique key for this material
                 normalized_material['uniqueKey'] = f"{material_name}_{file_index}_{file.name}"
 
-                # Only add if not already added (or replace with the current one)
+                # Only add if not already added
                 if material_name not in materials_dict:
                     materials_dict[material_name] = normalized_material
             
             # Add database comparison for constructions
-            for construction in file_data['constructions']:
+            for construction in file_data.get('constructions', []):
                 construction_name = construction.get('name') or construction.get('Name') or 'Unknown'
 
-                # Extract layers — parsers may provide 'layers' list or field names
+                # Layers may be provided directly under 'layers' or nested under properties
                 layers = []
-                if isinstance(construction.get('layers'), list):
+                # 1) unified parser: construction may be {'properties': {'layers': [...]}}
+                props = construction.get('properties') if isinstance(construction.get('properties'), dict) else construction
+                if isinstance(props.get('layers'), list) and props.get('layers'):
+                    layers = props.get('layers')
+                elif isinstance(construction.get('layers'), list):
                     layers = construction.get('layers')
                 else:
-                    # Sometimes constructions come with numbered Layer_1, Layer_2... or a 'fields' list
-                    if 'fields' in construction and isinstance(construction['fields'], list):
-                        # Heuristic: first field is name, remaining are layers
-                        if len(construction['fields']) > 1:
-                            layers = construction['fields'][1:]
+                    # fallback to heuristic: fields list or keys like Layer_1, Layer_2
+                    if isinstance(construction.get('fields'), list) and len(construction.get('fields')) > 1:
+                        layers = construction.get('fields')[1:]
                     else:
-                        # Fallback: try to collect any keys that look like layer names
                         for k, v in construction.items():
-                            if k.lower().startswith('layer') and v:
+                            if isinstance(k, str) and k.lower().startswith('layer') and v:
                                 layers.append(v)
 
                 normalized_construction = {
@@ -206,17 +219,26 @@ def parse_idf_test(request):
             return JsonResponse({'error': 'Missing idf or construction_set in JSON body'}, status=400)
 
         # Use the older parser for this lightweight test
-        from .idf_parser_new import IdfParser, generate_parametric_idfs
+        from .unified_idf_parser import IdfParser, generate_parametric_idfs
         parser = IdfParser(idf_content)
         parser.insert_construction_set(construction_set)
 
         # Save to a temp file and return content
         with tempfile.NamedTemporaryFile(delete=False, suffix='.idf', mode='w', encoding='utf-8') as tmp:
-            parser.idf.saveas(tmp.name)
-            tmp.close()
+            try:
+                idf_obj = getattr(parser, 'idf', None)
+                if idf_obj is not None and hasattr(idf_obj, 'saveas'):
+                    idf_obj.saveas(tmp.name)
+                else:
+                    tmp.write(parser.to_string())
+            finally:
+                tmp.close()
             with open(tmp.name, 'r', encoding='utf-8') as f:
                 out = f.read()
-            os.remove(tmp.name)
+            try:
+                os.remove(tmp.name)
+            except Exception:
+                pass
 
         return JsonResponse({'modified_idf': out})
     except Exception as e:
@@ -499,20 +521,76 @@ def simulation_status(request, simulation_id):
         else:
             progress = 0
         
-        return JsonResponse({
+        # Include any stored error message so the frontend can display it
+        error_msg = simulation.error_message if getattr(simulation, 'error_message', None) else None
+
+        # If simulation is failed but no DB-stored error message is present,
+        # attempt to provide a short tail from any run logs to help debugging.
+        if simulation.status == 'failed' and not error_msg:
+            try:
+                sim_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_results', str(simulation_id))
+                if os.path.exists(sim_dir):
+                    # Look for common log filenames in the simulation results tree
+                    candidates = ['run_output.log', 'output.err', 'eplusout.err']
+                    found = None
+                    for root, _, files in os.walk(sim_dir):
+                        for fname in candidates:
+                            if fname in files:
+                                found = os.path.join(root, fname)
+                                break
+                        if found:
+                            break
+                    if found:
+                        # Read a reasonably small tail to avoid huge responses
+                        with open(found, 'rb') as f:
+                            f.seek(0, os.SEEK_END)
+                            size = f.tell()
+                            tail_size = min(size, 2000)
+                            if tail_size > 0:
+                                f.seek(-tail_size, os.SEEK_END)
+                            data = f.read().decode('utf-8', errors='replace')
+                        error_msg = f"Log snippet from {os.path.basename(found)}:\n" + data
+            except Exception:
+                # Non-fatal; if this fails, we will simply return null error fields
+                error_msg = None
+        response = JsonResponse({
             'status': simulation.status,
             'progress': progress,
-            'simulationId': simulation_id
+            'simulationId': simulation_id,
+            'error': error_msg,
+            'error_message': error_msg,
         })
+        # Add CORS headers here to ensure browser requests from the frontend
+        # receive the Access-Control-Allow-Origin header even if middleware
+        # doesn't run for some error/early-response paths. Prefer echoing
+        # the request Origin (if provided) so credentials can be used.
+        origin = request.headers.get('Origin') or request.META.get('HTTP_ORIGIN')
+        if origin:
+            response["Access-Control-Allow-Origin"] = origin
+            if getattr(settings, 'CORS_ALLOW_CREDENTIALS', False):
+                response["Access-Control-Allow-Credentials"] = "true"
+        else:
+            # Non-browser clients or tests may not send Origin; fall back to wildcard
+            response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
         
     except Simulation.DoesNotExist:
-        return JsonResponse({
+        response = JsonResponse({
             'error': 'Simulation not found'
         }, status=404)
+        response["Access-Control-Allow-Origin"] = "*"
+        return response
     except Exception as e:
-        return JsonResponse({
+        # Print full traceback to server logs for easier debugging
+        import traceback
+        traceback.print_exc()
+        response = JsonResponse({
             'error': str(e)
         }, status=500)
+        response["Access-Control-Allow-Origin"] = "*"
+        return response
 
 @csrf_exempt
 @api_view(['GET'])
