@@ -75,6 +75,12 @@ The script will:
 - Start the React frontend
 - Create default admin user
 
+Notes about `./scripts/start.sh` enhancements:
+- It now checks whether Docker is running and will attempt to launch Docker Desktop on macOS if Docker is not available.
+- If a `.env` file is missing, the script creates one from `.env.example` and prompts you to edit or continue with defaults.
+- The script waits for the database to be ready before running migrations. It also ensures a `results` database and role exist (defaults: `epsm_results` / `epsm_results_user`) and runs results-specific migrations when configured.
+- A default Django superuser (`admin` / `admin123`) is created automatically if it does not exist.
+
 ### 4. Verify Installation
 Open your browser and navigate to:
 
