@@ -1,6 +1,6 @@
 - [Home](index.md)
 - Overview
-  - [README](README.md)
+  - [Project README](PROJECT_README.md)
   - [Getting Started](GETTING_STARTED.md)
 - Development
   - [Development Guide](DEVELOPMENT.md)
