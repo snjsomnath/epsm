@@ -1,5 +1,10 @@
 # EPSM Development Guide
 
+---
+title: Development Guide
+layout: default
+---
+
 Complete development environment setup and workflow guide for the Energy Performance Simulation Manager (EPSM).
 
 ## 🚀 Quick Start

@@ -1,5 +1,10 @@
 # Getting Started with EPSM
 
+---
+title: Getting Started
+layout: default
+---
+
 This comprehensive guide will help you set up and run the Energy Performance Simulation Manager (EPSM) on your local machine.
 
 ## 📋 Prerequisites

@@ -1,3 +1,8 @@
+---
+title: Contributing
+layout: default
+---
+
 # Contributing to EPSM
 
 Thanks for considering contributing to EPSM. Please follow the process below:

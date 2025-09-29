@@ -1,5 +1,10 @@
 # EPSM Scripts Documentation
 
+---
+title: Scripts
+layout: default
+---
+
 This document describes the clean, organized script structure for the EPSM project.
 
 ## Script Overview
