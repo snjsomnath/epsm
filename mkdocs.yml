@@ -6,6 +6,7 @@ theme:
   name: material
 nav:
   - Home: index.md
+  - Project README: PROJECT_README.md
   - Getting Started: GETTING_STARTED.md
   - Development: DEVELOPMENT.md
   - API: API.md
@@ -13,3 +14,7 @@ nav:
   - Deployment: DEPLOYMENT.md
   - Scripts: SCRIPTS.md
   - Results DB: RESULTS_DB_SETUP.md
+  - Organization: ORGANIZATION.md
+  - Archive:
+    - PHASE_3_COMPLETE: archive/PHASE_3_COMPLETE.md
+    - RESTRUCTURE_PLAN: archive/RESTRUCTURE_PLAN.md
