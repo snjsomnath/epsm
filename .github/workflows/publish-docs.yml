@@ -4,6 +4,15 @@ on:
   push:
     branches: [ main ]
 
+# Request explicit permissions so the GITHUB_TOKEN can push the built site.
+# If your organization restricts GITHUB_TOKEN write permissions, create a
+# personal access token (repo scope) and store it as the secret GH_PAGES_PAT
+# then uncomment the `personal_token` input below and add the secret.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -28,5 +37,10 @@ jobs:
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
+          # By default use the automatically provided GITHUB_TOKEN. If your
+          # organization restricts that token's write access, create a PAT and
+          # add it to repository secrets as GH_PAGES_PAT then set
+          # personal_token: ${{ secrets.GH_PAGES_PAT }} below (uncomment).
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # personal_token: ${{ secrets.GH_PAGES_PAT }}
           publish_dir: ./site
