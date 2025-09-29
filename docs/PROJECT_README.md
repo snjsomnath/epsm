@@ -61,10 +61,10 @@ epsm/
 
 ## 📖 Documentation
 
-- [📋 Development Guide](docs/DEVELOPMENT.md) - Setup and development workflow
-- [🚀 Deployment Guide](docs/DEPLOYMENT.md) - Production deployment
-- [🏛️ Architecture Guide](docs/ARCHITECTURE.md) - System architecture
-- [📋 API Documentation](http://localhost:8000/api/docs/) - REST API docs
+ - [📋 Development Guide](DEVELOPMENT.md) - Setup and development workflow
+ - [🚀 Deployment Guide](DEPLOYMENT.md) - Production deployment
+ - [🏛️ Architecture Guide](ARCHITECTURE.md) - System architecture
+ - [📋 API Documentation](http://localhost:8000/api/docs/) - REST API docs
 
 ## 🚀 Features
 
@@ -241,7 +241,7 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduc
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## 🙏 Acknowledgments
 

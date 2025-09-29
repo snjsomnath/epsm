@@ -18,3 +18,7 @@ nav:
   - Archive:
     - PHASE_3_COMPLETE: archive/PHASE_3_COMPLETE.md
     - RESTRUCTURE_PLAN: archive/RESTRUCTURE_PLAN.md
+    - Index: archive/index.md
+  - Sidebar: _sidebar.md
+  - Contributing: CONTRIBUTING.md
+  - License: LICENSE.md
