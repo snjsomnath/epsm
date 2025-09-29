@@ -70,8 +70,10 @@ services:
       dockerfile: Dockerfile
     container_name: epsm_frontend_dev
     environment:
-      - VITE_API_BASE_URL=http://backend:8000
-      - VITE_WS_URL=ws://backend:8000
+      # Leave these empty in development so the frontend uses relative
+      # URLs and the Vite dev server proxy (or host-local backend) is used.
+      - VITE_API_BASE_URL=
+      - VITE_WS_URL=
     volumes:
       - ./frontend:/app
       - /app/node_modules

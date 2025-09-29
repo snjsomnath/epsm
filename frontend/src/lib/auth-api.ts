@@ -4,7 +4,18 @@
  */
 
 // API configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// If VITE_API_BASE_URL is provided (e.g. in docker-compose) use it.
+// Otherwise use a relative base so the Vite dev server proxy (server.proxy)
+// can forward /api requests to the backend container.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+// Helper to build request URLs. If API_BASE_URL is empty we return a relative
+// path so the dev server proxy handles the request. If a full base is set,
+// we prepend it.
+const buildUrl = (path: string) => {
+  if (!API_BASE_URL) return path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+};
 
 // Type definitions
 export interface AuthUser {
@@ -51,7 +62,7 @@ export const signIn = async (email: string, password: string): Promise<{ data: A
   try {
     const csrfToken = await getCSRFToken();
     
-    const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
+    const response = await fetch(buildUrl('/api/auth/login/'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +128,7 @@ export const signOut = async (): Promise<{ error: AuthError | null }> => {
   try {
     const csrfToken = await getCSRFToken();
     
-    await fetch(`${API_BASE_URL}/api/auth/logout/`, {
+    await fetch(buildUrl('/api/auth/logout/'), {
       method: 'POST',
       headers: {
         'X-CSRFToken': csrfToken,
