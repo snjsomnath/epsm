@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="64" viewBox="0 0 320 64" role="img" aria-label="EPSM logo">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#1976d2"/>
+      <stop offset="1" stop-color="#42a5f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="64" rx="8" fill="#0f1724"/>
+  <g transform="translate(14,10)">
+    <circle cx="28" cy="22" r="18" fill="url(#g)" />
+    <g transform="translate(18,8)" fill="#fff" font-family="Segoe UI, Roboto, Helvetica, Arial" font-weight="700">
+      <text x="42" y="20" font-size="22">EPSM</text>
+    </g>
+  </g>
+</svg>

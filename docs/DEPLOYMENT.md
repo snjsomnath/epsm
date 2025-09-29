@@ -130,6 +130,17 @@ sudo certbot certonly --standalone -d your-domain.com
 ./scripts/backup.sh prod
 ```
 
+## Recent development updates
+
+- The development `./scripts/start.sh` has been improved to make onboarding easier for new developers and streamline local environment setup:
+   - Verifies Docker is running and attempts to start Docker Desktop on macOS when necessary.
+   - Creates `.env` from `.env.example` if missing and prompts to edit or continue with defaults.
+   - Waits for the database to be ready before running migrations.
+   - Ensures a `results` database and role exist in the Docker Compose environment (defaults: `epsm_results` / `epsm_results_user`) and runs results DB migrations when configured.
+   - Creates a default Django superuser (`admin` / `admin123`) automatically if absent.
+
+These changes target the development flow; production deployment should continue to rely on explicit provisioning and secure environment variables as documented elsewhere in this guide.
+
 ### Restore Database
 ```bash
 # List available backups

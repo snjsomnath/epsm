@@ -1,0 +1,7 @@
+title: EPSM Documentation
+description: Docs for the Energy Performance Simulation Manager
+theme: minima
+baseurl: "" # set if publishing to a subpath
+exclude:
+  - node_modules
+  - .github

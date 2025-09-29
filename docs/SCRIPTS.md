@@ -120,3 +120,17 @@ The script `status-epsm.sh` was renamed to `status.sh` for consistency.
 5. **Test after changes**: Use `./scripts/test.sh` to validate functionality
 
 This clean script structure eliminates redundancy while providing all essential functionality for development, testing, backup, and deployment workflows.
+
+## Recent updates (development)
+
+- The `scripts/start.sh` script was enhanced to streamline the developer workflow. Notable behaviors added:
+  - Checks whether Docker is running and attempts to start Docker Desktop on macOS if not available.
+  - Creates a local `.env` from `.env.example` when none exists and prompts the user to edit or continue.
+  - Stops any existing containers, pulls latest third-party images, and builds/starts services.
+  - Waits for the database to become ready using `pg_isready` before proceeding.
+  - Ensures a dedicated results database and role exist (defaults: `epsm_results` / `epsm_results_user`) in the Docker Compose environment; idempotent creation.
+  - Runs Django migrations for both the default DB and the `results_db` (if configured via env vars).
+  - Creates a default Django superuser (`admin` / `admin123`) if one does not already exist.
+  - Prints helpful service status, URLs, and quick commands at the end of the run.
+
+These additions make the development start process more robust and reduce manual setup steps.

@@ -1,4 +1,46 @@
+---
+title: EPSM — Energy Performance Simulation Manager
+description: Containerized app for managing EnergyPlus simulations — quick start, architecture, deployment, and developer docs.
+---
+
+# EPSM
+
+<p style="display:flex;align-items:center;gap:16px">
+	<img src="assets/epsm-logo.svg" alt="EPSM logo" style="height:64px;" />
+	<span style="font-size:1.15rem">A modern, containerized web application for managing building energy performance simulations using EnergyPlus.</span>
+</p>
+
+This site collects the project's documentation, guides, and references so you can get started quickly and contribute effectively.
+
+## Get started
+
+- Quick start and installation: [Getting Started](GETTING_STARTED.md)
+- Development guide: [Development Guide](DEVELOPMENT.md)
+- API reference: [API Documentation](API.md)
+- Deployment and operations: [Deployment Guide](DEPLOYMENT.md)
+- Architecture overview: [Architecture](ARCHITECTURE.md)
+- Scripts and utilities: [Scripts](SCRIPTS.md)
+- Results DB setup: [Results DB Setup](RESULTS_DB_SETUP.md)
+
+## Quick links
+
+- Code repository: https://github.com/snjsomnath/epsm
+- Issues & support: Create a GitHub issue in the repository
+
+## Recent updates
+
+- Improved development `scripts/start.sh` — checks Docker, generates `.env` from `.env.example` if missing, waits for DB readiness, creates results DB/role if needed, runs migrations (including `results_db`), and creates a default superuser when missing. See [`SCRIPTS.md`](SCRIPTS.md) and [`GETTING_STARTED.md`](GETTING_STARTED.md) for details.
+
+## Navigation
+
+Use the left-hand sidebar (or the index) to jump to guides, API docs, architecture, and deployment information. If you're new, start with the Getting Started guide.
+
+---
+
+Maintained by the EPSM development team — last updated September 2025.
 # EPSM Documentation Index
+
+For a streamlined project landing page, see [Home](index.md).
 
 Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This index provides an overview of all available documentation and guides.
 
