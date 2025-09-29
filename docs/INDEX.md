@@ -1,6 +1,7 @@
 ---
 title: EPSM — Energy Performance Simulation Manager
 description: Containerized app for managing EnergyPlus simulations — quick start, architecture, deployment, and developer docs.
+layout: default
 ---
 
 # EPSM
