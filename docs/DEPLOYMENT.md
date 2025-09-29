@@ -1,5 +1,10 @@
 # EPSM Deployment Guide
 
+---
+title: Deployment Guide
+layout: default
+---
+
 ## Overview
 
 This guide covers deploying the EPSM (Energy Performance Simulation Manager) application using Docker containers. The application consists of three main services:

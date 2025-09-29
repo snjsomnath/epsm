@@ -1,5 +1,10 @@
 # EPSM API Documentation
 
+---
+title: API Documentation
+layout: default
+---
+
 This document describes the REST API endpoints available in the EPSM (Energy Performance Simulation Manager) backend.
 
 ## 🌐 Base URL

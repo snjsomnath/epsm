@@ -1,5 +1,10 @@
 # Repository Organization
 
+---
+title: Organization
+layout: default
+---
+
 This document describes the clean organization structure implemented for the EPSM repository.
 
 ## Directory Structure

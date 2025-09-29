@@ -1,5 +1,10 @@
 # EPSM Architecture Documentation
 
+---
+title: Architecture
+layout: default
+---
+
 ## System Overview
 
 EPSM (Energy Performance Simulation Manager) is a microservices-based web application for managing building energy simulations. The system is built with modern technologies and follows best practices for scalability, maintainability, and deployment.

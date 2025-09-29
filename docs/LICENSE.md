@@ -1,3 +1,8 @@
+---
+title: License
+layout: default
+---
+
 MIT License
 
 Copyright (c) 2025 Sanjay Somanath

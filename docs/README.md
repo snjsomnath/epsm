@@ -1,5 +1,10 @@
 # Publishing `docs/` with a Jekyll theme
 
+---
+title: Docs README
+layout: default
+---
+
 This repository uses a Jekyll-style docs site located in the `docs/` folder. The current Jekyll configuration is in `docs/_config.yml` and sets the `minima` theme by default.
 
 ## Goal

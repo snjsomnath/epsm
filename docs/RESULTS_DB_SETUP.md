@@ -1,5 +1,10 @@
 # Setting up a dedicated `results` Postgres database
 
+---
+title: Results DB Setup
+layout: default
+---
+
 This project can use a dedicated PostgreSQL database for simulation results/time-series. A new database alias `results_db` is added to `backend/config/settings.py` and the DB router will direct simulation result models to this database.
 
 This document explains how to provision the DB (locally or in Docker), run migrations for the new DB, and optionally migrate existing data.
