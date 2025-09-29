@@ -4,11 +4,11 @@
   function rewrite(){
     document.querySelectorAll('a[href$=".md"]').forEach(a=>{
       try{
-        const url = new URL(a.href, window.location.href);
-        // only rewrite same-origin relative links
-        if(url.origin === window.location.origin){
-          a.href = url.pathname.replace(/\.md(#[^#]*)?$/,'$&').replace(/\.md(#[^#]*)?$/,'').replace(/\.md$/,'.html');
-        }
+        const href = a.getAttribute('href');
+        // split off hash and query string
+        const [pathAndQuery, hash=''] = href.split('#');
+        const newPath = pathAndQuery.replace(/\.md(\?.*)?$/i, '.html$1');
+        a.setAttribute('href', newPath + (hash ? '#'+hash : ''));
       }catch(e){/* ignore */}
     });
   }

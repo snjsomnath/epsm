@@ -1,7 +1,8 @@
 title: EPSM Documentation
 description: Docs for the Energy Performance Simulation Manager
 theme: minima
-baseurl: "" # set if publishing to a subpath
+# For GitHub project pages (https://<user>.github.io/epsm) set the baseurl to the repo name.
+baseurl: "/epsm"
 defaults:
   - scope:
       path: "" # all files
