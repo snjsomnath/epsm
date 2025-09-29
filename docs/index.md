@@ -7,7 +7,7 @@ layout: default
 # EPSM
 
 <p style="display:flex;align-items:center;gap:16px">
-	<img src="assets/epsm-logo.svg" alt="EPSM logo" style="height:64px;" />
+	<img src="{{ '/assets/epsm-logo.svg' | relative_url }}" alt="EPSM logo" style="height:64px;" />
 	<span style="font-size:1.15rem">A modern, containerized web application for managing building energy performance simulations using EnergyPlus.</span>
 </p>
 
