@@ -12,4 +12,4 @@
   - [Results DB Setup](RESULTS_DB_SETUP.md)
 - Project
   - [Organization](ORGANIZATION.md)
-  - [Index & Docs Overview](INDEX.md)
+  - [Index & Docs Overview](index.md)

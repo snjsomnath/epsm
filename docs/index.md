@@ -47,8 +47,8 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 
 ## 📚 Documentation Overview
 
-### 🚀 Getting Started
-- **[README.md](README.md)** - Project overview, quick start, and feature overview
+-### 🚀 Getting Started
+- **[Project README](PROJECT_README.md)** - Project overview, quick start, and feature overview
 - **[GETTING_STARTED.md](GETTING_STARTED.md)** - Comprehensive setup guide for new developers
 
 ### 🔧 Development
@@ -62,7 +62,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 - **[ORGANIZATION.md](ORGANIZATION.md)** - Project structure and organization
 
 ### 📁 Archive
-- **[archive/](archive/)** - Historical documentation and migration guides
+- **[Archive](archive/index.md)** - Historical documentation and migration guides
 
 ## 🎯 Quick Reference
 
@@ -77,7 +77,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 3. Use **[SCRIPTS.md](SCRIPTS.md)** for automation
 
 ### For Project Understanding
-1. Read **[README.md](README.md)** for project overview
+1. Read **[Project README](PROJECT_README.md)** for project overview
 2. Study **[ARCHITECTURE.md](ARCHITECTURE.md)** for technical details
 3. Check **[ORGANIZATION.md](ORGANIZATION.md)** for structure
 
@@ -85,7 +85,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 
 | Document | Purpose | Audience | Last Updated |
 |----------|---------|----------|--------------|
-| [README.md](README.md) | Main project overview and quick start | All users | Current |
+| [Project README](PROJECT_README.md) | Main project overview and quick start | All users | Current |
 | [GETTING_STARTED.md](GETTING_STARTED.md) | Comprehensive setup guide | New developers | Current |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Development workflow and tools | Developers | Current |
 | [API.md](API.md) | REST API endpoints and usage | Frontend & API developers | Current |
@@ -110,7 +110,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 - Utility scripts: [SCRIPTS.md](SCRIPTS.md)
 
 #### **System Understanding**
-- Project overview: [README.md](README.md)
+- Project overview: [Project README](PROJECT_README.md)
 - Technical architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Code organization: [ORGANIZATION.md](ORGANIZATION.md)
 
@@ -124,7 +124,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 #### **New Developer**
 1. [GETTING_STARTED.md](GETTING_STARTED.md) - Complete setup guide
 2. [DEVELOPMENT.md](DEVELOPMENT.md) - Development workflow
-3. [README.md](README.md) - Project overview
+3. [Project README](PROJECT_README.md) - Project overview
 4. [API.md](API.md) - API reference
 
 #### **Frontend Developer**
@@ -144,7 +144,7 @@ Welcome to the EPSM (Energy Performance Simulation Manager) documentation. This 
 
 #### **Technical Lead**
 1. [ARCHITECTURE.md](ARCHITECTURE.md) - Complete system design
-2. [README.md](README.md) - Project overview
+2. [Project README](PROJECT_README.md) - Project overview
 3. [ORGANIZATION.md](ORGANIZATION.md) - Code organization
 4. All other documents for comprehensive understanding
 
