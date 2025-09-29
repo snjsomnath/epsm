@@ -39,6 +39,7 @@ Use the left-hand sidebar (or the index) to jump to guides, API docs, architectu
 ---
 
 Maintained by the EPSM development team — last updated September 2025.
+<!-- ci-trigger: mkdocs publish -->
 # EPSM Documentation Index
 
 For a streamlined project landing page, see [Home](index.md).
