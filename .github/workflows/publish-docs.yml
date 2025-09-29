@@ -34,13 +34,9 @@ jobs:
       - name: Build site
         run: mkdocs build --site-dir site
 
-      - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Deploy to GitHub Pages (actions/deploy-pages)
+        uses: actions/deploy-pages@v4
         with:
-          # By default use the automatically provided GITHUB_TOKEN. If your
-          # organization restricts that token's write access, create a PAT and
-          # add it to repository secrets as GH_PAGES_PAT then set
-          # personal_token: ${{ secrets.GH_PAGES_PAT }} below (uncomment).
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # personal_token: ${{ secrets.GH_PAGES_PAT }}
-          publish_dir: ./site
+          folder: ./site
+        # The action will use the provided GITHUB_TOKEN; ensure the workflow
+        # permissions include 'pages: write' (already declared above).
