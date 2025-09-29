@@ -198,6 +198,9 @@ Thumbs.db
 !README.md
 !.env.example
 
+# MkDocs build output
+site/
+
 # ==============================================
 # PACKAGE & DEPENDENCY FILES
 # ==============================================
