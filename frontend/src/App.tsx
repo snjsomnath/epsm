@@ -1,4 +1,4 @@
-import React from 'react';
+// React import not required with the new JSX transform
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
@@ -14,6 +14,7 @@ import ScenarioPage from './components/scenario/ScenarioPage';
 import SimulationPage from './components/simulation/SimulationPage';
 import ResultsPage from './components/results/ResultsPage';
 import ExportPage from './components/export/ExportPage';
+import AdminDashboard from './components/auth/AdminDashboard';
 import './App.css';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
                   <Route path="simulation" element={<SimulationPage />} />
                   <Route path="results" element={<ResultsPage />} />
                   <Route path="export" element={<ExportPage />} />
+                  <Route path="admin" element={<AdminDashboard />} />
                   <Route path="*" element={<Navigate to="/\" replace />} />
                 </Route>
               </Routes>

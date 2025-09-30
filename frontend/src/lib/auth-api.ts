@@ -12,7 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 // Helper to build request URLs. If API_BASE_URL is empty we return a relative
 // path so the dev server proxy handles the request. If a full base is set,
 // we prepend it.
-const buildUrl = (path: string) => {
+export const buildUrl = (path: string) => {
   if (!API_BASE_URL) return path.startsWith('/') ? path : `/${path}`;
   return `${API_BASE_URL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
 };
@@ -24,6 +24,8 @@ export interface AuthUser {
   first_name?: string;
   last_name?: string;
   is_active: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
   date_joined: string;
 }
 
@@ -44,11 +46,15 @@ export interface AuthError {
 // CSRF token helper
 const getCSRFToken = async (): Promise<string> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/csrf/`, {
+    const response = await fetch(buildUrl('/api/auth/csrf/'), {
       credentials: 'include',
     });
+    if (!response.ok) {
+      console.warn('Failed to fetch CSRF token, status:', response.status);
+      return '';
+    }
     const data = await response.json();
-    return data.csrfToken;
+    return data.csrfToken || '';
   } catch (error) {
     console.warn('Failed to get CSRF token:', error);
     return '';
@@ -85,7 +91,7 @@ export const signIn = async (email: string, password: string): Promise<{ data: A
 
     const data = await response.json();
     
-    // Create session object compatible with frontend
+      // Create session object compatible with frontend
     const session: AuthSession = {
       access_token: data.token || 'django_session',
       refresh_token: 'django_refresh',
@@ -98,6 +104,8 @@ export const signIn = async (email: string, password: string): Promise<{ data: A
         first_name: data.user.first_name,
         last_name: data.user.last_name,
         is_active: data.user.is_active,
+          is_staff: data.user.is_staff,
+          is_superuser: data.user.is_superuser,
         date_joined: data.user.date_joined
       }
     };
@@ -256,4 +264,29 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
     headers,
     credentials: 'include',
   });
+};
+// Improve: wrap fetch to provide clearer error messages for non-OK responses
+export const fetchWithErrors = async (url: string, options: RequestInit = {}) => {
+  const res = await authenticatedFetch(url, options);
+  if (res.ok) return res;
+
+  // Try to parse JSON error body, fallback to text
+  let bodyText = '';
+  try {
+    const clone = res.clone();
+    const data = await clone.json().catch(() => null);
+    if (data && typeof data === 'object') {
+      bodyText = JSON.stringify(data);
+    } else {
+      bodyText = await res.text();
+    }
+  } catch (e) {
+    try { bodyText = await res.text(); } catch (_) { bodyText = '<unreadable body>'; }
+  }
+
+  const err = new Error(`Request failed ${res.status} ${res.statusText}: ${bodyText}`);
+  // attach details for callers that want structured info
+  (err as any).status = res.status;
+  (err as any).body = bodyText;
+  throw err;
 };
