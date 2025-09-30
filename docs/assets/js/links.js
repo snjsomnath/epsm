@@ -37,3 +37,48 @@
   });
   if(closeBtn) closeBtn.addEventListener('click', ()=>{ sidebar.classList.remove('open'); toggle.setAttribute('aria-expanded','false'); });
 })();
+
+// Logo fallback loader and remove noisy top nav
+(function(){
+  if(typeof window === 'undefined') return;
+  function tryLogo(){
+    const img = document.getElementById('brand-logo');
+    if(!img) return;
+    // if image loads fine, nothing to do
+    img.addEventListener('error', async ()=>{
+      const candidates = [img.dataset.srcAbs, img.dataset.srcRepo, img.dataset.srcRelative].filter(Boolean);
+      for(const c of candidates){
+        try{
+          // test the URL by loading into a temporary Image
+          await new Promise((resolve, reject)=>{
+            const tester = new Image();
+            tester.onload = ()=>resolve(true);
+            tester.onerror = ()=>reject(false);
+            // try absolute or relative as provided
+            tester.src = c;
+          });
+          img.src = c;
+          return;
+        }catch(e){/* try next */}
+      }
+      // last resort: hide image and show text instead
+      img.style.display = 'none';
+      const span = document.createElement('span');
+      span.textContent = document.title || 'EPSM';
+      span.className = 'brand-title fallback';
+      img.parentNode && img.parentNode.appendChild(span);
+    });
+    // if the image is empty or missing, trigger error handler
+    if(!img.src) img.dispatchEvent(new Event('error'));
+  }
+  function hideNoisyTop(){
+    // Remove any elements that appear before the header to prevent legacy top-of-doc content
+    const header = document.querySelector('.site-header');
+    if(!header) return;
+    while(header.previousElementSibling){
+      try{ header.previousElementSibling.remove(); }catch(e){ break }
+    }
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ()=>{ tryLogo(); hideNoisyTop(); });
+  else { tryLogo(); hideNoisyTop(); }
+})();
