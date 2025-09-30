@@ -227,9 +227,11 @@ export const refreshSession = async (): Promise<{ data: AuthSession | null; erro
 export const authenticatedFetch = async (url: string, options: RequestInit = {}) => {
   const session = getSession();
   
+  const isFormData = typeof FormData !== 'undefined' && options.body && (options.body instanceof FormData || (options.body as any)?.constructor?.name === 'FormData');
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
+    // Only set JSON content-type when body is not FormData
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
   };
 
   // Add authentication header if we have a session

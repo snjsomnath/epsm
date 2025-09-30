@@ -22,6 +22,13 @@ def api_login(request):
         
         # Try to authenticate using email as username
         user = authenticate(request, username=email, password=password)
+        # If that fails, try to look up a user with this email and authenticate with their username
+        if user is None:
+            try:
+                u = User.objects.get(email__iexact=email)
+                user = authenticate(request, username=u.username, password=password)
+            except User.DoesNotExist:
+                user = None
         
         if user is not None:
             login(request, user)

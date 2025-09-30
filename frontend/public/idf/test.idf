@@ -6237,182 +6237,182 @@ OutputControl:ReportingTolerances,
 Output:Variable,
     ,                        !- Key Value
     Baseboard Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     District Cooling Water Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     District Heating Water Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Evaporative Cooler Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Fan Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Heating Coil Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Heating Coil NaturalGas Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Heating Coil Total Heating Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Hot_Water_Loop_Central_Air_Source_Heat_Pump Electricity Consumption,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Humidifier Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Pump Electricity Energy, !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Boiler Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     VRF Heat Pump Cooling Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     VRF Heat Pump Crankcase Heater Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     VRF Heat Pump Defrost Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     VRF Heat Pump Heating Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Water Heater Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Water Heater NaturalGas Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Water Use Equipment Heating Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Electric Equipment Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Gas Equipment NaturalGas Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Ideal Loads Supply Air Total Cooling Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Boiler NaturalGas Energy,!- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Ideal Loads Supply Air Total Heating Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Lights Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Other Equipment Lost Heat Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Other Equipment Total Heating Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone VRF Air Terminal Cooling Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone VRF Air Terminal Heating Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Zone Ventilation Fan Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Chiller Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Chiller Heater System Cooling Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Chiller Heater System Heating Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Cooling Coil Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Cooling Coil Water Heating Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 Output:Variable,
     ,                        !- Key Value
     Cooling Tower Fan Electricity Energy,  !- Variable Name
-    Annual;                  !- Reporting Frequency
+    Hourly;                  !- Reporting Frequency
 
 
 !-   ===========  ALL OBJECTS IN CLASS: OUTPUT:SQLITE ===========

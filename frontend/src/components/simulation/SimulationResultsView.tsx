@@ -74,29 +74,58 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
     };
   }), [results]);
 
-  // Compute per-area metrics (kWh/m²) when area is available — chart expects kWh/m²
+  // Replace the "per-area" block with the corrected logic
   const resultsWithPerArea = useMemo(() => normalizedResults.map((r: any) => {
-    const perArea = r.totalArea > 0 ? r.totalEnergyUse / r.totalArea : r.totalEnergyUse;
-    const heatingPerArea = r.totalArea > 0 ? r.heatingDemand / r.totalArea : r.heatingDemand;
-    const coolingPerArea = r.totalArea > 0 ? r.coolingDemand / r.totalArea : r.coolingDemand;
+    const area = Number(r.totalArea) || 0;
+    const totalEnergyIntensity = Number(r.totalEnergyUse) || 0; // kWh/m²
+    const heatingIntensity      = Number(r.heatingDemand) || 0;  // kWh/m²
+    const coolingIntensity      = Number(r.coolingDemand) || 0;  // kWh/m²
+
     return {
       ...r,
-      totalEnergyPerArea: perArea,
-      heatingPerArea,
-      coolingPerArea
+      // keep names that the rest of the component expects:
+      totalEnergyPerArea: totalEnergyIntensity,
+      heatingPerArea: heatingIntensity,
+      coolingPerArea: coolingIntensity,
+
+      // optional whole-building totals (kWh):
+      totalEnergy_kWh: area ? totalEnergyIntensity * area : undefined,
+      heating_kWh:     area ? heatingIntensity * area     : undefined,
+      cooling_kWh:     area ? coolingIntensity * area     : undefined,
     };
   }), [normalizedResults]);
 
+  // Calculate min and max heating energy values for dynamic color scaling
+  const minHeating = Math.min(...resultsWithPerArea.map(r => r.heatingPerArea));
+  const maxHeating = Math.max(...resultsWithPerArea.map(r => r.heatingPerArea));
+
+  // Update color palette to use pastel shades with alpha transparency
+  const getColorFromHeating = (heating: number, minHeating: number, maxHeating: number) => {
+    if (heating === minHeating) return 'rgba(173, 216, 230, 0.6)'; // Light blue for minimum
+    if (heating === maxHeating) return 'rgba(255, 182, 193, 0.6)'; // Light pink for maximum
+    const normalizedHeating = (heating - minHeating) / (maxHeating - minHeating); // Normalize to 0–1
+    const blue = Math.round((1 - normalizedHeating) * 230 + 25); // Blend with white
+    const red = Math.round(normalizedHeating * 193 + 62); // Blend with white
+    const green = Math.round((1 - normalizedHeating) * 216 + 39); // Blend with white
+    return `rgba(${red}, ${green}, ${blue}, 0.6)`; // Pastel gradient with alpha
+  };
+
   // Format data for chart (use normalized results)
   // Scatter plot data: x = totalEnergyPerArea, y = runTime
-  const scatterData = useMemo(() => resultsWithPerArea.map((r: any, i: number) => ({
-    x: Number(r.totalEnergyPerArea) || 0,
-    y: Number(r.runTime) || 0,
-    fileName: r.fileName,
-    heating: r.heatingPerArea,
-    cooling: r.coolingPerArea,
-    index: i
-  })), [resultsWithPerArea]);
+  // Precompute colors for scatterData based on heating energy
+  // Adjust color scaling logic for heating energy to fit the dataset range
+  const scatterData = useMemo(() => resultsWithPerArea.map((r: any, i: number) => {
+    const color = getColorFromHeating(r.heatingPerArea, minHeating, maxHeating);
+    return {
+      x: Number(r.totalEnergyPerArea) || 0, // kWh/m², now correct
+      y: Number(r.runTime) || 0,
+      fileName: r.fileName,
+      heating: r.heatingPerArea,
+      cooling: r.coolingPerArea,
+      index: i,
+      color
+    };
+  }), [resultsWithPerArea, minHeating, maxHeating]);
 
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
@@ -130,7 +159,9 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                       <RechartsTooltip formatter={(value: any, name: any) => {
                         return [value, name];
                       }} labelFormatter={(label: any) => `Value: ${label}`} />
-                      <Scatter data={scatterData} fill="#8884d8" />
+                      {scatterData.map((point, index) => (
+                        <Scatter key={index} data={[point]} fill={point.color} />
+                      ))}
                     </ScatterChart>
                   </ResponsiveContainer>
                 </Box>
@@ -159,7 +190,15 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                       <TableRow key={index}>
                         <TableCell>{result.fileName}</TableCell>
                         <TableCell align="right">{fmt(result.totalEnergyPerArea)}</TableCell>
-                        <TableCell align="right">{fmt(result.heatingPerArea)}</TableCell>
+                        {/* Ensure table cell coloring matches scatter plot logic */}
+                        <TableCell
+                          align="right"
+                          sx={{
+                            backgroundColor: getColorFromHeating(result.heatingPerArea, minHeating, maxHeating)
+                          }}
+                        >
+                          {fmt(result.heatingPerArea)}
+                        </TableCell>
                         <TableCell align="right">{fmt(result.coolingPerArea)}</TableCell>
                         <TableCell align="right">{fmt(result.runTime)}</TableCell>
                       </TableRow>
@@ -277,6 +316,13 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                           ) : (
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No construction set available.</Typography>
                           )}
+
+                          {/* Add optional totals in the Details panel */}
+                          {result.totalEnergy_kWh !== undefined && (
+                            <Typography variant="body2" color="text.secondary">
+                              Whole-building Energy: {fmt(result.totalEnergy_kWh)} kWh
+                            </Typography>
+                          )}
                         </Box>
                       </Collapse>
                     </Paper>
@@ -304,7 +350,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
           variant="contained"
           startIcon={<FileDown />}
           onClick={() => {
-            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(resultsWithPerArea, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
