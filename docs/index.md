@@ -6,7 +6,7 @@ layout: default
 
 <div class="hero">
 	<div style="display:flex;align-items:center;gap:16px">
-		<img src="{{ '/assets/media/chalmers_logo_light_theme.png' | relative_url }}" alt="Chalmers Logo" style="height:48px;" />
+	<img src="assets/media/chalmers_logo_light_theme.png" alt="Chalmers Logo" style="height:48px;" />
 		<h1 class="hero-title brand-title gradient">EPSM</h1>
 	</div>
 
