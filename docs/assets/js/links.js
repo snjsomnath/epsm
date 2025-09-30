@@ -1,3 +1,11 @@
+// small loader to initialize optional scripts
+(function(){
+  // load search script
+  const script = document.createElement('script');
+  script.src = '{{ "/assets/js/search.js" | relative_url }}';
+  script.defer = true;
+  document.head.appendChild(script);
+})();
 // Replace hrefs ending in .md with .html so links work when served as static files
 (function(){
   if(typeof window === 'undefined') return;
