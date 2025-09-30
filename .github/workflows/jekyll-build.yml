@@ -18,11 +18,7 @@ jobs:
         with:
           ruby-version: '3.2'
 
-      - name: Install Bundler
-        run: |
-          gem install bundler
-          bundle install
-        working-directory: docs
+
 
       - name: Build site
         run: bundle exec jekyll build --source . --destination _site

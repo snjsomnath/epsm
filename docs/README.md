@@ -46,6 +46,26 @@ bundle exec jekyll serve --host 0.0.0.0 --port 4000
 
 If you prefer not to use bundler you can install `jekyll` and `minima` globally with `gem install jekyll minima` and run `jekyll serve`.
 
+### macOS notes (if `bundle install` fails)
+
+If `bundle install` or `gem install` fails on macOS you may need to install a supported Ruby and make sure `gem` can install executables.
+
+Recommended steps using Homebrew:
+
+```bash
+# install a modern Ruby
+brew install ruby
+# ensure Ruby bin path is in your shell PATH (add to .zshrc if necessary)
+export PATH="$(brew --prefix)/opt/ruby/bin:$PATH"
+# install bundler and jekyll gems
+gem install bundler
+cd docs
+bundle install
+bundle exec jekyll serve
+```
+
+If you prefer not to change system Ruby, consider using `rbenv` or `asdf` to manage a project Ruby installation.
+
 ## Customizing the theme
 
 - Edit `docs/_config.yml` to change `title`, `description`, `baseurl`, or `theme`.
