@@ -1342,7 +1342,7 @@ const SimulationPage = () => {
         <DialogTitle>Upload Required Files</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Please upload the required files to run the simulation.
+            Please upload the required files to run the simulation. If IDF files are already selected (for example via the Baseline page), you only need to add or confirm an EPW weather file here.
           </DialogContentText>
           
           <Grid container spacing={2} sx={{ mt: 2 }}>
@@ -1350,7 +1350,35 @@ const SimulationPage = () => {
               <Typography variant="subtitle2" gutterBottom>
                 IDF Files:
               </Typography>
-              {/* Use the IdfUploadArea component instead of our custom implementation */}
+              {/* Show existing selected IDF files (from local state or context) and allow adding more via IdfUploadArea */}
+              <Box sx={{ mb: 1 }}>
+                {(localIdfFiles.length > 0 || uploadedFiles.length > 0) ? (
+                  <Box sx={{ p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Selected IDF Files ({localIdfFiles.length || uploadedFiles.length}):</strong>
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      {(localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).map((file, idx) => (
+                        <Chip
+                          key={idx}
+                          label={file.name}
+                          size="small"
+                          onDelete={() => {
+                            const base = localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles;
+                            const newFiles = base.filter((_, i) => i !== idx);
+                            setLocalIdfFiles(newFiles);
+                            if (typeof updateUploadedFiles === 'function') updateUploadedFiles(newFiles);
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Alert severity="info" icon={<Upload size={18} />}>No IDF files selected. Upload files to continue.</Alert>
+                )}
+              </Box>
+
+              {/* Use the IdfUploadArea component for adding or replacing files */}
               <IdfUploadArea onFilesUploaded={handleIdfFilesSelected} />
             </Grid>
             
@@ -1408,17 +1436,16 @@ const SimulationPage = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
+          <DialogActions>
           <Button onClick={() => setUploadDialogOpen(false)}>Cancel</Button>
-          {/* Add logs before rendering the button to check conditions */}
-          {/* Button conditions logged in developer console only */}
+          {/* Allow continuing if either localIdfFiles or uploadedFiles exist and an EPW is present */}
           <Button
             variant="contained"
             onClick={() => setUploadDialogOpen(false)}
-            // Use local state for the disabled condition
-            disabled={localIdfFiles.length === 0 || !weatherFile}
+            disabled={(localIdfFiles.length === 0 && uploadedFiles.length === 0) || !weatherFile}
           >
-            Continue {localIdfFiles.length > 0 && weatherFile ? '' : '(Upload Both File Types)'}
+            {/* Show informative label when using existing context files */}
+            { (localIdfFiles.length === 0 && uploadedFiles.length > 0 && weatherFile) ? 'Continue (Using existing IDF files)' : 'Continue' }
           </Button>
         </DialogActions>
       </Dialog>
