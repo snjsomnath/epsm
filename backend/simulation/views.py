@@ -963,6 +963,15 @@ def list_simulation_results(request):
                     user_email = str(sim_obj.user.email)
             except Exception:
                 user_email = None
+            # Determine weather filename for this simulation (if available)
+            weather_name_local = None
+            try:
+                if sim_obj:
+                    wf = sim_obj.files.filter(file_type='weather').first()
+                    if wf:
+                        weather_name_local = getattr(wf, 'original_name', None) or getattr(wf, 'file_name', None) or (os.path.basename(getattr(wf, 'file_path')) if getattr(wf, 'file_path', None) else None)
+            except Exception:
+                weather_name_local = None
 
             results.append({
                 'id': str(getattr(r, 'id', None)),
@@ -970,6 +979,9 @@ def list_simulation_results(request):
                 'simulation_name': sim_name,
                 'user_id': user_id_val,
                 'user_email': user_email,
+                'weather_file': weather_name_local,
+                'epw': weather_name_local,
+                '_weatherKey': weather_name_local,
                 'file_name': getattr(r, 'file_name', None),
                 'building': getattr(r, 'building_name', None),
                 'total_energy_use': getattr(r, 'total_energy_use', None),
