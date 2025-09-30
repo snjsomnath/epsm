@@ -200,6 +200,7 @@ Thumbs.db
 
 # MkDocs build output
 site/
+/docs-backup
 
 # ==============================================
 # PACKAGE & DEPENDENCY FILES

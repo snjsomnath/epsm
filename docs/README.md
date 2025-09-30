@@ -95,3 +95,13 @@ That's it — if you'd like I can:
 - help customize the `minima` theme.
 
 If you want me to make changes now, tell me which of the 3 options above you want (remove MkDocs workflow, add a small Jekyll CI check, or customize the theme) and I'll implement it.
+
+## Migration notes (automated reorg)
+
+- The `docs/` site was reorganized to provide a cleaner sidebar and landing page.
+- `index.md` was simplified to a concise landing page.
+- The `_sidebar.md` and `_layouts/default.html` were updated to show a left-hand sidebar and simplified header.
+- `assets/css/site.css` was updated to a modern responsive styleset.
+- The old `docs/` folder was backed up to `docs-backup/` at the repository root before these changes.
+
+If you'd like any of the moved or removed pages restored or reorganized differently, I can revert specific files from `docs-backup/` and integrate them into the new IA.
