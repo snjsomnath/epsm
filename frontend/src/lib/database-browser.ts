@@ -16,19 +16,19 @@ import type {
   ScenarioInsert
 } from './database.types';
 import { getCSRFTokenFromCookie } from './csrf';
+import { authenticatedFetch } from './auth-api';
 
 class BrowserDatabaseService {
   async deleteMaterial(id: string): Promise<void> {
     try {
       console.log('Deleting material via API:', id);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/v2/materials/${id}/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/v2/materials/${id}/`, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
-      });
+      } as RequestInit);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -43,13 +43,12 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting window glazing via API:', id);
       const csrfToken = getCSRFTokenFromCookie();
-  const response = await fetch(`${this.baseUrl}/window-glazing/${id}`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/window-glazing/${id}`, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
-      });
+      } as RequestInit);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -64,13 +63,12 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting construction via API:', id);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/constructions/${id}/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/constructions/${id}/`, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
-      });
+      } as RequestInit);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -91,7 +89,7 @@ class BrowserDatabaseService {
   // Materials
   async getMaterials(): Promise<Material[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/v2/materials/`);
+  const response = await authenticatedFetch(`${this.baseUrl}/v2/materials/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -134,15 +132,14 @@ class BrowserDatabaseService {
     try {
       console.log('Creating material via API:', materialData);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/v2/materials/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/v2/materials/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
         body: JSON.stringify(materialData),
-        credentials: 'include',
-      });
+      } as RequestInit);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -158,15 +155,14 @@ class BrowserDatabaseService {
     try {
       console.log('Updating material via API:', id, updates);
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/v2/materials/${id}/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/v2/materials/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
         body: JSON.stringify(updates),
-        credentials: 'include',
-      });
+      } as RequestInit);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -181,7 +177,7 @@ class BrowserDatabaseService {
   // Window Glazing
   async getWindowGlazing(): Promise<WindowGlazing[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/window-glazing`);
+  const response = await authenticatedFetch(`${this.baseUrl}/window-glazing`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -241,7 +237,7 @@ class BrowserDatabaseService {
   // Constructions
   async getConstructions(): Promise<Construction[]> {
     try {
-  const response = await fetch(`${this.baseUrl}/constructions/`);
+  const response = await authenticatedFetch(`${this.baseUrl}/constructions/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -256,7 +252,7 @@ class BrowserDatabaseService {
 
   async getConstruction(id: string): Promise<Construction | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/constructions/${id}/`);
+      const response = await authenticatedFetch(`${this.baseUrl}/constructions/${id}/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -271,7 +267,7 @@ class BrowserDatabaseService {
   // Construction Sets
   async getConstructionSets(): Promise<ConstructionSet[]> {
     try {
-  const response = await fetch(`${this.baseUrl}/construction-sets/`);
+  const response = await authenticatedFetch(`${this.baseUrl}/construction-sets/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -288,13 +284,13 @@ class BrowserDatabaseService {
     try {
       console.log('Creating construction set via API:', constructionSetData);
       
-  const response = await fetch(`${this.baseUrl}/construction-sets/`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/construction-sets/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(constructionSetData),
-      });
+      } as RequestInit);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -313,13 +309,13 @@ class BrowserDatabaseService {
     try {
       console.log('Updating construction set via API:', id, updates);
       
-  const response = await fetch(`${this.baseUrl}/construction-sets/${id}/`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/construction-sets/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(updates),
-      });
+      } as RequestInit);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -338,9 +334,9 @@ class BrowserDatabaseService {
     try {
       console.log('Deleting construction set via API:', id);
       
-  const response = await fetch(`${this.baseUrl}/construction-sets/${id}/`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/construction-sets/${id}/`, {
         method: 'DELETE',
-      });
+      } as RequestInit);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -362,13 +358,13 @@ class BrowserDatabaseService {
     try {
       console.log('Creating construction via API:', construction);
       // Send construction and layers to API for persistence
-  const response = await fetch(`${this.baseUrl}/constructions/`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/constructions/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ...construction, layers }),
-      });
+      } as RequestInit);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -391,13 +387,13 @@ class BrowserDatabaseService {
     try {
       console.log('Updating construction via API:', id, construction);
       // Send update including layers so backend can replace them
-  const response = await fetch(`${this.baseUrl}/constructions/${id}/`, {
+  const response = await authenticatedFetch(`${this.baseUrl}/constructions/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ...construction, layers }),
-      });
+      } as RequestInit);
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -415,7 +411,7 @@ class BrowserDatabaseService {
   // Scenarios
   async getScenarios(): Promise<Scenario[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/scenarios/`);
+  const response = await authenticatedFetch(`${this.baseUrl}/scenarios/`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -436,15 +432,14 @@ class BrowserDatabaseService {
       console.log('Creating scenario via API:', scenario, constructions);
       const csrfToken = getCSRFTokenFromCookie();
       const body = { ...scenario, constructions };
-      const response = await fetch(`${this.baseUrl}/scenarios/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/scenarios/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
         body: JSON.stringify(body),
-      });
+      } as RequestInit);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -473,15 +468,14 @@ class BrowserDatabaseService {
       console.log('Updating scenario via API:', id, scenario, constructions);
       const csrfToken = getCSRFTokenFromCookie();
       const body = { ...scenario, constructions };
-      const response = await fetch(`${this.baseUrl}/scenarios/${id}/`, {
+      const response = await authenticatedFetch(`${this.baseUrl}/scenarios/${id}/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
         body: JSON.stringify(body),
-      });
+      } as RequestInit);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -492,21 +486,41 @@ class BrowserDatabaseService {
     }
   }
 
-  async deleteScenario(id: string): Promise<void> {
+  async deleteScenario(id: string): Promise<{ status: 'deleted' | 'not_found' }> {
     try {
       console.log('Deleting scenario via API:', id);
+      // Quick sanity check: ensure id looks like a UUID. Some UI state uses placeholders
+      // like 'unspecified' or includes suffixes; avoid calling backend for those.
+      const isUUID = (s?: string | null) => {
+        if (!s) return false;
+        return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(s);
+      };
+      if (!isUUID(id)) {
+        console.warn(`deleteScenario called with non-UUID id '${id}', treating as not_found`);
+        return { status: 'not_found' };
+      }
       const csrfToken = getCSRFTokenFromCookie();
-      const response = await fetch(`${this.baseUrl}/scenarios/${id}/`, {
+
+      // Directly issue DELETE. Backend treats DELETE as idempotent and will return 204
+      // even if the resource doesn't exist which avoids noisy GET 404 logs.
+      const detailUrl = `${this.baseUrl}/scenarios/${id}/`;
+      const response = await authenticatedFetch(detailUrl, {
         method: 'DELETE',
         headers: {
           ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
         },
-        credentials: 'include',
-      });
+      } as RequestInit);
 
       if (!response.ok) {
+        // If the resource was removed between the GET and DELETE, treat as not_found
+        if (response.status === 404) {
+          console.warn(`Scenario ${id} not found on server when deleting (treated as deleted)`);
+          return { status: 'not_found' };
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
+
+      return { status: 'deleted' };
     } catch (error) {
       console.error('Error deleting scenario:', error);
       throw error;

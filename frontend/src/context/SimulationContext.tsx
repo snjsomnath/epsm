@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import { authenticatedFetch } from '../lib/auth-api';
 import { uniqueNamesGenerator, adjectives, animals } from 'unique-names-generator';
 const makeFriendlyName = (opts?: { separator?: string }) => {
   try {
@@ -212,8 +213,8 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
     if (cachedResults[simulationId]) return cachedResults[simulationId];
 
     try {
-      const res = await fetch(`/api/simulation/${simulationId}/results/`);
-      if (!res.ok) return null;
+      const res = await authenticatedFetch(`/api/simulation/${simulationId}/results/`);
+      if (!res || !res.ok) return null;
       const data = await res.json();
       // normalize KPI keys for consistency across the UI
       const normalize = (item: any) => {
