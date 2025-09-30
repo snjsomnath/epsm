@@ -49,6 +49,7 @@ import {
 import ReactECharts from 'echarts-for-react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { useDatabase } from '../../context/DatabaseContext';
+import { useSimulation } from '../../context/SimulationContext';
 
 const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
@@ -60,59 +61,22 @@ const ResultsPage: React.FC = () => {
   // quickFilter removed — server toolbar quick filter is used directly
   const [facet, setFacet] = useState<{scenario?: string; energy?: [number, number]; cost?: [number, number]; gwp?: [number, number]}>({});
   const [loading, setLoading] = useState(true);
-  const [error] = useState<string | null>(null);
+  // error state intentionally omitted for now
   const [usingFallback, setUsingFallback] = useState(false);
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedResultDetail, setSelectedResultDetail] = useState<any>(null);
-  const { deleteScenario } = useDatabase();
-  // Helper to extract a UUID-like substring from scenario ids that may include suffixes like ':1'
-  const extractUuid = (s?: string | null) => {
-    if (!s) return undefined;
-    const m = String(s).match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
-    if (m && m[0]) return m[0];
-    // fallback: split on colon and take first part
-    return String(s).split(':')[0];
-  };
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [toDeleteScenarioId, setToDeleteScenarioId] = useState<string | null>(null);
-  const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+  const { scenarios } = useDatabase();
+  const { cachedResults, lastResults, loadResults, addToBaselineRun, history: runHistory } = useSimulation();
+  // (helper removed) UUID extraction not currently used
+  // confirmation dialog and snack state were removed (not used here)
+  const [filterText, setFilterText] = useState('');
+  const [scenarioFilter, setScenarioFilter] = useState('');
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const metricOptions = [
-    { value: 'eui_total', label: 'Total EUI' },
-    { value: 'eui_heating', label: 'Heating EUI' },
-    { value: 'eui_cooling', label: 'Cooling EUI' },
-    { value: 'eui_equipment', label: 'Equipment EUI' },
-  ];
-  const [colorMetric, setColorMetric] = useState(metricOptions[0]);
+  // metric selection placeholder omitted
 
   // Extracted fetch so we can re-use it when scenarios change elsewhere
-  const fetchResults = async () => {
-    let mounted = true;
-    try {
-      setLoading(true);
-      const base = (import.meta as any).env?.VITE_API_BASE_URL || '';
-      const apiUrl = base ? `${base.replace(/\/$/, '')}/api/simulation/results/` : '/api/simulation/results/';
-      // Use authenticatedFetch so cookies/CSRF/auth headers are handled uniformly
-      const res = await authenticatedFetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      } as RequestInit);
-      if (!res.ok) throw new Error('no api');
-      const json = await res.json();
-      if (!mounted) return;
-      setResults(Array.isArray(json) ? json : []);
-    } catch (e) {
-      const fallback: any[] = [];
-      const uniq = new Map<string, any>();
-      fallback.forEach(item => uniq.set(String(item?.id ?? item?.simulation_id ?? Math.random()), item));
-      setResults(Array.from(uniq.values()));
-    } finally {
-      if (mounted) setLoading(false);
-    }
-    return () => { mounted = false; };
-  };
+  // primary fetching is implemented in useEffect below; previous helper removed
 
   useEffect(() => {
     const fetchResults = async () => {
