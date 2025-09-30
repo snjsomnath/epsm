@@ -49,11 +49,8 @@ import {
 import ReactECharts from 'echarts-for-react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { useDatabase } from '../../context/DatabaseContext';
-import { useSimulation } from '../../context/SimulationContext';
 
-const ResultsPage = () => {
-  const { scenarios } = useDatabase();
-  const { loadResults, addToBaselineRun, cachedResults, lastResults, history: runHistory } = useSimulation();
+const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   // DataGrid / server-driven state
   const [rows, setRows] = useState<any[]>([]);
@@ -67,9 +64,55 @@ const ResultsPage = () => {
   const [usingFallback, setUsingFallback] = useState(false);
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedResultDetail, setSelectedResultDetail] = useState<any>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [filterText, setFilterText] = useState('');
-  const [scenarioFilter, setScenarioFilter] = useState<string>('');
+  const { deleteScenario } = useDatabase();
+  // Helper to extract a UUID-like substring from scenario ids that may include suffixes like ':1'
+  const extractUuid = (s?: string | null) => {
+    if (!s) return undefined;
+    const m = String(s).match(/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/);
+    if (m && m[0]) return m[0];
+    // fallback: split on colon and take first part
+    return String(s).split(':')[0];
+  };
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [toDeleteScenarioId, setToDeleteScenarioId] = useState<string | null>(null);
+  const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+
+  const metricOptions = [
+    { value: 'eui_total', label: 'Total EUI' },
+    { value: 'eui_heating', label: 'Heating EUI' },
+    { value: 'eui_cooling', label: 'Cooling EUI' },
+    { value: 'eui_equipment', label: 'Equipment EUI' },
+  ];
+  const [colorMetric, setColorMetric] = useState(metricOptions[0]);
+
+  // Extracted fetch so we can re-use it when scenarios change elsewhere
+  const fetchResults = async () => {
+    let mounted = true;
+    try {
+      setLoading(true);
+      const base = (import.meta as any).env?.VITE_API_BASE_URL || '';
+      const apiUrl = base ? `${base.replace(/\/$/, '')}/api/simulation/results/` : '/api/simulation/results/';
+      // Use authenticatedFetch so cookies/CSRF/auth headers are handled uniformly
+      const res = await authenticatedFetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      } as RequestInit);
+      if (!res.ok) throw new Error('no api');
+      const json = await res.json();
+      if (!mounted) return;
+      setResults(Array.isArray(json) ? json : []);
+    } catch (e) {
+      const fallback: any[] = [];
+      const uniq = new Map<string, any>();
+      fallback.forEach(item => uniq.set(String(item?.id ?? item?.simulation_id ?? Math.random()), item));
+      setResults(Array.from(uniq.values()));
+    } finally {
+      if (mounted) setLoading(false);
+    }
+    return () => { mounted = false; };
+  };
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -346,27 +389,11 @@ const ResultsPage = () => {
     return <Minus size={16} />;
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ width: '100%', mt: 4 }}>
-        <LinearProgress />
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ mt: 4 }}>
-        {error}
-      </Alert>
-    );
-  }
+  if (loading) return <Box sx={{ mt: 4 }}>Loading…</Box>;
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Simulation Results</Typography>
-      <Typography variant="body1" paragraph>View and analyze simulation results across different scenarios.</Typography>
-
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 3, mb: 3, height: '100%' }}>

@@ -71,9 +71,18 @@ done
 
 echo "✅ Database is ready!"
 
+# Ensure results database and user exist (idempotent)
+echo "🔧 Ensuring results database and role exist..."
+# Use the postgres superuser that the container created (POSTGRES_USER = epsm_user in docker-compose)
+docker-compose exec -T database bash -lc "psql -U epsm_user -d epsm_db -tc \"SELECT 1 FROM pg_roles WHERE rolname='epsm_results_user'\" | grep -q 1 || psql -U epsm_user -d epsm_db -c \"CREATE ROLE epsm_results_user WITH LOGIN PASSWORD 'epsm_results_password';\""
+docker-compose exec -T database bash -lc "psql -U epsm_user -d epsm_db -tc \"SELECT 1 FROM pg_database WHERE datname='epsm_results'\" | grep -q 1 || psql -U epsm_user -d epsm_db -c \"CREATE DATABASE epsm_results OWNER epsm_results_user;\""
+echo "✅ Results database and role ensured (epsm_results / epsm_results_user)"
+
 # Run database migrations
 echo "🔄 Running database migrations..."
 docker-compose exec backend python manage.py migrate
+echo "🔄 Running results DB migrations..."
+docker-compose exec backend bash -lc "export RESULTS_DB_NAME=epsm_results RESULTS_DB_USER=epsm_results_user RESULTS_DB_PASSWORD=epsm_results_password RESULTS_DB_HOST=database RESULTS_DB_PORT=5432; python manage.py migrate --database=results_db"
 
 # Create superuser if it doesn't exist
 echo "👤 Creating Django superuser (if needed)..."

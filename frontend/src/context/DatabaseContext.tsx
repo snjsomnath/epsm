@@ -46,18 +46,18 @@ interface DatabaseContextType {
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
-  addMaterial: (material: MaterialInsert) => Promise<void>;
-  updateMaterial: (id: string, material: Partial<MaterialInsert>) => Promise<void>;
-  addWindowGlazing: (glazing: WindowGlazingInsert) => Promise<void>;
-  updateWindowGlazing: (id: string, glazing: Partial<WindowGlazingInsert>) => Promise<void>;
-  addConstruction: (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
-  updateConstruction: (id: string, construction: Partial<ConstructionInsert>, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<void>;
-  addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<void>;
-  updateConstructionSet: (id: string, constructionSet: Partial<ConstructionSetInsert>) => Promise<void>;
-  deleteConstructionSet: (id: string) => Promise<void>;
-  addScenario: (scenario: ScenarioInsert, constructions: { constructionId: string, elementType: string }[]) => Promise<void>;
-  updateScenario: (id: string, scenario: Partial<ScenarioInsert>, constructions: { constructionId: string, elementType: string }[]) => Promise<void>;
-  deleteScenario: (id: string) => Promise<void>;
+  addMaterial: (material: MaterialInsert) => Promise<any>;
+  updateMaterial: (id: string, material: Partial<MaterialInsert>) => Promise<any>;
+  addWindowGlazing: (glazing: WindowGlazingInsert) => Promise<any>;
+  updateWindowGlazing: (id: string, glazing: Partial<WindowGlazingInsert>) => Promise<any>;
+  addConstruction: (construction: ConstructionInsert, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<any>;
+  updateConstruction: (id: string, construction: Partial<ConstructionInsert>, layers: Omit<LayerInsert, 'construction_id'>[]) => Promise<any>;
+  addConstructionSet: (constructionSet: ConstructionSetInsert) => Promise<any>;
+  updateConstructionSet: (id: string, constructionSet: Partial<ConstructionSetInsert>) => Promise<any>;
+  deleteConstructionSet: (id: string) => Promise<any>;
+  addScenario: (scenario: ScenarioInsert, constructions: { constructionId: string, elementType: string }[]) => Promise<any>;
+  updateScenario: (id: string, scenario: Partial<ScenarioInsert>, constructions: { constructionId: string, elementType: string }[]) => Promise<any>;
+  deleteScenario: (id: string) => Promise<any>;
 }
 
 const DatabaseContext = createContext<DatabaseContextType>({
@@ -299,8 +299,16 @@ export const DatabaseProvider = ({ children }: DatabaseProviderProps) => {
 
   const handleDeleteScenario = async (id: string) => {
     try {
-      await deleteScenarioInDb(id);
+      const res = await deleteScenarioInDb(id);
+      // Refresh list regardless of whether backend reported not_found
       await fetchData();
+      // Notify other components (like ResultsPage) that scenarios changed so they can refresh
+      try {
+        window.dispatchEvent(new CustomEvent('scenarios:changed', { detail: { id, result: res } }));
+      } catch (e) {
+        // ignore
+      }
+      return res;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete scenario');
       throw err;

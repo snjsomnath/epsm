@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField } from '@mui/material';
 import { Play, FileText, AlertCircle, BarChart2, Edit3, Trash2, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
+import { authenticatedFetch } from '../../lib/auth-api';
 import EpwUploadArea from './EpwUploadArea';
 import AssignmentsTab from './AssignmentsTab';
 import ResultsTab from './ResultsTab';
@@ -87,7 +88,7 @@ const BaselinePage = () => {
       const backendUrl = 'http://localhost:8000';
 
       // start run
-      const response = await fetch(`${backendUrl}/api/simulation/run/`, { method: 'POST', body: formData });
+  const response = await authenticatedFetch(`${backendUrl}/api/simulation/run/`, { method: 'POST', body: formData });
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(`Server responded with ${response.status}: ${errorText}`);
@@ -99,7 +100,7 @@ const BaselinePage = () => {
 
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/status/`);
+          const statusResponse = await authenticatedFetch(`${backendUrl}/api/simulation/${simulation_id}/status/`);
           if (!statusResponse.ok) { clearInterval(pollInterval); throw new Error(`Status error ${statusResponse.status}`); }
           const statusData = await statusResponse.json();
           setProgress(statusData.progress ?? 0);
@@ -136,7 +137,7 @@ const BaselinePage = () => {
               let resultsData: any = null;
               if (typeof loadResults === 'function') resultsData = await loadResults(simulation_id);
               if (!resultsData) {
-                const resultsResponse = await fetch(`${backendUrl}/api/simulation/${simulation_id}/results/`);
+                const resultsResponse = await authenticatedFetch(`${backendUrl}/api/simulation/${simulation_id}/results/`);
                 if (!resultsResponse.ok) {
                   setSimulationResults({ error: `Failed to fetch results: ${resultsResponse.statusText}`, simulationId: simulation_id, fileName: uploadedFiles[0]?.name || 'Unknown file', totalEnergy: 0, heating: 0, cooling: 0, runTime: 0 });
                   setSimulationComplete(true); setSimulating(false); setTabIndex(0); return;
@@ -317,8 +318,8 @@ const BaselinePage = () => {
                                     let data = null;
                                     if (typeof loadResults === 'function') data = await loadResults(run.id);
                                     if (!data) {
-                                      const res = await fetch(`/api/simulation/${run.id}/results/`);
-                                      if (res.ok) data = await res.json();
+                                      const res = await authenticatedFetch(`/api/simulation/${run.id}/results/`);
+                                      if (res && res.ok) data = await res.json();
                                     }
                                     if (data) {
                                       setSimulationResults(data);
