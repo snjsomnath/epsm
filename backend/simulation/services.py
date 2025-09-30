@@ -4,14 +4,57 @@ import json
 import tempfile
 import pathlib
 from pathlib import Path
+from typing import Optional
 from django.conf import settings
 from .models import Simulation, SimulationFile
+import uuid
 from eppy.modeleditor import IDF
 from bs4 import BeautifulSoup
 import psutil
 
 import concurrent.futures
 import sqlite3
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+
+# Helper to determine default max workers based on available CPUs
+def _detect_cpu_count() -> int:
+    """Return an integer CPU count suitable for deciding worker pool size.
+
+    Tries in order: psutil (physical cores), psutil logical, os.cpu_count().
+    This attempts to be robust inside containers; if detection fails, 1 is
+    returned.
+    """
+    try:
+        # Prefer physical cores when available
+        if 'psutil' in globals():
+            c = psutil.cpu_count(logical=False)
+            if c and c > 0:
+                return int(c)
+            c = psutil.cpu_count(logical=True)
+            if c and c > 0:
+                return int(c)
+    except Exception:
+        pass
+    try:
+        import os as _os
+        c = _os.cpu_count()
+        if c and c > 0:
+            return int(c)
+    except Exception:
+        pass
+    return 1
+
+
+def _default_max_workers() -> int:
+    """Return a safe default for max_workers: max(1, cpu_count - 1).
+
+    Subtracting one avoids saturating the machine and leaves room for the
+    event loop or other services. Always returns at least 1.
+    """
+    c = _detect_cpu_count()
+    return max(1, c - 1)
 
 class EnergyPlusSimulator:
     def __init__(self, simulation: Simulation):
@@ -39,6 +82,30 @@ class EnergyPlusSimulator:
         # Log the paths for debugging
         print(f"Simulation {simulation.id} results will be saved to: {self.results_dir}")
         print(f"Simulation {simulation.id} files will be saved to: {self.files_dir}")
+
+        # Precompute channel group name for progress pushes
+        self._channel_layer = get_channel_layer()
+        self._progress_group = f"simulation_progress_{self.run_id}"
+
+    def _push_progress(self, progress: int, status: str = None, extra: dict = None):
+        """Send a progress update to the Channels group so WebSocket clients receive pushes."""
+        payload = {"progress": int(progress)}
+        if status is not None:
+            payload['status'] = status
+        if extra:
+            payload.update(extra)
+
+        try:
+            async_to_sync(self._channel_layer.group_send)(
+                self._progress_group,
+                {
+                    'type': 'progress_update',
+                    'payload': payload
+                }
+            )
+        except Exception:
+            # Non-fatal: continue if channel layer is not available
+            pass
 
     def run_single_simulation(self, idf_file, weather_file, simulation_dir):
         """Run a single EnergyPlus simulation using Docker container"""
@@ -230,12 +297,16 @@ class EnergyPlusSimulator:
                 "output_dir": str(simulation_dir)
             }
 
-    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers=4):
+    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers: Optional[int]=None):
         # Run multiple IDF files in parallel using ThreadPoolExecutor
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         futures = []
         logs = []
+        if max_workers is None:
+            max_workers = _default_max_workers()
+        total = len(idf_files)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for idf_file in idf_files:
                 idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
@@ -247,28 +318,49 @@ class EnergyPlusSimulator:
                     idf_file, weather_file, str(idf_results_dir)
                 )
                 futures.append((idf_file, future))
-            for idf_file, future in futures:
+            # Use as_completed to update progress as tasks finish
+            from concurrent.futures import as_completed as _as_completed
+            for fut in _as_completed([f for (_, f) in futures]):
+                # find the associated idf_file
+                pair = next(((idf, f) for (idf, f) in futures if f is fut), None)
                 try:
-                    log = future.result()
-                    logs.append((idf_file, log))
+                    log = fut.result()
+                    if pair:
+                        logs.append((pair[0], log))
+                    else:
+                        logs.append((None, log))
                 except Exception as e:
-                    logs.append((idf_file, {"error": str(e)}))
+                    if pair:
+                        logs.append((pair[0], {"error": str(e)}))
+                    else:
+                        logs.append((None, {"error": str(e)}))
+                # update progress on the simulation model
+                try:
+                    completed += 1
+                    pct = int((completed / total) * 100)
+                    self.simulation.progress = pct
+                    # Avoid writing end_time here; just update progress and updated_at
+                    self.simulation.save()
+                    # Push progress update to WebSocket clients if channel layer is available
+                    try:
+                        self._push_progress(pct, status='running')
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         return logs
 
-    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers=4):
+    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers: Optional[int]=None):
         """
         For each base IDF and each construction set, generate a new IDF with the construction set inserted,
         store it in a subfolder, and run all in parallel.
         """
-        # Prefer the older parser that provides `insert_construction_set` used for
-        # parametric generation. If it's not available, raise a clear error so
-        # the caller knows to install or restore `idf_parser_old.py`.
         try:
-            from .idf_parser_old import IdfParser
+            from .unified_idf_parser import IdfParser
         except Exception as e:
             raise ImportError(
-                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `idf_parser_old.py`. "
-                "Please ensure `backend/simulation/idf_parser_old.py` is present and importable."
+                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `unified_idf_parser.py`. "
+                "Please ensure `backend/simulation/unified_idf_parser.py` is present and importable."
             )
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -288,7 +380,21 @@ class EnergyPlusSimulator:
                 variant_dir.mkdir(parents=True, exist_ok=True)
                 idf_name = f"idf_{idf_idx+1}_variant_{variant_idx+1}.idf"
                 idf_path = variant_dir / idf_name
-                parser.idf.saveas(str(idf_path))
+                # Some parser instances may not have an underlying eppy IDF
+                # object (e.g. when eppy/IDD isn't available). Prefer using
+                # the IDF object's saveas when present; otherwise fall back
+                # to the parser's `to_string()` output written to disk.
+                try:
+                    idf_obj = getattr(parser, 'idf', None)
+                    if idf_obj is not None and hasattr(idf_obj, 'saveas'):
+                        idf_obj.saveas(str(idf_path))
+                    else:
+                        with open(str(idf_path), 'w', encoding='utf-8') as _f:
+                            _f.write(parser.to_string())
+                except Exception:
+                    # Last-resort: attempt to write parser.to_string()
+                    with open(str(idf_path), 'w', encoding='utf-8') as _f:
+                        _f.write(parser.to_string())
                 generated_idf_paths.append(idf_path)
                 variant_map.append({
                     "idf_file": idf_file,
@@ -299,9 +405,13 @@ class EnergyPlusSimulator:
                     "variant_dir": variant_dir
                 })
 
-        # Run all generated IDFs in parallel
+        # Run all generated IDFs in parallel and update progress as each finishes
         logs = []
         results = []
+        if max_workers is None:
+            max_workers = _default_max_workers()
+        total = len(variant_map)
+        completed = 0
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
             for entry in variant_map:
@@ -326,6 +436,14 @@ class EnergyPlusSimulator:
                         results.append(file_results)
                 except Exception as e:
                     results.append({"error": str(e), "variant_idx": entry["variant_idx"], "idf_idx": entry["idf_idx"]})
+                # update progress on the simulation model
+                try:
+                    completed += 1
+                    pct = int((completed / total) * 100) if total > 0 else 100
+                    self.simulation.progress = pct
+                    self.simulation.save()
+                except Exception:
+                    pass
 
         # Save all results to PostgreSQL database
         print(f"Saving batch results to database for simulation {self.simulation.id}")
@@ -346,13 +464,18 @@ class EnergyPlusSimulator:
 
         print(f"Batch parametric simulation completed: {len(results)} results")
 
-    def run_simulation(self, parallel=False, max_workers=4, batch_mode=False, construction_sets=None):
+    def run_simulation(self, parallel=False, max_workers: Optional[int]=None, batch_mode=False, construction_sets=None):
         """
         Main method to run simulations using Docker EnergyPlus containers.
         """
         try:
             self.simulation.status = 'running'
             self.simulation.save()
+            # notify clients that simulation has started (progress may be 0)
+            try:
+                self._push_progress(self.simulation.progress or 0, status='running')
+            except Exception:
+                pass
 
             idf_files = self.simulation.files.filter(file_type='idf')
             weather_file = self.simulation.files.filter(file_type='weather').first()
@@ -380,6 +503,8 @@ class EnergyPlusSimulator:
             logs = []
 
             if parallel:
+                if max_workers is None:
+                    max_workers = _default_max_workers()
                 print(f"Running simulations in parallel mode (max_workers={max_workers})")
                 logs = self.run_parallel_simulations(idf_files, weather_file, self.results_dir, max_workers=max_workers)
                 for idf_file, log in logs:
@@ -393,6 +518,8 @@ class EnergyPlusSimulator:
                         all_results.append(file_results)
             else:
                 print("Running simulations in serial mode")
+                total = len(list(idf_files))
+                done = 0
                 for idf_file in idf_files:
                     idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
                     idf_basename = os.path.basename(idf_path)
@@ -404,6 +531,14 @@ class EnergyPlusSimulator:
                     file_results = self.process_file_results(results_path, idf_file)
                     if file_results:
                         all_results.append(file_results)
+                    # update progress
+                    try:
+                        done += 1
+                        pct = int((done / total) * 100) if total > 0 else 100
+                        self.simulation.progress = pct
+                        self.simulation.save()
+                    except Exception:
+                        pass
 
             # Save all results to a combined JSON file
             combined_results_path = self.results_dir / 'combined_results.json'
@@ -420,7 +555,12 @@ class EnergyPlusSimulator:
             rel_path = str(combined_results_path.relative_to(self.media_root))
             self.simulation.results_file = rel_path
             self.simulation.status = 'completed'
+            self.simulation.progress = 100
             self.simulation.save()
+            try:
+                self._push_progress(100, status='completed')
+            except Exception:
+                pass
 
             print(f"Simulation {self.simulation.id} completed successfully with {len(all_results)} result sets")
 
@@ -448,6 +588,19 @@ class EnergyPlusSimulator:
             if html_path.exists():
                 # Extract results from HTML
                 results = parse_html_with_table_lookup(html_path, log_path, [idf_file])
+
+                # If a ReadVars CSV exists, attempt to parse hourly timeseries
+                csv_path = output_file.with_suffix('.csv')
+                if csv_path.exists():
+                    try:
+                        hourly_data = parse_readvars_csv(csv_path)
+                        if hourly_data:
+                            # attach hourly_data to the results so downstream
+                            # save_results_to_database can persist it
+                            results['hourly_timeseries'] = hourly_data
+                    except Exception:
+                        # Non-fatal: continue even if CSV parsing fails
+                        pass
                 
                 # Add original filename to results
                 results['originalFileName'] = idf_file.original_name if hasattr(idf_file, 'original_name') and idf_file.original_name else (idf_file.file_name if getattr(idf_file, 'file_name', None) else os.path.basename(idf_file.file_path))
@@ -486,7 +639,7 @@ class EnergyPlusSimulator:
             try:
                 # Create main simulation result
                 simulation_result = SimulationResult.objects.create(
-                    simulation=self.simulation,
+                    simulation_id=self.simulation.id,
                     run_id=job_info.get("run_id") if job_info else str(self.simulation.id),
                     file_name=result.get("fileName", "unknown.idf"),
                     building_name=result.get("building", ""),
@@ -528,11 +681,130 @@ class EnergyPlusSimulator:
                         )
                 
                 print(f"Saved simulation result to database: {simulation_result.id}")
+                # If hourly timeseries were attached to the parsed result, save them
+                try:
+                    hourly_payload = result.get('hourly_timeseries')
+                    # Only persist when the parser detected an hourly-like file
+                    if hourly_payload and isinstance(hourly_payload, dict) and hourly_payload.get('is_hourly'):
+                        from .models import SimulationHourlyTimeseries
+                        # Persist as a single JSON blob for now
+                        SimulationHourlyTimeseries.objects.create(
+                            simulation_result=simulation_result,
+                            has_hourly=True,
+                            hourly_values=hourly_payload
+                        )
+                except Exception as e:
+                    print(f"Failed to save hourly timeseries for result {simulation_result.id}: {e}")
                 
             except Exception as e:
                 print(f"Error saving result to database: {e}")
                 import traceback
                 traceback.print_exc()
+
+
+def parse_readvars_csv(csv_path: str | Path) -> dict:
+    """Parse EnergyPlus ReadVars CSV (eplusout.csv) into a dict of timeseries.
+
+    Heuristics used:
+    - Skip the first header row(s) until the line that starts with "" (blank first cell)
+      followed by variable columns (older ReadVars sometimes include metadata rows).
+    - Detect whether the CSV is hourly by counting rows (>= 8000 rows is treated as yearly hourly).
+    - Return a dict mapping sanitized variable names to numeric arrays.
+
+    This implementation is conservative: it reads numeric columns only and limits
+    memory by only reading the first ~20000 rows.
+    """
+    import csv
+
+    csv_path = Path(csv_path)
+    series = {}
+    try:
+        with csv_path.open('r', encoding='utf-8', errors='replace') as fh:
+            reader = csv.reader(fh)
+            rows = []
+            # Read all rows up to a reasonable cap (protect memory)
+            max_rows = 20000
+            for i, row in enumerate(reader):
+                rows.append(row)
+                if i + 1 >= max_rows:
+                    break
+
+        if len(rows) < 2:
+            return {}
+
+        # Attempt to find the header row which contains variable names
+        header_idx = 0
+        # Common EnergyPlus ReadVars CSV has first column blank then variable labels
+        for idx, r in enumerate(rows[:10]):
+            # Heuristic: header row contains at least 2 non-empty cells and not numeric
+            non_empty = sum(1 for c in r if c and c.strip() != '')
+            if non_empty >= 2 and any(not _is_number_like(c) for c in r):
+                header_idx = idx
+                break
+
+        header = rows[header_idx]
+        data_rows = rows[header_idx+1:]
+
+        # If the first column is empty and second column looks like a number for the
+        # first data row, then columns from 1..N are variables
+        col_count = len(header)
+        if col_count < 2:
+            return {}
+
+        # Determine if this looks like an hourly file (approx 8760 rows)
+        hourly_like = len(data_rows) >= 8000
+
+        # For each column, try to parse numeric values
+        for col_idx in range(1, col_count):
+            var_name_raw = header[col_idx].strip() if header[col_idx] else f'col_{col_idx}'
+            var_name = _sanitize_variable_name(var_name_raw)
+            vals = []
+            for r in data_rows:
+                if col_idx >= len(r):
+                    vals.append(None)
+                    continue
+                v = r[col_idx].strip()
+                if v == '' or v == '\u00a0':
+                    vals.append(None)
+                    continue
+                try:
+                    vals.append(float(v))
+                except Exception:
+                    vals.append(None)
+            # If hourly_like but we have far fewer rows, skip this variable
+            if hourly_like and len([x for x in vals if x is not None]) < 100:
+                continue
+            series[var_name] = vals
+
+        # If nothing meaningful found, return empty
+        if not series:
+            return {}
+
+        # Attach metadata
+        return {
+            'is_hourly': hourly_like,
+            'rows': len(data_rows),
+            'series': series
+        }
+    except Exception:
+        return {}
+
+
+def _sanitize_variable_name(name: str) -> str:
+    # Remove units in parentheses and replace spaces with underscores
+    import re
+    s = re.sub(r"\(.*?\)", '', name).strip()
+    s = re.sub(r"[^0-9A-Za-z_]+", '_', s)
+    s = s.strip('_')
+    return s or name
+
+
+def _is_number_like(s: str) -> bool:
+    try:
+        float(s)
+        return True
+    except Exception:
+        return False
 
 def parse_html_with_table_lookup(html_path, log_path, idf_files):
     """Parse EnergyPlus HTML output and log to extract structured results."""
@@ -721,12 +993,49 @@ def parse_simulation_results(simulation):
                 # Normalize to list if necessary
                 if isinstance(data, dict) and simulation.file_count > 1:
                     data = [data]
+                # Determine weather filename (if any) attached to the Simulation
+                try:
+                    weather_obj = simulation.files.filter(file_type='weather').first()
+                    weather_name = None
+                    if weather_obj is not None:
+                        weather_name = getattr(weather_obj, 'original_name', None) or getattr(weather_obj, 'file_name', None) or (os.path.basename(getattr(weather_obj, 'file_path')) if getattr(weather_obj, 'file_path', None) else None)
+                except Exception:
+                    weather_name = None
+
                 if isinstance(data, list):
                     for item in data:
                         if isinstance(item, dict):
-                            item['simulationId'] = simulation.id
+                            # Attach consistent simulation identifiers and weather info
+                            try:
+                                item['simulationId'] = str(simulation.id)
+                            except Exception:
+                                item['simulationId'] = simulation.id
+                            item['simulation_id'] = str(simulation.id)
+                            # ensure a stable id exists for frontend selection; generate UUID if missing
+                            if not item.get('id'):
+                                item['id'] = str(uuid.uuid4())
+                            # backfill common name variants
+                            if not item.get('file_name') and item.get('fileName'):
+                                item['file_name'] = item.get('fileName')
+                            # attach weather metadata if available
+                            if weather_name:
+                                item['weather_file'] = weather_name
+                                item['epw'] = weather_name
+                                item['_weatherKey'] = weather_name
                 elif isinstance(data, dict):
-                    data['simulationId'] = simulation.id
+                    try:
+                        data['simulationId'] = str(simulation.id)
+                    except Exception:
+                        data['simulationId'] = simulation.id
+                    data['simulation_id'] = str(simulation.id)
+                    if not data.get('id'):
+                        data['id'] = str(uuid.uuid4())
+                    if not data.get('file_name') and data.get('fileName'):
+                        data['file_name'] = data.get('fileName')
+                    if weather_name:
+                        data['weather_file'] = weather_name
+                        data['epw'] = weather_name
+                        data['_weatherKey'] = weather_name
                 return data
 
         # Fall back to individual output.json files for each IDF

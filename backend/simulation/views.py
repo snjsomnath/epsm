@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
-from .idf_parser import EnergyPlusIDFParser
+from .unified_idf_parser import EnergyPlusIDFParser
 #from database.models import Material, Construction
 from database.models import Material, Construction
 from .database_client import check_material_exists, check_construction_exists
@@ -24,7 +24,7 @@ from pathlib import Path
 import sqlite3
 import time
 from threading import Lock
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 import mimetypes
 import zipfile
 import io
@@ -73,39 +73,51 @@ def parse_idf(request):
         for file_index, file in enumerate(files):
             print("Processing file:", file.name)
             content = file.read().decode('utf-8')
-            parser = EnergyPlusIDFParser()
-            file_data = parser.parse(content)
+            # UnifiedIDFParser requires the raw content on construction.
+            # Call parse() with no arguments to get the parsed dict.
+            parser = EnergyPlusIDFParser(content)
+            file_data = parser.parse()
             
             # Add database comparison for materials
-            for material in file_data['materials']:
+            for material in file_data.get('materials', []):
+                # Support both parser shapes:
+                # - older idf_parser.py returns flat dicts with keys like 'thickness', 'conductivity', etc.
+                # - unified_idf_parser returns dicts with a nested 'properties' dict containing those fields
                 material_name = material.get('name') or material.get('Name') or 'Unknown'
 
-                # Normalize properties into the shape the frontend expects
-                def _get_first_numeric(d, keys):
-                    for k in keys:
-                        if k in d and d[k] is not None:
+                # Helper to read numeric fields from either top-level or nested properties
+                def _get_numeric(obj, names):
+                    # obj can be a dict with direct keys, or have obj['properties']
+                    props = obj.get('properties') if isinstance(obj.get('properties'), dict) else obj
+                    for n in names:
+                        if n in props and props[n] is not None:
                             try:
-                                return float(d[k])
+                                return float(props[n])
                             except Exception:
                                 try:
-                                    # sometimes values are strings with commas
-                                    return float(str(d[k]).replace(',', ''))
+                                    return float(str(props[n]).replace(',', ''))
                                 except Exception:
                                     continue
                     return None
 
                 props = {}
-                props['thickness'] = _get_first_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
-                props['conductivity'] = _get_first_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
-                props['density'] = _get_first_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg_m3'])
-                # specific heat may be named specific_heat or Specific_Heat or specificHeat
-                props['specificHeat'] = _get_first_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
+                props['thickness'] = _get_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
+                props['conductivity'] = _get_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
+                props['density'] = _get_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg/m3'])
+                props['specificHeat'] = _get_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
 
-                # Other non-numeric properties
-                props['roughness'] = material.get('roughness') or material.get('Roughness')
-                props['thermalAbsorptance'] = material.get('thermal_absorptance') or material.get('Thermal_Absorptance')
-                props['solarAbsorptance'] = material.get('solar_absorptance') or material.get('Solar_Absorptance')
-                props['visibleAbsorptance'] = material.get('visible_absorptance') or material.get('Visible_Absorptance')
+                # Non-numeric properties (fall back to nested properties as well)
+                def _get_str(obj, keys):
+                    props_src = obj.get('properties') if isinstance(obj.get('properties'), dict) else obj
+                    for k in keys:
+                        if k in props_src and props_src[k] is not None:
+                            return props_src[k]
+                    return None
+
+                props['roughness'] = _get_str(material, ['roughness', 'Roughness'])
+                props['thermalAbsorptance'] = _get_str(material, ['thermal_absorptance', 'Thermal_Absorptance'])
+                props['solarAbsorptance'] = _get_str(material, ['solar_absorptance', 'Solar_Absorptance'])
+                props['visibleAbsorptance'] = _get_str(material, ['visible_absorptance', 'Visible_Absorptance'])
 
                 normalized_material = {
                     'name': material_name,
@@ -122,28 +134,29 @@ def parse_idf(request):
                 # Generate a unique key for this material
                 normalized_material['uniqueKey'] = f"{material_name}_{file_index}_{file.name}"
 
-                # Only add if not already added (or replace with the current one)
+                # Only add if not already added
                 if material_name not in materials_dict:
                     materials_dict[material_name] = normalized_material
             
             # Add database comparison for constructions
-            for construction in file_data['constructions']:
+            for construction in file_data.get('constructions', []):
                 construction_name = construction.get('name') or construction.get('Name') or 'Unknown'
 
-                # Extract layers — parsers may provide 'layers' list or field names
+                # Layers may be provided directly under 'layers' or nested under properties
                 layers = []
-                if isinstance(construction.get('layers'), list):
+                # 1) unified parser: construction may be {'properties': {'layers': [...]}}
+                props = construction.get('properties') if isinstance(construction.get('properties'), dict) else construction
+                if isinstance(props.get('layers'), list) and props.get('layers'):
+                    layers = props.get('layers')
+                elif isinstance(construction.get('layers'), list):
                     layers = construction.get('layers')
                 else:
-                    # Sometimes constructions come with numbered Layer_1, Layer_2... or a 'fields' list
-                    if 'fields' in construction and isinstance(construction['fields'], list):
-                        # Heuristic: first field is name, remaining are layers
-                        if len(construction['fields']) > 1:
-                            layers = construction['fields'][1:]
+                    # fallback to heuristic: fields list or keys like Layer_1, Layer_2
+                    if isinstance(construction.get('fields'), list) and len(construction.get('fields')) > 1:
+                        layers = construction.get('fields')[1:]
                     else:
-                        # Fallback: try to collect any keys that look like layer names
                         for k, v in construction.items():
-                            if k.lower().startswith('layer') and v:
+                            if isinstance(k, str) and k.lower().startswith('layer') and v:
                                 layers.append(v)
 
                 normalized_construction = {
@@ -206,17 +219,26 @@ def parse_idf_test(request):
             return JsonResponse({'error': 'Missing idf or construction_set in JSON body'}, status=400)
 
         # Use the older parser for this lightweight test
-        from .idf_parser_old import IdfParser, generate_parametric_idfs
+        from .unified_idf_parser import IdfParser, generate_parametric_idfs
         parser = IdfParser(idf_content)
         parser.insert_construction_set(construction_set)
 
         # Save to a temp file and return content
         with tempfile.NamedTemporaryFile(delete=False, suffix='.idf', mode='w', encoding='utf-8') as tmp:
-            parser.idf.saveas(tmp.name)
-            tmp.close()
+            try:
+                idf_obj = getattr(parser, 'idf', None)
+                if idf_obj is not None and hasattr(idf_obj, 'saveas'):
+                    idf_obj.saveas(tmp.name)
+                else:
+                    tmp.write(parser.to_string())
+            finally:
+                tmp.close()
             with open(tmp.name, 'r', encoding='utf-8') as f:
                 out = f.read()
-            os.remove(tmp.name)
+            try:
+                os.remove(tmp.name)
+            except Exception:
+                pass
 
         return JsonResponse({'modified_idf': out})
     except Exception as e:
@@ -395,6 +417,10 @@ def run_simulation(request):
 
         # If a scenario_id was provided, construct a list of construction_sets
         scenario_id = request.POST.get('scenario_id') or (request.data.get('scenario_id') if hasattr(request, 'data') else None)
+        # construction_mode controls how construction_sets are generated. Supported values:
+        # - None or 'combinatorial' (default): build Cartesian product across element types
+        # - 'per_construction': create one construction_set per element type (choose first construction for that type)
+        construction_mode = request.POST.get('construction_mode') or (request.data.get('construction_mode') if hasattr(request, 'data') else None)
         construction_sets = None
         if scenario_id:
             try:
@@ -421,16 +447,42 @@ def run_simulation(request):
                     })
 
                 if groups:
-                    # build cartesian product across element types to create construction_sets
-                    keys = list(groups.keys())
-                    lists = [groups[k] for k in keys]
-                    combos = list(itertools.product(*lists))
-                    construction_sets = []
-                    for combo in combos:
-                        cs = {}
-                        for k, chosen in zip(keys, combo):
-                            cs[k] = {'name': chosen['name'], 'layers': chosen['layers']}
-                        construction_sets.append(cs)
+                    # Two supported modes for creating construction sets:
+                    # 1) combinatorial (default) -- build Cartesian product across element types
+                    # 2) per_construction -- create one construction_set per element type (pick the first construction)
+                    if construction_mode == 'per_construction':
+                        # Create one construction_set per ScenarioConstruction row (preserve element type)
+                        construction_sets = []
+                        for sc in sc_qs:
+                            c = sc.construction
+                            if not c:
+                                continue
+                            layers = []
+                            for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+                                if getattr(L, 'material', None):
+                                    layers.append(L.material.name)
+                                elif getattr(L, 'window', None):
+                                    layers.append(L.window.name)
+                            construction_sets.append({sc.element_type: {'name': c.name, 'layers': layers}})
+                    else:
+                        # build cartesian product across element types to create construction_sets
+                        # NOTE: frontend combinatorics counts (1 + count_per_type) - 1 to allow
+                        # omitting a type (no-change). To match that, include a None option
+                        # for each element type and skip the all-none case.
+                        keys = list(groups.keys())
+                        lists = [[None] + groups[k] for k in keys]
+                        combos = list(itertools.product(*lists))
+                        construction_sets = []
+                        for combo in combos:
+                            cs = {}
+                            for k, chosen in zip(keys, combo):
+                                if chosen is None:
+                                    continue
+                                cs[k] = {'name': chosen['name'], 'layers': chosen['layers']}
+                            # skip the empty combination (all None) which represents baseline/no-change
+                            if not cs:
+                                continue
+                            construction_sets.append(cs)
 
                     # If we found construction_sets, ensure batch_mode is enabled
                     if construction_sets:
@@ -481,30 +533,99 @@ def simulation_status(request, simulation_id):
     try:
         simulation = Simulation.objects.get(id=simulation_id)
         
-        if simulation.status == 'running':
-            # For demo, generate a progress based on time elapsed
-            from django.utils import timezone
-            elapsed = (timezone.now() - simulation.updated_at).total_seconds()
-            progress = min(int((elapsed / 5) * 100), 99)
-        elif simulation.status == 'completed':
-            progress = 100
+        # Prefer an explicit stored progress value updated by the simulator.
+        # Only fall back to the previous time-based heuristic if progress is truly unset (None).
+        # Respect a stored 0 value as a valid progress indicator (avoids an immediate jump to 99%).
+        progress = getattr(simulation, 'progress', None)
+        if progress is None:
+            if simulation.status == 'running':
+                # For backward compatibility, fall back to a simple time-based estimate
+                from django.utils import timezone
+                elapsed = (timezone.now() - simulation.updated_at).total_seconds()
+                progress = min(int((elapsed / 5) * 100), 99)
+            elif simulation.status == 'completed':
+                progress = 100
+            else:
+                progress = 0
         else:
-            progress = 0
+            # Use the stored progress value. Ensure it's an int and clamp reasonable bounds.
+            try:
+                progress = int(progress)
+            except Exception:
+                progress = 0
+            if simulation.status == 'completed':
+                progress = 100
         
-        return JsonResponse({
+        # Include any stored error message so the frontend can display it
+        error_msg = simulation.error_message if getattr(simulation, 'error_message', None) else None
+
+        # If simulation is failed but no DB-stored error message is present,
+        # attempt to provide a short tail from any run logs to help debugging.
+        if simulation.status == 'failed' and not error_msg:
+            try:
+                sim_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_results', str(simulation_id))
+                if os.path.exists(sim_dir):
+                    # Look for common log filenames in the simulation results tree
+                    candidates = ['run_output.log', 'output.err', 'eplusout.err']
+                    found = None
+                    for root, _, files in os.walk(sim_dir):
+                        for fname in candidates:
+                            if fname in files:
+                                found = os.path.join(root, fname)
+                                break
+                        if found:
+                            break
+                    if found:
+                        # Read a reasonably small tail to avoid huge responses
+                        with open(found, 'rb') as f:
+                            f.seek(0, os.SEEK_END)
+                            size = f.tell()
+                            tail_size = min(size, 2000)
+                            if tail_size > 0:
+                                f.seek(-tail_size, os.SEEK_END)
+                            data = f.read().decode('utf-8', errors='replace')
+                        error_msg = f"Log snippet from {os.path.basename(found)}:\n" + data
+            except Exception:
+                # Non-fatal; if this fails, we will simply return null error fields
+                error_msg = None
+        response = JsonResponse({
             'status': simulation.status,
             'progress': progress,
-            'simulationId': simulation_id
+            'simulationId': simulation_id,
+            'error': error_msg,
+            'error_message': error_msg,
         })
+        # Add CORS headers here to ensure browser requests from the frontend
+        # receive the Access-Control-Allow-Origin header even if middleware
+        # doesn't run for some error/early-response paths. Prefer echoing
+        # the request Origin (if provided) so credentials can be used.
+        origin = request.headers.get('Origin') or request.META.get('HTTP_ORIGIN')
+        if origin:
+            response["Access-Control-Allow-Origin"] = origin
+            if getattr(settings, 'CORS_ALLOW_CREDENTIALS', False):
+                response["Access-Control-Allow-Credentials"] = "true"
+        else:
+            # Non-browser clients or tests may not send Origin; fall back to wildcard
+            response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
         
     except Simulation.DoesNotExist:
-        return JsonResponse({
+        response = JsonResponse({
             'error': 'Simulation not found'
         }, status=404)
+        response["Access-Control-Allow-Origin"] = "*"
+        return response
     except Exception as e:
-        return JsonResponse({
+        # Print full traceback to server logs for easier debugging
+        import traceback
+        traceback.print_exc()
+        response = JsonResponse({
             'error': str(e)
         }, status=500)
+        response["Access-Control-Allow-Origin"] = "*"
+        return response
 
 @csrf_exempt
 @api_view(['GET'])
@@ -538,6 +659,15 @@ def simulation_results(request, simulation_id):
                 for result in results:
                     if isinstance(result, dict):
                         result['simulationId'] = simulation_id
+                        # If hourly_timeseries was saved in the per-run JSON, keep it in the response
+                        # (it will only be present when the parser detected an hourly file)
+                        try:
+                            if 'hourly_timeseries' in result:
+                                # Ensure we don't return huge payloads unintentionally
+                                # The frontend can request specific variables later if needed.
+                                pass
+                        except Exception:
+                            pass
             elif isinstance(results, dict):
                 results['simulationId'] = simulation_id
             
@@ -670,6 +800,34 @@ def parallel_simulation_results(request, simulation_id):
                 ]
             }
 
+            # Attach hourly timeseries if present in DB (preferred) or on-disk JSON
+            try:
+                # Prefer DB-stored hourly timeseries
+                from .models import SimulationHourlyTimeseries
+                hourly_qs = SimulationHourlyTimeseries.objects.filter(simulation_result=result)
+                if hourly_qs.exists():
+                    ht = hourly_qs.order_by('-created_at').first()
+                    result_dict['hourly_timeseries'] = ht.hourly_values
+                else:
+                    # Fallback: check on-disk output.json in the variant folder
+                    try:
+                        variant_folder = f"variant_{int(result.variant_idx) + 1}_idf_{int(result.idf_idx) + 1}"
+                    except Exception:
+                        variant_folder = f"variant_{result.variant_idx}_idf_{result.idf_idx}"
+                    result_dir = os.path.join(settings.MEDIA_ROOT, 'simulation_results', str(simulation_id), variant_folder)
+                    json_path = os.path.join(result_dir, 'output.json')
+                    if os.path.exists(json_path):
+                        try:
+                            with open(json_path, 'r', encoding='utf-8') as jf:
+                                jdata = json.load(jf)
+                                if isinstance(jdata, dict) and jdata.get('hourly_timeseries'):
+                                    result_dict['hourly_timeseries'] = jdata.get('hourly_timeseries')
+                        except Exception:
+                            pass
+            except Exception:
+                # Non-fatal: don't block returning other fields
+                pass
+
             # Try to attach recent run logs for this variant. The folder naming used by the simulator
             # is 1-based (variant_1_idf_1), while DB stores 0-based indices, so add 1 when building path.
             try:
@@ -739,6 +897,122 @@ def simulation_download(request, simulation_id):
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_simulation_results(request):
+    # Debugging: print the authenticated user and cookies received for troubleshooting AnonymousUser issues
+    try:
+        print(f"[DEBUG] list_simulation_results request.user={getattr(request, 'user', None)}, is_authenticated={getattr(request.user, 'is_authenticated', None)}")
+        print(f"[DEBUG] request.COOKIES={request.COOKIES}")
+    except Exception as _e:
+        print(f"[DEBUG] Failed to print request.user or cookies: {_e}")
+    """Return an aggregated list of simulation results across simulations.
+
+    Supports optional query params:
+      - user_id: filter by Simulation.user id
+      - scenario_id: filter by Scenario id stored on Simulation.description (best-effort)
+      - limit, offset: pagination
+    """
+    try:
+        from .models import SimulationResult
+
+        user_id = request.GET.get('user_id')
+        scenario_id = request.GET.get('scenario_id')
+        try:
+            limit = min(500, int(request.GET.get('limit', 100)))
+        except Exception:
+            limit = 100
+        try:
+            offset = max(0, int(request.GET.get('offset', 0)))
+        except Exception:
+            offset = 0
+
+        # SimulationResult now stores `simulation_id` (UUIDField) to avoid cross-db FK
+        qs = SimulationResult.objects.all().order_by('-created_at')
+
+        # Filters involving Simulation must be performed by querying the Simulation model
+        if user_id:
+            sims = Simulation.objects.filter(user__id=user_id).values_list('id', flat=True)
+            qs = qs.filter(simulation_id__in=list(sims))
+        if scenario_id:
+            sims = Simulation.objects.filter(description__icontains=str(scenario_id)).values_list('id', flat=True)
+            qs = qs.filter(simulation_id__in=list(sims))
+
+        results = []
+        for r in qs[offset:offset+limit]:
+            # r.simulation_id is a UUID field referencing Simulation.id in the default DB
+            sim_id = str(r.simulation_id) if getattr(r, 'simulation_id', None) else None
+            sim_name = None
+            user_id_val = None
+            if sim_id:
+                try:
+                    sim_obj = Simulation.objects.filter(id=sim_id).first()
+                    if sim_obj:
+                        sim_name = sim_obj.name
+                        user_id_val = str(sim_obj.user.id) if getattr(sim_obj, 'user', None) else None
+                except Exception:
+                    # Non-fatal; skip attaching simulation metadata if there's an error
+                    pass
+
+            # Try to include the user's email when available for frontend display
+            user_email = None
+            try:
+                if sim_obj and getattr(sim_obj, 'user', None) and getattr(sim_obj.user, 'email', None):
+                    user_email = str(sim_obj.user.email)
+            except Exception:
+                user_email = None
+            # Determine weather filename for this simulation (if available)
+            weather_name_local = None
+            try:
+                if sim_obj:
+                    wf = sim_obj.files.filter(file_type='weather').first()
+                    if wf:
+                        weather_name_local = getattr(wf, 'original_name', None) or getattr(wf, 'file_name', None) or (os.path.basename(getattr(wf, 'file_path')) if getattr(wf, 'file_path', None) else None)
+            except Exception:
+                weather_name_local = None
+
+            results.append({
+                'id': str(getattr(r, 'id', None)),
+                'simulation_id': sim_id,
+                'simulation_name': sim_name,
+                'user_id': user_id_val,
+                'user_email': user_email,
+                'weather_file': weather_name_local,
+                'epw': weather_name_local,
+                '_weatherKey': weather_name_local,
+                'file_name': getattr(r, 'file_name', None),
+                'building': getattr(r, 'building_name', None),
+                'total_energy_use': getattr(r, 'total_energy_use', None),
+                'heating_demand': getattr(r, 'heating_demand', None),
+                'cooling_demand': getattr(r, 'cooling_demand', None),
+                'run_time': getattr(r, 'run_time', None),
+                'total_area': getattr(r, 'total_area', None),
+                'status': getattr(r, 'status', None),
+                'variant_idx': getattr(r, 'variant_idx', None),
+                'idf_idx': getattr(r, 'idf_idx', None),
+                'construction_set': getattr(r, 'construction_set_data', None),
+                'created_at': getattr(r, 'created_at').isoformat() if getattr(r, 'created_at', None) else None,
+            })
+
+        response = JsonResponse(results, safe=False)
+        origin = request.headers.get('Origin') or request.META.get('HTTP_ORIGIN')
+        if origin:
+            response['Access-Control-Allow-Origin'] = origin
+            if getattr(settings, 'CORS_ALLOW_CREDENTIALS', False):
+                response['Access-Control-Allow-Credentials'] = 'true'
+        else:
+            response['Access-Control-Allow-Origin'] = '*'
+        response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        response = JsonResponse({'error': str(e)}, status=500)
+        response['Access-Control-Allow-Origin'] = '*'
+        return response
 
 
 # Simple endpoint to return window glazing rows from the materials_db
@@ -1040,6 +1314,10 @@ def api_construction_detail(request, id):
         try:
             construction = Construction.objects.using('materials_db').get(id=id)
         except Construction.DoesNotExist:
+            # Make DELETE idempotent: if client attempted DELETE on a missing resource,
+            # treat it as successful (no-op). For non-DELETE methods, return 404.
+            if request.method == 'DELETE':
+                return HttpResponse(status=204)
             return JsonResponse({'error': 'Construction not found'}, status=404)
 
         if request.method == 'GET':
@@ -1246,7 +1524,9 @@ def api_scenarios(request):
             except Exception:
                 author_obj = None
 
-        # Compute combinatorial total_simulations from provided constructions if not explicitly provided
+        # Compute total_simulations. By default use combinatorial logic, but allow
+        # a creation mode 'per_construction' which creates one sim per provided construction.
+        construction_mode = data.get('construction_mode') or data.get('creation_mode')
         def compute_combinatorial(constructions_list):
             # group by element type
             counts = {}
@@ -1263,7 +1543,14 @@ def api_scenarios(request):
             return max(0, product - 1)
 
         if total_simulations is None:
-            total_simulations = compute_combinatorial(constructions)
+            if construction_mode == 'per_construction':
+                # one simulation per provided construction row
+                try:
+                    total_simulations = max(0, int(len(constructions)))
+                except Exception:
+                    total_simulations = 0
+            else:
+                total_simulations = compute_combinatorial(constructions)
 
         # Create scenario
         scenario = Scenario.objects.using('materials_db').create(
@@ -1302,6 +1589,8 @@ def api_scenario_detail(request, id):
         try:
             s = Scenario.objects.using('materials_db').get(id=id)
         except Scenario.DoesNotExist:
+            if request.method == 'DELETE':
+                return HttpResponse(status=204)
             return JsonResponse({'error': 'Scenario not found'}, status=404)
 
         if request.method == 'GET':
@@ -1326,6 +1615,35 @@ def api_scenario_detail(request, id):
             # Delete scenario and related scenario_constructions explicitly on materials_db
             ScenarioConstruction.objects.using('materials_db').filter(scenario=s).delete()
             Scenario.objects.using('materials_db').filter(id=s.id).delete()
+
+            # Option B: update historical simulation results so UI no longer groups them
+            # by the deleted scenario id. We nullify SimulationResult.simulation_id for any
+            # results that reference this id directly, and also for results whose owning
+            # Simulation has a description that mentions the scenario id (best-effort).
+            try:
+                from .models import SimulationResult, Simulation
+
+                # Nullify direct matches where a result's simulation_id equals the deleted scenario id
+                try:
+                    SimulationResult.objects.filter(simulation_id=str(s.id)).update(simulation_id=None)
+                except Exception:
+                    # Try matching using UUID object if string failed
+                    try:
+                        SimulationResult.objects.filter(simulation_id=s.id).update(simulation_id=None)
+                    except Exception as _:
+                        print(f"Warning: failed to nullify SimulationResult.simulation_id for direct matches of scenario {s.id}")
+
+                # Also find Simulation objects whose description mentions the scenario id
+                try:
+                    sims = Simulation.objects.filter(description__icontains=str(s.id)).values_list('id', flat=True)
+                    sims_list = list(sims)
+                    if sims_list:
+                        SimulationResult.objects.filter(simulation_id__in=sims_list).update(simulation_id=None)
+                except Exception:
+                    print(f"Warning: failed to nullify SimulationResult rows for Simulations referencing scenario {s.id} in description")
+            except Exception as e:
+                print(f"Warning: cleanup of SimulationResult references failed after deleting scenario {s.id}: {e}")
+
             return JsonResponse({'status': 'deleted'})
 
         # PUT - update scenario and replace constructions
@@ -1402,6 +1720,8 @@ def api_construction_set_detail(request, id):
         try:
             cs = ConstructionSet.objects.using('materials_db').get(id=id)
         except ConstructionSet.DoesNotExist:
+            if request.method == 'DELETE':
+                return HttpResponse(status=204)
             return JsonResponse({'error': 'ConstructionSet not found'}, status=404)
 
         if request.method == 'GET':
