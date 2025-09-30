@@ -18,7 +18,6 @@ import {
   Divider,
   Container,
   Stack,
-  Tooltip,
   Chip,
   CircularProgress
 } from '@mui/material';
@@ -246,6 +245,16 @@ const AppLayout = () => {
             </MenuItem>
 
             <Divider />
+            <Divider />
+
+            {user?.is_superuser && (
+              <MenuItem onClick={() => { handleProfileMenuClose(); handleNavigation('/admin'); }}>
+                <ListItemIcon>
+                  <BarChart2 size={20} />
+                </ListItemIcon>
+                Admin
+              </MenuItem>
+            )}
 
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>

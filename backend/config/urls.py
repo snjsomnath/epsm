@@ -97,6 +97,8 @@ urlpatterns = [
     path('api/auth/login/', auth_views.api_login, name='api_login'),
     path('api/auth/logout/', auth_views.api_logout, name='api_logout'),
     path('api/auth/user/', auth_views.api_user, name='api_user'),
+    path('api/auth/users/', auth_views.api_users, name='api_users'),
+    path('api/auth/users/<int:id>/', auth_views.api_user_detail, name='api_user_detail'),
     path('api/auth/csrf/', auth_views.csrf_token, name='csrf_token'),
     
     # Database API endpoints
