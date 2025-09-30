@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from django.conf import settings
 from .models import Simulation, SimulationFile
+import uuid
 from eppy.modeleditor import IDF
 from bs4 import BeautifulSoup
 import psutil
@@ -992,12 +993,49 @@ def parse_simulation_results(simulation):
                 # Normalize to list if necessary
                 if isinstance(data, dict) and simulation.file_count > 1:
                     data = [data]
+                # Determine weather filename (if any) attached to the Simulation
+                try:
+                    weather_obj = simulation.files.filter(file_type='weather').first()
+                    weather_name = None
+                    if weather_obj is not None:
+                        weather_name = getattr(weather_obj, 'original_name', None) or getattr(weather_obj, 'file_name', None) or (os.path.basename(getattr(weather_obj, 'file_path')) if getattr(weather_obj, 'file_path', None) else None)
+                except Exception:
+                    weather_name = None
+
                 if isinstance(data, list):
                     for item in data:
                         if isinstance(item, dict):
-                            item['simulationId'] = simulation.id
+                            # Attach consistent simulation identifiers and weather info
+                            try:
+                                item['simulationId'] = str(simulation.id)
+                            except Exception:
+                                item['simulationId'] = simulation.id
+                            item['simulation_id'] = str(simulation.id)
+                            # ensure a stable id exists for frontend selection; generate UUID if missing
+                            if not item.get('id'):
+                                item['id'] = str(uuid.uuid4())
+                            # backfill common name variants
+                            if not item.get('file_name') and item.get('fileName'):
+                                item['file_name'] = item.get('fileName')
+                            # attach weather metadata if available
+                            if weather_name:
+                                item['weather_file'] = weather_name
+                                item['epw'] = weather_name
+                                item['_weatherKey'] = weather_name
                 elif isinstance(data, dict):
-                    data['simulationId'] = simulation.id
+                    try:
+                        data['simulationId'] = str(simulation.id)
+                    except Exception:
+                        data['simulationId'] = simulation.id
+                    data['simulation_id'] = str(simulation.id)
+                    if not data.get('id'):
+                        data['id'] = str(uuid.uuid4())
+                    if not data.get('file_name') and data.get('fileName'):
+                        data['file_name'] = data.get('fileName')
+                    if weather_name:
+                        data['weather_file'] = weather_name
+                        data['epw'] = weather_name
+                        data['_weatherKey'] = weather_name
                 return data
 
         # Fall back to individual output.json files for each IDF
