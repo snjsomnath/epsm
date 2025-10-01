@@ -6,7 +6,6 @@ from django.views.decorators.http import require_http_methods
 from django.middleware.csrf import get_token
 import json
 from django.views.decorators.http import require_POST
-from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist
 
 @csrf_exempt
@@ -25,13 +24,20 @@ def api_login(request):
         
         # Try to authenticate using email as username
         user = authenticate(request, username=email, password=password)
-        # If that fails, try to look up a user with this email and authenticate with their username
+        # If that fails, try to look up a user with this email and authenticate with their username.
+        # Multiple accounts can share the same email because Django's default User model does not
+        # enforce uniqueness on the email field. Using `.get()` would therefore raise a
+        # `MultipleObjectsReturned` exception and trigger a 500 response. Instead, attempt the first
+        # matching user deterministically.
         if user is None:
-            try:
-                u = User.objects.get(email__iexact=email)
-                user = authenticate(request, username=u.username, password=password)
-            except User.DoesNotExist:
-                user = None
+            email_match = (
+                User.objects
+                .filter(email__iexact=email)
+                .order_by('id')
+                .first()
+            )
+            if email_match is not None:
+                user = authenticate(request, username=email_match.username, password=password)
         
         if user is not None:
             login(request, user)
