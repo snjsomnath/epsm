@@ -89,8 +89,26 @@ def root_view(request):
         'available_endpoints': available_endpoints
     })
 
+def health_view(request):
+    """Health check endpoint for Docker healthcheck."""
+    from django.http import JsonResponse
+    from django.db import connections
+    
+    # Check database connectivity
+    try:
+        connections['default'].cursor().execute("SELECT 1")
+        db_status = 'healthy'
+    except Exception as e:
+        db_status = f'unhealthy: {str(e)}'
+    
+    return JsonResponse({
+        'status': 'healthy',
+        'database': db_status
+    })
+
 urlpatterns = [
     path('', root_view),
+    path('health/', health_view, name='health'),
     path('admin/', admin.site.urls),
     
     # Authentication endpoints
