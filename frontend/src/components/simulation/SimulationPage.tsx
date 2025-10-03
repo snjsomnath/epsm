@@ -260,9 +260,13 @@ const SimulationPage = () => {
   const totalMem = toNumber(resourceStats?.memory?.total_gb);
   const estMemGb = availableMem > 0 ? Math.max(1, Math.round(availableMem)) : (totalMem > 0 ? Math.max(1, Math.round(totalMem / 2)) : 4);
 
+  // Celery worker pool size - typically configured in docker-compose or settings
+  // Default to 4 workers per container, can be increased for production
+  const CELERY_WORKER_POOL_SIZE = 4;
+
   // Celery queue metrics calculation
   const queueMetrics = useMemo(() => {
-    const batchSize = suggestedParallel;
+    const batchSize = backendAvailable ? CELERY_WORKER_POOL_SIZE : suggestedParallel;
     const totalBatches = totalSimulations ? Math.ceil(totalSimulations / batchSize) : 0;
     const completedBatchesRaw = totalSimulations ? completedSimulations / batchSize : 0;
     const completedBatches = Math.min(totalBatches, Math.floor(completedBatchesRaw));
@@ -309,7 +313,7 @@ const SimulationPage = () => {
       workerStatusLabel,
       hasScenario: !!selectedScenario,
     };
-  }, [totalSimulations, completedSimulations, suggestedParallel, selectedScenario]);
+  }, [totalSimulations, completedSimulations, backendAvailable, selectedScenario]);
 
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
