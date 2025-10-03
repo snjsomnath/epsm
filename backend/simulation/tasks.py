@@ -12,35 +12,35 @@ from django.core.files.storage import default_storage
 
 
 @shared_task(bind=True, name='simulation.aggregate_batch_results')
-def aggregate_batch_results(self, variant_results, simulation_id, parent_task_id, total_variants):
+def aggregate_batch_results(self, task_results, simulation_id, parent_task_id, total_items):
     """
-    Callback task that aggregates results from all variant tasks.
-    This runs AFTER all variant tasks complete (via Celery chord).
-    
+    Callback task that aggregates results from Celery worker tasks.
+    This runs AFTER all worker tasks (variants or base IDF runs) complete via a chord.
+
     Args:
-        variant_results: List of results from all variant tasks
+        task_results: List of result payloads returned by each worker task
         simulation_id: UUID of the parent Simulation
-        parent_task_id: ID of the parent batch task
-        total_variants: Total number of variants processed
+        parent_task_id: ID of the parent dispatch task
+        total_items: Total number of worker items processed
     """
     from .models import Simulation
     from .services import EnergyPlusSimulator
     from pathlib import Path
     
     try:
-        print(f"Aggregating results for {total_variants} variants (simulation {simulation_id})")
-        
+        print(f"Aggregating results for {total_items} task(s) (simulation {simulation_id})")
+
         simulation = Simulation.objects.get(id=simulation_id)
         simulator = EnergyPlusSimulator(simulation, celery_task=None)
-        
+
         # Collect successful results
         all_results = []
-        for task_result in variant_results:
+        for task_result in task_results:
             if task_result and task_result.get('status') == 'success':
                 all_results.append(task_result['results'])
             else:
                 all_results.append(task_result)
-        
+
         # Persist results to database and ensure we actually saved data
         print(f"Saving {len(all_results)} results to database")
         save_summary = simulator.save_results_to_database(all_results, job_info={
@@ -97,13 +97,13 @@ def aggregate_batch_results(self, variant_results, simulation_id, parent_task_id
         except Exception as ws_err:
             print(f"Warning: Failed to send WebSocket completion: {ws_err}")
         
-        print(f"Batch simulation {simulation_id} completed successfully with {len(all_results)} results")
-        
+        print(f"Simulation {simulation_id} completed successfully with {len(all_results)} result set(s)")
+
         return {
             'status': 'completed',
             'simulation_id': str(simulation_id),
             'results_count': len(all_results),
-            'message': 'Batch parametric simulation completed successfully',
+            'message': 'Simulation aggregation completed successfully',
             'saved_results': saved_count,
             'failed_results': failed_count,
             'errors': save_summary.get('errors', [])
@@ -134,7 +134,8 @@ def run_single_variant_task(
     variant_dir: str,
     variant_idx: int,
     idf_idx: int,
-    construction_set: Optional[Dict[str, Any]] = None
+    construction_set: Optional[Dict[str, Any]] = None,
+    total_variants: Optional[int] = None
 ):
     """
     Run a single EnergyPlus simulation for one variant.
@@ -214,9 +215,11 @@ def run_single_variant_task(
                     simulation = Simulation.objects.select_for_update().get(id=simulation_id)
                     # Increment by roughly (100 / total_variants) per completion
                     # Assuming 35 variants, each adds ~2.86%
-                    increment = 90.0 / 35.0  # Reserve last 10% for aggregation callback
+                    denominator = total_variants or 35
+                    increment = 90.0 / max(denominator, 1)
                     current = simulation.progress or 0
-                    new_progress = min(90, int(current + increment))
+                    estimated = current + increment
+                    new_progress = min(90, int(max(current, estimated)))
                     simulation.progress = new_progress
                     simulation.save()
                     print(f"Variant {variant_idx} completed - Progress: {simulation.progress}%")
@@ -262,7 +265,93 @@ def run_single_variant_task(
         }
 
 
-from django.core.files.storage import default_storage
+@shared_task(bind=True, name='simulation.run_single_idf')
+def run_single_simulation_task(
+    self,
+    simulation_id: str,
+    idf_file_id: str,
+    weather_file_id: str,
+    idf_idx: int,
+    total_files: int
+):
+    """Run a single EnergyPlus simulation for a stored IDF file."""
+    from .models import Simulation, SimulationFile
+    from .services import EnergyPlusSimulator
+    from pathlib import Path
+
+    try:
+        simulation = Simulation.objects.get(id=simulation_id)
+        idf_file = SimulationFile.objects.get(id=idf_file_id)
+        weather_file = SimulationFile.objects.get(id=weather_file_id)
+
+        print(f"Running IDF index {idf_idx} for simulation {simulation_id}")
+
+        simulator = EnergyPlusSimulator(simulation, celery_task=None)
+
+        # Each IDF writes to its own sub-directory under the simulation results path
+        safe_name = Path(idf_file.file_name or idf_file.original_name or f"idf_{idf_idx+1}.idf").stem
+        idf_results_dir = simulator.results_dir / safe_name
+        idf_results_dir.mkdir(parents=True, exist_ok=True)
+
+        log = simulator.run_single_simulation(idf_file, weather_file, str(idf_results_dir))
+        output_file = Path(idf_results_dir) / "output"
+        file_results = simulator.process_file_results(output_file, idf_file)
+
+        if file_results:
+            file_results["idf_idx"] = idf_idx
+
+            # Update progress, reserving the final 10% for aggregation
+            try:
+                from django.db import transaction
+                from asgiref.sync import async_to_sync
+                from channels.layers import get_channel_layer
+
+                with transaction.atomic():
+                    tracked = Simulation.objects.select_for_update().get(id=simulation_id)
+                    denominator = max(total_files, 1)
+                    increment = 90.0 / denominator
+                    current = tracked.progress or 0
+                    estimated = current + increment
+                    new_progress = min(90, int(max(current, estimated)))
+                    tracked.progress = new_progress
+                    tracked.save()
+
+                    try:
+                        channel_layer = get_channel_layer()
+                        async_to_sync(channel_layer.group_send)(
+                            f"simulation_progress_{simulation_id}",
+                            {
+                                'type': 'progress_update',
+                                'payload': {
+                                    'progress': new_progress,
+                                    'status': 'running'
+                                }
+                            }
+                        )
+                    except Exception as ws_err:
+                        print(f"Warning: Failed to send WebSocket update: {ws_err}")
+            except Exception as prog_err:
+                print(f"Warning: Failed to update progress for simulation {simulation_id}: {prog_err}")
+
+            return {
+                'status': 'success',
+                'results': file_results
+            }
+
+        return {
+            'status': 'failed',
+            'error': 'No results generated',
+            'idf_idx': idf_idx,
+        }
+
+    except Exception as e:
+        import traceback
+        print(f"ERROR in run_single_simulation_task: {traceback.format_exc()}")
+        return {
+            'status': 'failed',
+            'error': str(e),
+            'idf_idx': idf_idx,
+        }
 
 
 def run_batch_parametric_with_celery(parent_task, simulation, idf_files, construction_sets, weather_file, simulator):
@@ -358,7 +447,8 @@ def run_batch_parametric_with_celery(parent_task, simulation, idf_files, constru
             variant_dir=entry["variant_dir"],
             variant_idx=entry["variant_idx"],
             idf_idx=entry["idf_idx"],
-            construction_set=entry["construction_set"]
+            construction_set=entry["construction_set"],
+            total_variants=total_variants
         )
         variant_tasks.append(task_signature)
     
@@ -370,7 +460,7 @@ def run_batch_parametric_with_celery(parent_task, simulation, idf_files, constru
     callback = aggregate_batch_results.s(
         simulation_id=str(simulation.id),
         parent_task_id=parent_task.request.id,
-        total_variants=total_variants
+        total_items=total_variants
     )
     
     # Execute group with callback (chord)
@@ -507,31 +597,59 @@ def run_energyplus_batch_task(
                 weather_file,
                 simulator
             )
-        
-        # Run simulation (non-batch or non-parametric)
-        try:
-            # For non-batch mode, run with minimal parallelism (Celery handles concurrency)
-            simulator.run_simulation(
-                parallel=False,  # Disable ThreadPoolExecutor
-                max_workers=1,   # Single-threaded execution
-                batch_mode=False,
-                construction_sets=None
-            )
-        except SoftTimeLimitExceeded:
+
+        # Non-batch mode: dispatch each IDF as its own Celery task so workers manage parallelism
+        total_files = len(idf_files)
+        if total_files == 0:
             simulation.status = 'failed'
-            simulation.error_message = 'Simulation exceeded time limit'
-            simulation.save()
-            raise
-        
-        # Simulation completed successfully
-        simulation.status = 'completed'
-        simulation.progress = 100
-        simulation.save()
-        
+            simulation.error_message = 'No IDF files available for processing'
+            simulation.save(update_fields=['status', 'error_message', 'updated_at'])
+            return {
+                'status': 'failed',
+                'error': 'No IDF files available for processing',
+                'simulation_id': simulation_id
+            }
+
+        # Reset progress tracking before dispatching worker tasks
+        simulation.progress = 0
+        simulation.save(update_fields=['progress', 'updated_at'])
+
+        self.update_state(
+            state='PROGRESS',
+            meta={'current': 10, 'total': 100, 'status': f'Dispatching {total_files} simulation task(s) to Celery workers...'}
+        )
+
+        idf_tasks = []
+        for idx, sim_file in enumerate(idf_files):
+            signature = run_single_simulation_task.si(
+                simulation_id=str(simulation.id),
+                idf_file_id=str(sim_file.id),
+                weather_file_id=str(weather_file.id),
+                idf_idx=idx,
+                total_files=total_files
+            )
+            idf_tasks.append(signature)
+
+        callback = aggregate_batch_results.s(
+            simulation_id=str(simulation.id),
+            parent_task_id=self.request.id,
+            total_items=total_files
+        )
+
+        job = chord(idf_tasks)(callback)
+
+        print(f"Dispatched {total_files} simulation task(s) via Celery chord {job.id}")
+        self.update_state(
+            state='PROGRESS',
+            meta={'current': 20, 'total': 100, 'status': f'Processing {total_files} simulation task(s)...'}
+        )
+
         return {
-            'status': 'completed',
+            'status': 'processing',
             'simulation_id': simulation_id,
-            'message': 'Simulation completed successfully'
+            'message': f'Simulation dispatched with {total_files} task(s)',
+            'total_tasks': total_files,
+            'chord_id': str(job.id)
         }
         
     except SoftTimeLimitExceeded:
