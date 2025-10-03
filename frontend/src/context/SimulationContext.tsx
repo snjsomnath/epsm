@@ -13,6 +13,17 @@ const makeFriendlyName = (opts?: { separator?: string }) => {
 };
 import type { ParsedData } from '../types/simulation';
 
+export interface ActiveSimulationRun {
+  simulationId: string;
+  scenarioId?: string;
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+  startedAt: number;
+  progress?: number;
+  completedSimulations?: number;
+  totalSimulations?: number;
+  lastUpdated?: number;
+}
+
 interface SimulationContextType {
   uploadedFiles: File[];
   parsedData: ParsedData | null;
@@ -40,6 +51,10 @@ interface SimulationContextType {
   addToBaselineRun?: (simulationId: string, title?: string, metadata?: Record<string, any>) => void;
   updateBaselineRun?: (simulationId: string, patch: { kpis?: Record<string, any>, metadata?: Record<string, any> }) => void;
   removeBaselineRun?: (simulationId: string) => void;
+  activeRun?: ActiveSimulationRun | null;
+  setActiveRun?: (run: ActiveSimulationRun) => void;
+  updateActiveRun?: (patch: Partial<ActiveSimulationRun>) => void;
+  clearActiveRun?: () => void;
 }
 
 const SimulationContext = createContext<SimulationContextType>({
@@ -48,6 +63,10 @@ const SimulationContext = createContext<SimulationContextType>({
   setUploadedFiles: () => {},
   setParsedData: () => {},
   clearSimulationData: () => {},
+  activeRun: null,
+  setActiveRun: () => {},
+  updateActiveRun: () => {},
+  clearActiveRun: () => {},
 });
 
 export const useSimulation = () => useContext(SimulationContext);
@@ -81,6 +100,15 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
       return raw ? JSON.parse(raw) : [];
     } catch (e) {
       return [];
+    }
+  });
+
+  const [activeRun, setActiveRunState] = useState<ActiveSimulationRun | null>(() => {
+    try {
+      const raw = localStorage.getItem('simulation_active_run');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
     }
   });
 
@@ -134,6 +162,18 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
     } catch (e) {}
   };
 
+  const persistActiveRun = (run: ActiveSimulationRun | null) => {
+    try {
+      if (!run) {
+        localStorage.removeItem('simulation_active_run');
+      } else {
+        localStorage.setItem('simulation_active_run', JSON.stringify(run));
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const addToBaselineRun = (simulationId: string, title?: string, metadata?: Record<string, any>) => {
     if (!simulationId) return;
     const now = Date.now();
@@ -163,6 +203,26 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
       try { persistBaselineHistory(next); console.debug('removeBaselineRun ->', simulationId, 'remaining', next.length); } catch (e) {}
       return next;
     });
+  };
+
+  const setActiveRun = (run: ActiveSimulationRun) => {
+    const next = { ...run, lastUpdated: Date.now() };
+    setActiveRunState(next);
+    persistActiveRun(next);
+  };
+
+  const updateActiveRun = (patch: Partial<ActiveSimulationRun>) => {
+    setActiveRunState(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch, lastUpdated: Date.now() };
+      persistActiveRun(next);
+      return next;
+    });
+  };
+
+  const clearActiveRun = () => {
+    setActiveRunState(null);
+    persistActiveRun(null);
   };
 
   const addToHistory = (simulationId: string, title?: string) => {
@@ -281,6 +341,10 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
         addToBaselineRun,
         updateBaselineRun,
         removeBaselineRun,
+        activeRun,
+        setActiveRun,
+        updateActiveRun,
+        clearActiveRun,
       }}
     >
       {children}

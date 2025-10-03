@@ -33,24 +33,38 @@ def aggregate_batch_results(self, task_results, simulation_id, parent_task_id, t
         simulation = Simulation.objects.get(id=simulation_id)
         simulator = EnergyPlusSimulator(simulation, celery_task=None)
 
-        # Collect successful results
-        all_results = []
+        # Collect successful results and track which ones still need persistence
+        from .models import SimulationResult
+
+        all_results: List[Dict[str, Any]] = []
+        pending_persistence: List[Dict[str, Any]] = []
+
         for task_result in task_results:
             if task_result and task_result.get('status') == 'success':
-                all_results.append(task_result['results'])
+                payload = task_result.get('results')
+                if payload:
+                    all_results.append(payload)
+                    if not task_result.get('persisted'):
+                        pending_persistence.append(payload)
+                else:
+                    all_results.append(task_result)
             else:
                 all_results.append(task_result)
 
-        # Persist results to database and ensure we actually saved data
-        print(f"Saving {len(all_results)} results to database")
-        save_summary = simulator.save_results_to_database(all_results, job_info={
-            "simulation_id": simulation.id,
-            "run_id": simulator.run_id
-        })
+        save_summary = {'saved': 0, 'failed': 0, 'errors': []}
+        if pending_persistence:
+            print(f"Persisting {len(pending_persistence)} result(s) that were not saved by workers")
+            save_summary = simulator.save_results_to_database(pending_persistence, job_info={
+                "simulation_id": simulation.id,
+                "run_id": simulator.run_id
+            })
+        else:
+            print("All worker tasks reported persisted results; skipping duplicate save")
 
         saved_count = save_summary.get('saved', 0)
         failed_count = save_summary.get('failed', 0)
-        print(f"Result persistence summary: saved={saved_count}, failed={failed_count}")
+        persisted_count = SimulationResult.objects.filter(simulation_id=simulation_id).count()
+        print(f"Result persistence summary: saved_now={saved_count}, failed={failed_count}, total_persisted={persisted_count}")
 
         # Ensure the results directory exists before writing combined JSON
         results_dir = simulator.results_dir
@@ -59,7 +73,7 @@ def aggregate_batch_results(self, task_results, simulation_id, parent_task_id, t
         with open(combined_results_path, 'w') as f:
             json.dump(all_results, f)
 
-        if saved_count <= 0:
+        if persisted_count <= 0:
             # Do not signal completion if nothing was saved; mark as failure so the frontend keeps polling
             error_details = '; '.join(save_summary.get('errors', [])[:5])
             simulation.status = 'failed'
@@ -105,6 +119,7 @@ def aggregate_batch_results(self, task_results, simulation_id, parent_task_id, t
             'results_count': len(all_results),
             'message': 'Simulation aggregation completed successfully',
             'saved_results': saved_count,
+            'total_persisted': persisted_count,
             'failed_results': failed_count,
             'errors': save_summary.get('errors', [])
         }
@@ -199,6 +214,15 @@ def run_single_variant_task(
             file_results["variant_idx"] = variant_idx
             file_results["idf_idx"] = idf_idx
             file_results["construction_set"] = construction_set
+            persisted = False
+            try:
+                save_summary = simulator.save_results_to_database([file_results], job_info={
+                    "simulation_id": simulation.id,
+                    "run_id": simulator.run_id,
+                })
+                persisted = save_summary.get('saved', 0) > 0
+            except Exception as persist_err:
+                print(f"Warning: failed to persist variant result immediately: {persist_err}")
             
             # Increment progress on the Simulation model
             # This gives real-time feedback as variants complete
@@ -244,7 +268,8 @@ def run_single_variant_task(
             
             return {
                 'status': 'success',
-                'results': file_results
+                'results': file_results,
+                'persisted': persisted
             }
         else:
             return {
@@ -299,6 +324,15 @@ def run_single_simulation_task(
 
         if file_results:
             file_results["idf_idx"] = idf_idx
+            persisted = False
+            try:
+                save_summary = simulator.save_results_to_database([file_results], job_info={
+                    "simulation_id": simulation.id,
+                    "run_id": simulator.run_id,
+                })
+                persisted = save_summary.get('saved', 0) > 0
+            except Exception as persist_err:
+                print(f"Warning: failed to persist base IDF result immediately: {persist_err}")
 
             # Update progress, reserving the final 10% for aggregation
             try:
@@ -335,7 +369,8 @@ def run_single_simulation_task(
 
             return {
                 'status': 'success',
-                'results': file_results
+                'results': file_results,
+                'persisted': persisted
             }
 
         return {
