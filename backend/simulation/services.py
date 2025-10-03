@@ -18,6 +18,10 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 
+# Reserve the final portion of progress reporting for persistence/finalization steps
+FINALIZATION_PROGRESS_CEILING = 95
+
+
 # Helper to determine default max workers based on available CPUs
 def _detect_cpu_count() -> int:
     """Return an integer CPU count suitable for deciding worker pool size.
@@ -57,8 +61,9 @@ def _default_max_workers() -> int:
     return max(1, c - 1)
 
 class EnergyPlusSimulator:
-    def __init__(self, simulation: Simulation):
+    def __init__(self, simulation: Simulation, celery_task=None):
         self.simulation = simulation
+        self.celery_task = celery_task  # Optional Celery task for progress updates
         
         # Ensure we're using media_root for all storage
         self.media_root = Path(settings.MEDIA_ROOT)
@@ -106,6 +111,13 @@ class EnergyPlusSimulator:
         except Exception:
             # Non-fatal: continue if channel layer is not available
             pass
+
+    def _intermediate_progress(self, completed: int, total: int) -> int:
+        """Return a progress percentage capped below 100% for in-flight work."""
+        if not total:
+            return 100
+        pct = int((completed / total) * 100)
+        return min(pct, FINALIZATION_PROGRESS_CEILING)
 
     def run_single_simulation(self, idf_file, weather_file, simulation_dir):
         """Run a single EnergyPlus simulation using Docker container"""
@@ -337,10 +349,22 @@ class EnergyPlusSimulator:
                 # update progress on the simulation model
                 try:
                     completed += 1
-                    pct = int((completed / total) * 100)
+                    pct = self._intermediate_progress(completed, total)
                     self.simulation.progress = pct
                     # Avoid writing end_time here; just update progress and updated_at
                     self.simulation.save()
+                    
+                    # Update Celery task state if available
+                    if self.celery_task:
+                        self.celery_task.update_state(
+                            state='PROGRESS',
+                            meta={
+                                'current': pct,
+                                'total': 100,
+                                'status': f'Processing IDF {completed} of {total}...'
+                            }
+                        )
+                    
                     # Push progress update to WebSocket clients if channel layer is available
                     try:
                         self._push_progress(pct, status='running')
@@ -439,28 +463,50 @@ class EnergyPlusSimulator:
                 # update progress on the simulation model
                 try:
                     completed += 1
-                    pct = int((completed / total) * 100) if total > 0 else 100
+                    pct = self._intermediate_progress(completed, total)
                     self.simulation.progress = pct
                     self.simulation.save()
+                    
+                    # Update Celery task state if available
+                    if self.celery_task:
+                        self.celery_task.update_state(
+                            state='PROGRESS',
+                            meta={
+                                'current': pct,
+                                'total': 100,
+                                'status': f'Processing variant {completed} of {total}...'
+                            }
+                        )
                 except Exception:
                     pass
 
         # Save all results to PostgreSQL database
         print(f"Saving batch results to database for simulation {self.simulation.id}")
-        self.save_results_to_database(results, job_info={
+        save_summary = self.save_results_to_database(results, job_info={
             "simulation_id": self.simulation.id,
             "run_id": self.run_id
         })
+
+        saved_count = save_summary.get('saved', 0)
+        if saved_count <= 0:
+            error_msg = "Batch simulation completed but no results were persisted to the database."
+            extra_errors = save_summary.get('errors', [])
+            if extra_errors:
+                error_msg = f"{error_msg} Details: {'; '.join(extra_errors[:5])}"
+            self.simulation.status = 'failed'
+            self.simulation.error_message = error_msg
+            self.simulation.save(update_fields=['status', 'error_message', 'updated_at'])
+            raise RuntimeError(error_msg)
 
         # Save combined results as JSON
         combined_results_path = results_dir / 'combined_results.json'
         with open(combined_results_path, 'w') as f:
             json.dump(results, f)
 
-        rel_path = str(combined_results_path.relative_to(self.media_root))
-        self.simulation.results_file = rel_path
         self.simulation.status = 'completed'
-        self.simulation.save()
+        self.simulation.progress = 100
+        self.simulation.error_message = None
+        self.simulation.save(update_fields=['status', 'progress', 'error_message', 'updated_at'])
 
         print(f"Batch parametric simulation completed: {len(results)} results")
 
@@ -534,9 +580,20 @@ class EnergyPlusSimulator:
                     # update progress
                     try:
                         done += 1
-                        pct = int((done / total) * 100) if total > 0 else 100
+                        pct = self._intermediate_progress(done, total)
                         self.simulation.progress = pct
                         self.simulation.save()
+                        
+                        # Update Celery task state if available
+                        if self.celery_task:
+                            self.celery_task.update_state(
+                                state='PROGRESS',
+                                meta={
+                                    'current': pct,
+                                    'total': 100,
+                                    'status': f'Processing IDF {done} of {total}...'
+                                }
+                            )
                     except Exception:
                         pass
 
@@ -545,15 +602,22 @@ class EnergyPlusSimulator:
             with open(combined_results_path, 'w') as f:
                 json.dump(all_results, f)
 
-            # If batch_mode, save results to PostgreSQL database
+            # If batch_mode, save results to PostgreSQL database and ensure success
             if batch_mode:
-                self.save_results_to_database(all_results, job_info={
+                save_summary = self.save_results_to_database(all_results, job_info={
                     "simulation_id": self.simulation.id,
                     "run_id": self.run_id
                 })
+                if save_summary.get('saved', 0) <= 0:
+                    error_msg = "Simulation completed but no results were saved to the database."
+                    errors = save_summary.get('errors', [])
+                    if errors:
+                        error_msg = f"{error_msg} Details: {'; '.join(errors[:5])}"
+                    self.simulation.status = 'failed'
+                    self.simulation.error_message = error_msg
+                    self.simulation.save(update_fields=['status', 'error_message', 'updated_at'])
+                    raise RuntimeError(error_msg)
 
-            rel_path = str(combined_results_path.relative_to(self.media_root))
-            self.simulation.results_file = rel_path
             self.simulation.status = 'completed'
             self.simulation.progress = 100
             self.simulation.save()
@@ -632,16 +696,44 @@ class EnergyPlusSimulator:
             }
 
     def save_results_to_database(self, results, job_info=None):
-        """Save parsed simulation results to PostgreSQL database models"""
-        from .models import SimulationResult, SimulationZone, SimulationEnergyUse
-        
-        for result in results:
+        """Save parsed simulation results to PostgreSQL database models.
+
+        Returns a summary dict with counts of saved and failed records to help
+        callers decide whether the simulation can be marked completed.
+        """
+        from .models import SimulationResult, SimulationZone, SimulationEnergyUse, SimulationHourlyTimeseries
+        import traceback
+
+        summary = {
+            'saved': 0,
+            'failed': 0,
+            'errors': []
+        }
+
+        if results is None:
+            return summary
+
+        if not isinstance(results, (list, tuple)):
+            iterable = [results]
+        else:
+            iterable = list(results)
+
+        run_id = job_info.get("run_id") if job_info else str(self.simulation.id)
+        user_id = getattr(self.simulation, 'user_id', None)
+
+        for idx, result in enumerate(iterable):
+            if not isinstance(result, dict):
+                summary['failed'] += 1
+                summary['errors'].append(f"Result {idx} has unexpected type {type(result).__name__}")
+                continue
+
             try:
-                # Create main simulation result
+                file_name = result.get("fileName") or result.get("originalFileName") or "unknown.idf"
+
                 simulation_result = SimulationResult.objects.create(
                     simulation_id=self.simulation.id,
-                    run_id=job_info.get("run_id") if job_info else str(self.simulation.id),
-                    file_name=result.get("fileName", "unknown.idf"),
+                    run_id=run_id,
+                    file_name=file_name,
                     building_name=result.get("building", ""),
                     total_energy_use=result.get("totalEnergyUse"),
                     heating_demand=result.get("heatingDemand"),
@@ -655,10 +747,10 @@ class EnergyPlusSimulator:
                     raw_json=result,
                     variant_idx=result.get("variant_idx"),
                     idf_idx=result.get("idf_idx"),
-                    construction_set_data=result.get("construction_set")
+                    construction_set_data=result.get("construction_set"),
+                    user_id=user_id,
                 )
-                
-                # Create zone records
+
                 zones = result.get("zones", [])
                 for zone_data in zones:
                     SimulationZone.objects.create(
@@ -667,8 +759,7 @@ class EnergyPlusSimulator:
                         area=zone_data.get("area"),
                         volume=zone_data.get("volume")
                     )
-                
-                # Create energy use records
+
                 energy_uses = result.get("energy_use", {})
                 for end_use, values in energy_uses.items():
                     if isinstance(values, dict):
@@ -679,27 +770,29 @@ class EnergyPlusSimulator:
                             district_heating=values.get("district_heating", 0.0),
                             total=values.get("total", 0.0)
                         )
-                
-                print(f"Saved simulation result to database: {simulation_result.id}")
-                # If hourly timeseries were attached to the parsed result, save them
+
                 try:
                     hourly_payload = result.get('hourly_timeseries')
-                    # Only persist when the parser detected an hourly-like file
                     if hourly_payload and isinstance(hourly_payload, dict) and hourly_payload.get('is_hourly'):
-                        from .models import SimulationHourlyTimeseries
-                        # Persist as a single JSON blob for now
                         SimulationHourlyTimeseries.objects.create(
                             simulation_result=simulation_result,
                             has_hourly=True,
                             hourly_values=hourly_payload
                         )
-                except Exception as e:
-                    print(f"Failed to save hourly timeseries for result {simulation_result.id}: {e}")
-                
+                except Exception as hourly_err:
+                    summary['errors'].append(f"Hourly timeseries save failed for result {file_name}: {hourly_err}")
+
+                summary['saved'] += 1
+                print(f"Saved simulation result to database: {simulation_result.pk}")
+
             except Exception as e:
+                summary['failed'] += 1
+                summary['errors'].append(f"Result {idx}: {e}")
                 print(f"Error saving result to database: {e}")
-                import traceback
                 traceback.print_exc()
+
+        summary['failed'] = summary['failed'] or 0
+        return summary
 
 
 def parse_readvars_csv(csv_path: str | Path) -> dict:

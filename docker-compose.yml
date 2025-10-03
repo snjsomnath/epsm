@@ -102,6 +102,93 @@ services:
       - epsm_network
     command: redis-server --appendonly yes
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Celery Worker for async task processing
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: epsm_celery_worker_dev
+    command: celery -A config worker --loglevel=info --concurrency=4
+    environment:
+      DEBUG: "True"
+      DB_NAME: epsm_db
+      DB_USER: epsm_user
+      DB_PASSWORD: epsm_secure_password
+      DB_HOST: database
+      DB_PORT: "5432"
+      MATERIALS_DB_NAME: epsm_materials
+      MATERIALS_DB_USER: epsm_user
+      MATERIALS_DB_PASSWORD: epsm_secure_password
+      MATERIALS_DB_HOST: database
+      MATERIALS_DB_PORT: "5432"
+      RESULTS_DB_NAME: epsm_db
+      RESULTS_DB_USER: epsm_user
+      RESULTS_DB_PASSWORD: epsm_secure_password
+      RESULTS_DB_HOST: database
+      RESULTS_DB_PORT: "5432"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      ENERGYPLUS_DOCKER_IMAGE: nrel/energyplus:23.2.0
+      SIMULATION_TIMEOUT: "600"
+      HOST_MEDIA_ROOT: /Users/ssanjay/GitHub/epsm/backend/media
+    volumes:
+      - ./backend:/app
+      - ./backend/media/simulation_files:/app/media/simulation_files
+      - ./backend/media/simulation_results:/app/media/simulation_results
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - epsm_network
+    restart: unless-stopped
+
+  # Celery Beat for periodic tasks (optional)
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: epsm_celery_beat_dev
+    command: celery -A config beat --loglevel=info
+    environment:
+      DEBUG: "True"
+      DB_NAME: epsm_db
+      DB_USER: epsm_user
+      DB_PASSWORD: epsm_secure_password
+      DB_HOST: database
+      DB_PORT: "5432"
+      MATERIALS_DB_NAME: epsm_materials
+      MATERIALS_DB_USER: epsm_user
+      MATERIALS_DB_PASSWORD: epsm_secure_password
+      MATERIALS_DB_HOST: database
+      MATERIALS_DB_PORT: "5432"
+      RESULTS_DB_NAME: epsm_db
+      RESULTS_DB_USER: epsm_user
+      RESULTS_DB_PASSWORD: epsm_secure_password
+      RESULTS_DB_HOST: database
+      RESULTS_DB_PORT: "5432"
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - epsm_network
+    restart: unless-stopped
 
 volumes:
   postgres_data_dev:
