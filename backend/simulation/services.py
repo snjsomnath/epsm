@@ -12,7 +12,6 @@ from eppy.modeleditor import IDF
 from bs4 import BeautifulSoup
 import psutil
 
-import concurrent.futures
 import sqlite3
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -21,44 +20,6 @@ from channels.layers import get_channel_layer
 # Reserve the final portion of progress reporting for persistence/finalization steps
 FINALIZATION_PROGRESS_CEILING = 95
 
-
-# Helper to determine default max workers based on available CPUs
-def _detect_cpu_count() -> int:
-    """Return an integer CPU count suitable for deciding worker pool size.
-
-    Tries in order: psutil (physical cores), psutil logical, os.cpu_count().
-    This attempts to be robust inside containers; if detection fails, 1 is
-    returned.
-    """
-    try:
-        # Prefer physical cores when available
-        if 'psutil' in globals():
-            c = psutil.cpu_count(logical=False)
-            if c and c > 0:
-                return int(c)
-            c = psutil.cpu_count(logical=True)
-            if c and c > 0:
-                return int(c)
-    except Exception:
-        pass
-    try:
-        import os as _os
-        c = _os.cpu_count()
-        if c and c > 0:
-            return int(c)
-    except Exception:
-        pass
-    return 1
-
-
-def _default_max_workers() -> int:
-    """Return a safe default for max_workers: max(1, cpu_count - 1).
-
-    Subtracting one avoids saturating the machine and leaves room for the
-    event loop or other services. Always returns at least 1.
-    """
-    c = _detect_cpu_count()
-    return max(1, c - 1)
 
 class EnergyPlusSimulator:
     def __init__(self, simulation: Simulation, celery_task=None):
@@ -309,210 +270,12 @@ class EnergyPlusSimulator:
                 "output_dir": str(simulation_dir)
             }
 
-    def run_parallel_simulations(self, idf_files, weather_file, results_dir, max_workers: Optional[int]=None):
-        # Run multiple IDF files in parallel using ThreadPoolExecutor
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        futures = []
-        logs = []
-        if max_workers is None:
-            max_workers = _default_max_workers()
-        total = len(idf_files)
-        completed = 0
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for idf_file in idf_files:
-                idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
-                idf_basename = os.path.basename(idf_path)
-                idf_name_no_ext = os.path.splitext(idf_basename)[0]
-                idf_results_dir = results_dir / idf_name_no_ext
-                future = executor.submit(
-                    self.run_single_simulation,
-                    idf_file, weather_file, str(idf_results_dir)
-                )
-                futures.append((idf_file, future))
-            # Use as_completed to update progress as tasks finish
-            from concurrent.futures import as_completed as _as_completed
-            for fut in _as_completed([f for (_, f) in futures]):
-                # find the associated idf_file
-                pair = next(((idf, f) for (idf, f) in futures if f is fut), None)
-                try:
-                    log = fut.result()
-                    if pair:
-                        logs.append((pair[0], log))
-                    else:
-                        logs.append((None, log))
-                except Exception as e:
-                    if pair:
-                        logs.append((pair[0], {"error": str(e)}))
-                    else:
-                        logs.append((None, {"error": str(e)}))
-                # update progress on the simulation model
-                try:
-                    completed += 1
-                    pct = self._intermediate_progress(completed, total)
-                    self.simulation.progress = pct
-                    # Avoid writing end_time here; just update progress and updated_at
-                    self.simulation.save()
-                    
-                    # Update Celery task state if available
-                    if self.celery_task:
-                        self.celery_task.update_state(
-                            state='PROGRESS',
-                            meta={
-                                'current': pct,
-                                'total': 100,
-                                'status': f'Processing IDF {completed} of {total}...'
-                            }
-                        )
-                    
-                    # Push progress update to WebSocket clients if channel layer is available
-                    try:
-                        self._push_progress(pct, status='running')
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
-        return logs
-
-    def run_batch_parametric_simulation(self, base_idf_files, construction_sets, weather_file, results_dir, max_workers: Optional[int]=None):
+    def run_simulation(self, batch_mode=False, construction_sets=None):
         """
-        For each base IDF and each construction set, generate a new IDF with the construction set inserted,
-        store it in a subfolder, and run all in parallel.
-        """
-        try:
-            from .unified_idf_parser import IdfParser
-        except Exception as e:
-            raise ImportError(
-                "Parametric simulation requires `IdfParser.insert_construction_set` which is provided by `unified_idf_parser.py`. "
-                "Please ensure `backend/simulation/unified_idf_parser.py` is present and importable."
-            )
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-
-        generated_idf_paths = []
-        variant_map = []
-
-        # Generate all variant IDFs and store them in organized folders
-        for idf_idx, idf_file in enumerate(base_idf_files):
-            idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
-            with open(idf_path, "r", encoding="utf-8") as f:
-                base_content = f.read()
-            for variant_idx, construction_set in enumerate(construction_sets):
-                parser = IdfParser(base_content)
-                parser.insert_construction_set(construction_set)
-                # Use a unique subfolder for each variant+idf
-                variant_dir = results_dir / f"variant_{variant_idx+1}_idf_{idf_idx+1}"
-                variant_dir.mkdir(parents=True, exist_ok=True)
-                idf_name = f"idf_{idf_idx+1}_variant_{variant_idx+1}.idf"
-                idf_path = variant_dir / idf_name
-                # Some parser instances may not have an underlying eppy IDF
-                # object (e.g. when eppy/IDD isn't available). Prefer using
-                # the IDF object's saveas when present; otherwise fall back
-                # to the parser's `to_string()` output written to disk.
-                try:
-                    idf_obj = getattr(parser, 'idf', None)
-                    if idf_obj is not None and hasattr(idf_obj, 'saveas'):
-                        idf_obj.saveas(str(idf_path))
-                    else:
-                        with open(str(idf_path), 'w', encoding='utf-8') as _f:
-                            _f.write(parser.to_string())
-                except Exception:
-                    # Last-resort: attempt to write parser.to_string()
-                    with open(str(idf_path), 'w', encoding='utf-8') as _f:
-                        _f.write(parser.to_string())
-                generated_idf_paths.append(idf_path)
-                variant_map.append({
-                    "idf_file": idf_file,
-                    "variant_idx": variant_idx,
-                    "idf_idx": idf_idx,
-                    "construction_set": construction_set,
-                    "idf_path": idf_path,
-                    "variant_dir": variant_dir
-                })
-
-        # Run all generated IDFs in parallel and update progress as each finishes
-        logs = []
-        results = []
-        if max_workers is None:
-            max_workers = _default_max_workers()
-        total = len(variant_map)
-        completed = 0
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {}
-            for entry in variant_map:
-                future = executor.submit(
-                    self.run_single_simulation,
-                    type("FakeFile", (), {"file": type("F", (), {"path": str(entry["idf_path"]), "name": str(entry["idf_path"].name)})})(),
-                    weather_file,
-                    str(entry["variant_dir"])
-                )
-                future_map[future] = entry
-            for future in as_completed(future_map):
-                entry = future_map[future]
-                try:
-                    log = future.result()
-                    logs.append(log)
-                    output_file = Path(entry["variant_dir"]) / "output"
-                    file_results = self.process_file_results(output_file, entry["idf_file"])
-                    if file_results:
-                        file_results["variant_idx"] = entry["variant_idx"]
-                        file_results["idf_idx"] = entry["idf_idx"]
-                        file_results["construction_set"] = entry["construction_set"]
-                        results.append(file_results)
-                except Exception as e:
-                    results.append({"error": str(e), "variant_idx": entry["variant_idx"], "idf_idx": entry["idf_idx"]})
-                # update progress on the simulation model
-                try:
-                    completed += 1
-                    pct = self._intermediate_progress(completed, total)
-                    self.simulation.progress = pct
-                    self.simulation.save()
-                    
-                    # Update Celery task state if available
-                    if self.celery_task:
-                        self.celery_task.update_state(
-                            state='PROGRESS',
-                            meta={
-                                'current': pct,
-                                'total': 100,
-                                'status': f'Processing variant {completed} of {total}...'
-                            }
-                        )
-                except Exception:
-                    pass
-
-        # Save all results to PostgreSQL database
-        print(f"Saving batch results to database for simulation {self.simulation.id}")
-        save_summary = self.save_results_to_database(results, job_info={
-            "simulation_id": self.simulation.id,
-            "run_id": self.run_id
-        })
-
-        saved_count = save_summary.get('saved', 0)
-        if saved_count <= 0:
-            error_msg = "Batch simulation completed but no results were persisted to the database."
-            extra_errors = save_summary.get('errors', [])
-            if extra_errors:
-                error_msg = f"{error_msg} Details: {'; '.join(extra_errors[:5])}"
-            self.simulation.status = 'failed'
-            self.simulation.error_message = error_msg
-            self.simulation.save(update_fields=['status', 'error_message', 'updated_at'])
-            raise RuntimeError(error_msg)
-
-        # Save combined results as JSON
-        combined_results_path = results_dir / 'combined_results.json'
-        with open(combined_results_path, 'w') as f:
-            json.dump(results, f)
-
-        self.simulation.status = 'completed'
-        self.simulation.progress = 100
-        self.simulation.error_message = None
-        self.simulation.save(update_fields=['status', 'progress', 'error_message', 'updated_at'])
-
-        print(f"Batch parametric simulation completed: {len(results)} results")
-
-    def run_simulation(self, parallel=False, max_workers: Optional[int]=None, batch_mode=False, construction_sets=None):
-        """
-        Main method to run simulations using Docker EnergyPlus containers.
+        Main method to run simulations serially using Docker EnergyPlus containers.
+        
+        Note: Parallelism is handled by Celery task distribution (see tasks.py).
+        This method runs simulations sequentially within a single Celery task.
         """
         try:
             self.simulation.status = 'running'
@@ -529,12 +292,13 @@ class EnergyPlusSimulator:
             if not idf_files or not weather_file:
                 raise ValueError("Missing required simulation files")
 
-            # Batch parametric mode: run all variants for all IDFs
+            # Batch parametric mode is now handled by Celery tasks in tasks.py
+            # This method should not be called with batch_mode=True anymore
             if batch_mode and construction_sets:
-                self.run_batch_parametric_simulation(
-                    idf_files, construction_sets, weather_file, self.results_dir, max_workers=max_workers
+                raise ValueError(
+                    "Batch parametric mode should be handled by Celery tasks. "
+                    "Use run_energyplus_batch_task in tasks.py instead."
                 )
-                return
 
             # Check if IDF/weather files exist
             for idf_file in idf_files:
@@ -548,61 +312,47 @@ class EnergyPlusSimulator:
             all_results = []
             logs = []
 
-            if parallel:
-                if max_workers is None:
-                    max_workers = _default_max_workers()
-                print(f"Running simulations in parallel mode (max_workers={max_workers})")
-                logs = self.run_parallel_simulations(idf_files, weather_file, self.results_dir, max_workers=max_workers)
-                for idf_file, log in logs:
-                    idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
-                    idf_basename = os.path.basename(idf_path)
-                    idf_name_no_ext = os.path.splitext(idf_basename)[0]
-                    idf_results_dir = self.results_dir / idf_name_no_ext
-                    results_path = idf_results_dir / 'output'
-                    file_results = self.process_file_results(results_path, idf_file)
-                    if file_results:
-                        all_results.append(file_results)
-            else:
-                print("Running simulations in serial mode")
-                total = len(list(idf_files))
-                done = 0
-                for idf_file in idf_files:
-                    idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
-                    idf_basename = os.path.basename(idf_path)
-                    idf_name_no_ext = os.path.splitext(idf_basename)[0]
-                    idf_results_dir = self.results_dir / idf_name_no_ext
-                    log = self.run_single_simulation(idf_file, weather_file, str(idf_results_dir))
-                    logs.append((idf_file, log))
-                    results_path = idf_results_dir / 'output'
-                    file_results = self.process_file_results(results_path, idf_file)
-                    if file_results:
-                        all_results.append(file_results)
-                    # update progress
-                    try:
-                        done += 1
-                        pct = self._intermediate_progress(done, total)
-                        self.simulation.progress = pct
-                        self.simulation.save()
-                        
-                        # Update Celery task state if available
-                        if self.celery_task:
-                            self.celery_task.update_state(
-                                state='PROGRESS',
-                                meta={
-                                    'current': pct,
-                                    'total': 100,
-                                    'status': f'Processing IDF {done} of {total}...'
-                                }
-                            )
-                    except Exception:
-                        pass
+            # Run simulations sequentially
+            print("Running simulations in serial mode")
+            total = len(list(idf_files))
+            done = 0
+            for idf_file in idf_files:
+                idf_path = os.path.join(settings.MEDIA_ROOT, idf_file.file_path)
+                idf_basename = os.path.basename(idf_path)
+                idf_name_no_ext = os.path.splitext(idf_basename)[0]
+                idf_results_dir = self.results_dir / idf_name_no_ext
+                log = self.run_single_simulation(idf_file, weather_file, str(idf_results_dir))
+                logs.append((idf_file, log))
+                results_path = idf_results_dir / 'output'
+                file_results = self.process_file_results(results_path, idf_file)
+                if file_results:
+                    all_results.append(file_results)
+                # update progress
+                try:
+                    done += 1
+                    pct = self._intermediate_progress(done, total)
+                    self.simulation.progress = pct
+                    self.simulation.save()
+                    
+                    # Update Celery task state if available
+                    if self.celery_task:
+                        self.celery_task.update_state(
+                            state='PROGRESS',
+                            meta={
+                                'current': pct,
+                                'total': 100,
+                                'status': f'Processing IDF {done} of {total}...'
+                            }
+                        )
+                except Exception:
+                    pass
 
             # Save all results to a combined JSON file
             combined_results_path = self.results_dir / 'combined_results.json'
             with open(combined_results_path, 'w') as f:
                 json.dump(all_results, f)
 
-            # If batch_mode, save results to PostgreSQL database and ensure success
+            # For batch mode, save results to database
             if batch_mode:
                 save_summary = self.save_results_to_database(all_results, job_info={
                     "simulation_id": self.simulation.id,
