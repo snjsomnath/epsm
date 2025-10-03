@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { authenticatedFetch } from '../../lib/auth-api';
 import { 
   Box, 
@@ -23,7 +23,10 @@ import {
   IconButton,
   Chip,
   Divider,
-  Tooltip
+  Tooltip,
+  Snackbar,
+  Skeleton,
+  CircularProgress
 } from '@mui/material';
 import { 
   Play, 
@@ -35,14 +38,19 @@ import {
   Info,
   FileText,
   Upload,
-  Check
+  Check,
+  Star,
+  StarOff,
+  Pin,
+  PinOff,
+  History
 } from 'lucide-react';
 // history-related icons removed; history UI moved to Baseline page
 import SimulationResultsView from './SimulationResultsView';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useSimulation } from '../../context/SimulationContext';
 import ReconnectingWebSocket from 'reconnecting-websocket';
-import { 
+import {
   LineChart, 
   Line, 
   XAxis, 
@@ -51,12 +59,62 @@ import {
   Tooltip as RechartsTooltip, 
   ResponsiveContainer
 } from 'recharts';
+import { useTheme } from '@mui/material/styles';
+import type { SxProps, Theme } from '@mui/material';
+import type { AlertColor } from '@mui/material/Alert';
 import IdfUploadArea from '../baseline/IdfUploadArea';
 import CoreLaneView from './CoreLaneView';
 
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: AlertColor;
+};
+
+type SectionCardProps = {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  sx?: SxProps<Theme>;
+};
+
+const SectionCard: React.FC<SectionCardProps> = ({ title, subtitle, actions, children, sx }) => (
+  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', ...(sx || {}) }}>
+    <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: subtitle ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 2 }}>
+        <Box>
+          <Typography variant="h6">{title}</Typography>
+          {subtitle && (
+            <Typography variant="body2" color="text.secondary">
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+        {actions}
+      </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{children}</Box>
+    </CardContent>
+  </Card>
+);
+
 const SimulationPage = () => {
+  const theme = useTheme();
   const { scenarios } = useDatabase();
-  const { uploadedFiles, parsedData, updateUploadedFiles, loadResults: _loadResults, lastResults, cacheLastResults, addToHistory } = useSimulation();
+  const {
+    uploadedFiles,
+    parsedData,
+    updateUploadedFiles,
+    loadResults: loadResultsFromHistory,
+    lastResults,
+    cacheLastResults,
+    addToHistory,
+    history = [],
+    clearHistory,
+    togglePin,
+    toggleFavorite,
+    removeHistoryEntry,
+  } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
   const [selectedScenario, setSelectedScenario] = useState<string>('');
@@ -75,6 +133,8 @@ const SimulationPage = () => {
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'info' });
+  const [historyLoading, setHistoryLoading] = useState<string | null>(null);
   // Replace timestamp-based history with index-based to prevent shifting
   const [cpuHistory, setCpuHistory] = useState<Array<{index: number, value: number, time: string}>>([]);
   const [memoryHistory, setMemoryHistory] = useState<Array<{index: number, value: number, time: string}>>([]);
@@ -82,8 +142,21 @@ const SimulationPage = () => {
   const [networkHistory, setNetworkHistory] = useState<Array<{index: number, value: number, time: string}>>([]);
   const MAX_HISTORY_POINTS = 60; // Store last 60 data points
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [_wsConnected, setWsConnected] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
+
+  const openSnackbar = useCallback((message: string, severity: AlertColor = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+
+  const handleSnackbarClose = useCallback(() => {
+    setSnackbar(prev => ({ ...prev, open: false }));
+  }, []);
+
+  const reportError = useCallback((message: string) => {
+    setError(message);
+    openSnackbar(message, 'error');
+  }, [openSnackbar]);
 
   // Check backend availability
   useEffect(() => {
@@ -522,11 +595,12 @@ const SimulationPage = () => {
               }
               setIsComplete(true);
               setIsRunning(false);
+              openSnackbar('Simulation completed successfully', 'success');
             } else if (statusData.status === 'failed') {
               if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
               stopped = true;
               console.error('Simulation failed', { simulationId, error: statusData.error });
-              setError(statusData.error || 'Simulation failed');
+              reportError(statusData.error || 'Simulation failed');
               setIsRunning(false);
             }
           } catch (err) {
@@ -586,7 +660,7 @@ const SimulationPage = () => {
             if (data.status === 'failed') {
               setIsRunning(false);
               setIsComplete(true);
-              setError(data.error || 'Simulation failed');
+              reportError(data.error || 'Simulation failed');
             }
           } catch (e) {
             console.warn('Malformed progress WS message', e);
@@ -613,8 +687,8 @@ const SimulationPage = () => {
         // Start with the first candidate URL; browser-level errors will appear in console if connection fails.
         tryUrl(candidateUrls[0]);
       } catch (e) {
-        console.warn('Failed to create progress websocket, using polling', e);
-        startPolling();
+          console.warn('Failed to create progress websocket, using polling', e);
+          startPolling();
       }
 
       // If WS hasn't attached within 2s, ensure polling starts
@@ -623,7 +697,7 @@ const SimulationPage = () => {
       }, 2000);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to run simulation');
+      reportError(err instanceof Error ? err.message : 'Failed to run simulation');
       setIsRunning(false);
     }
   };
@@ -651,6 +725,7 @@ const SimulationPage = () => {
             },
             // Add more dummy results as needed
           ]);
+          openSnackbar('Simulation completed with mock data', 'success');
           return 100;
         }
         setCompletedSimulations(Math.floor((next / 100) * totalSimulations));
@@ -747,7 +822,702 @@ const SimulationPage = () => {
     }
   };
 
-  // Then in the Dialog component, replace the IDF upload section with:
+  const handleRecallHistory = useCallback(async (simulationId: string) => {
+    if (!simulationId || typeof loadResultsFromHistory !== 'function') {
+      reportError('Unable to load saved run');
+      return;
+    }
+    setHistoryLoading(simulationId);
+    try {
+      const data = await loadResultsFromHistory(simulationId);
+      if (!data) {
+        reportError('No results found for this simulation');
+        return;
+      }
+      const normalized = Array.isArray(data) ? data : [data];
+      setResults(normalized);
+      setIsComplete(true);
+      setIsRunning(false);
+      setIsPaused(false);
+      setProgress(100);
+      setCompletedSimulations(normalized.length);
+      openSnackbar('Loaded results from recent run', 'success');
+    } catch (e) {
+      reportError('Failed to load results from history');
+    } finally {
+      setHistoryLoading(null);
+    }
+  }, [loadResultsFromHistory, reportError, openSnackbar]);
+
+  const historyItems = useMemo(() => (history || []).slice(0, 6), [history]);
+
+  const formatTimestamp = useCallback((ts: number) => {
+    try {
+      return new Date(ts).toLocaleString();
+    } catch (e) {
+      return '';
+    }
+  }, []);
+
+  const renderSimulationSetup = () => (
+    <SectionCard
+      title="Simulation Setup"
+      subtitle="Upload IDF/EPW files, choose a scenario, and control the batch run"
+    >
+      {scenarios.length === 0 ? (
+        <Alert severity="info">
+          No scenarios available. Create a scenario first on the Scenario Setup page.
+        </Alert>
+      ) : (
+        <FormControl fullWidth sx={{ mb: 3 }}>
+          <InputLabel>Select Scenario</InputLabel>
+          <Select
+            value={selectedScenario}
+            label="Select Scenario"
+            onChange={handleScenarioChange}
+            disabled={isRunning || isPaused}
+          >
+            <MenuItem value="">
+              <em>Select a scenario</em>
+            </MenuItem>
+            {scenarios.map(scenario => (
+              <MenuItem key={scenario.id} value={scenario.id}>
+                {scenario.name} ({scenario.total_simulations} simulations)
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
+
+      <Box>
+        <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <FileText size={16} />
+          Simulation Files
+        </Typography>
+        <Stack spacing={1}>
+          {(localIdfFiles.length > 0 || uploadedFiles.length > 0) ? (
+            <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+              <Typography variant="body2" gutterBottom>
+                <strong>IDF Files ({localIdfFiles.length || uploadedFiles.length}):</strong>
+              </Typography>
+              <Stack spacing={0.5}>
+                {(localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).map((file, index) => (
+                  <Chip
+                    key={index}
+                    label={file.name}
+                    color="primary"
+                    variant="outlined"
+                    size="small"
+                    onDelete={() => {
+                      const newFiles = (localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).filter((_, i) => i !== index);
+                      setLocalIdfFiles(newFiles);
+                      if (typeof updateUploadedFiles === 'function') updateUploadedFiles(newFiles);
+                    }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          ) : (
+            <Alert severity="info" icon={<Upload size={18} />}>
+              No IDF files selected. Upload files to continue.
+            </Alert>
+          )}
+
+          {weatherFile ? (
+            <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+              <Typography variant="body2" gutterBottom>
+                <strong>Weather File:</strong>
+              </Typography>
+              <Chip
+                label={weatherFile.name}
+                color="secondary"
+                variant="outlined"
+                size="small"
+                onDelete={() => setWeatherFile(null)}
+              />
+            </Box>
+          ) : (
+            <Alert severity="info" icon={<Upload size={18} />}>
+              No weather file selected. Upload an EPW file to continue.
+            </Alert>
+          )}
+
+          <Button
+            variant="outlined"
+            startIcon={<Upload size={18} />}
+            onClick={() => setUploadDialogOpen(true)}
+            fullWidth
+          >
+            {uploadedFiles.length === 0 && !weatherFile ? 'Upload Files' : 'Modify Files'}
+          </Button>
+        </Stack>
+      </Box>
+
+      {selectedScenario && (
+        <Box>
+          <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Info size={16} />
+            Simulation Details
+          </Typography>
+          <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1 }}>
+            <Stack spacing={2}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Description:
+                </Typography>
+                <Typography variant="body2">
+                  {scenarios.find(s => s.id === selectedScenario)?.description || 'No description available'}
+                </Typography>
+              </Box>
+
+              <Divider />
+
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Base IDF Files:
+                  </Typography>
+                  <Typography variant="h6">
+                    {localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Construction Variants:
+                  </Typography>
+                  <Typography variant="h6">
+                    {(() => {
+                      const scenario = scenarios.find(s => s.id === selectedScenario);
+                      return scenario?.total_simulations || 1;
+                    })()}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="body2" color="text.secondary">
+                    Total Simulations:
+                  </Typography>
+                  <Typography variant="h6" color="primary.main">
+                    {totalSimulations} simulations
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    ({localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length} files × {(() => {
+                      const scenario = scenarios.find(s => s.id === selectedScenario);
+                      return scenario?.total_simulations || 1;
+                    })()} variants)
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Stack>
+          </Box>
+
+          {(isRunning || isPaused || isComplete) && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Stack spacing={0.5}>
+                  <Typography variant="body2">
+                    Completed: {completedSimulations} of {totalSimulations}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Progress: {Math.round(progress)}%
+                  </Typography>
+                </Stack>
+                <Chip
+                  size="small"
+                  label={isComplete ? 'Complete' : isPaused ? 'Paused' : 'Running'}
+                  color={isComplete ? 'success' : isPaused ? 'warning' : 'primary'}
+                  icon={isComplete ? <Check size={16} /> : isPaused ? <Pause size={16} /> : <Play size={16} />}
+                />
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                sx={{
+                  height: 8,
+                  borderRadius: 4,
+                  bgcolor: 'background.default',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 4,
+                  },
+                }}
+              />
+            </Box>
+          )}
+        </Box>
+      )}
+
+      <Stack spacing={2}>
+        {!isRunning && !isPaused && !isComplete && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Play size={18} />}
+            fullWidth
+            onClick={() => setConfirmDialogOpen(true)}
+          >
+            Run Batch Simulation
+          </Button>
+        )}
+
+        {(isRunning || isPaused) && !isComplete && (
+          <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+              {isPaused ? (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Play size={18} />}
+                  onClick={handleResumeSimulation}
+                >
+                  Resume
+                </Button>
+              ) : backendAvailable ? (
+                <Tooltip title="Pause/resume is coming soon for Celery batches.">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      color="inherit"
+                      startIcon={<Pause size={18} />}
+                      disabled
+                    >
+                      Pause
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  startIcon={<Pause size={18} />}
+                  onClick={handlePauseSimulation}
+                  disabled={isPaused || progress >= 100}
+                >
+                  Pause
+                </Button>
+              )}
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<StopCircle size={18} />}
+                onClick={handleStopSimulation}
+              >
+                Stop
+              </Button>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {backendAvailable
+                ? 'Celery workers finish their current variant before stop takes effect.'
+                : 'Pause and stop controls work immediately with the local dummy worker.'}
+            </Typography>
+          </Box>
+        )}
+
+        {!isRunning && !isPaused && !isComplete && (
+          <Alert severity="info">
+            Click "Run Batch Simulation" to start processing the selected scenario.
+          </Alert>
+        )}
+      </Stack>
+
+      {!selectedScenario && (
+        <Alert severity="info">
+          Select a scenario to run simulations.
+        </Alert>
+      )}
+    </SectionCard>
+  );
+
+  const renderQueueOverview = () => (
+    <SectionCard
+      title="Queue & Worker Overview"
+      subtitle={queueMetrics.hasScenario ? 'Track Celery worker utilisation and queue depth in real time' : 'Select a scenario to view queue statistics'}
+      actions={selectedScenario ? (
+        <Chip
+          size="small"
+          label={isComplete ? 'Complete' : isPaused ? 'Paused' : isRunning ? 'Running' : 'Idle'}
+          color={isComplete ? 'success' : isPaused ? 'warning' : isRunning ? 'primary' : 'default'}
+          variant={isRunning || isPaused || isComplete ? 'filled' : 'outlined'}
+        />
+      ) : undefined}
+    >
+      {!queueMetrics.hasScenario ? (
+        <Alert severity="info">Select a scenario to see real-time queue statistics.</Alert>
+      ) : (
+        <>
+          <Grid container spacing={2}>
+            <Grid item xs={6} md={3}>
+              <Typography variant="caption" color="text.secondary">
+                Completed
+              </Typography>
+              <Typography variant="h5">{completedSimulations}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                of {totalSimulations || '—'}
+              </Typography>
+            </Grid>
+            <Grid item xs={6} md={3}>
+              <Typography variant="caption" color="text.secondary">
+                Active Workers
+              </Typography>
+              <Typography variant="h5">{queueMetrics.activeWorkers}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                of {queueMetrics.batchSize}
+              </Typography>
+            </Grid>
+            <Grid item xs={6} md={3}>
+              <Typography variant="caption" color="text.secondary">
+                Waiting Variants
+              </Typography>
+              <Typography variant="h5">{queueMetrics.queueVariants}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {queueMetrics.queuedBatches ? `≈ ${queueMetrics.queuedBatches} batch${queueMetrics.queuedBatches === 1 ? '' : 'es'}` : 'Queue drains soon'}
+              </Typography>
+            </Grid>
+            <Grid item xs={6} md={3}>
+              <Typography variant="caption" color="text.secondary">
+                Remaining Variants
+              </Typography>
+              <Typography variant="h5">{queueMetrics.remainingVariants}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Progress {Math.round(progress)}%
+              </Typography>
+            </Grid>
+          </Grid>
+
+          <Typography variant="caption" color="text.secondary">
+            {queueMetrics.workerStatusLabel}
+          </Typography>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+            <Chip size="small" color={queueMetrics.remainingVariants ? 'primary' : 'default'} label={queueMetrics.runningLabel} />
+            <Chip size="small" color={queueMetrics.queueVariants ? 'secondary' : 'default'} label={queueMetrics.queueLabel} />
+            <Chip size="small" color={queueMetrics.remainingVariants ? 'warning' : 'default'} label={`Remaining ${queueMetrics.remainingVariants}`} />
+            {queueMetrics.idleWorkers > 0 && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`${queueMetrics.idleWorkers} idle worker${queueMetrics.idleWorkers === 1 ? '' : 's'}`}
+              />
+            )}
+          </Stack>
+
+          <LinearProgress variant="determinate" value={queueMetrics.batchProgress} sx={{ height: 6, borderRadius: 3 }} />
+          <Typography variant="caption" color="text.secondary">
+            {queueMetrics.remainingVariants > 0
+              ? queueMetrics.nextQueuedVariant
+                ? `Queue spans ${queueMetrics.queueVariants} variant${queueMetrics.queueVariants === 1 ? '' : 's'} — next to dispatch #${queueMetrics.nextQueuedVariant}.`
+                : 'All available workers are busy.'
+              : queueMetrics.idleWorkers === queueMetrics.batchSize
+                ? 'Queue empty — all workers idle and ready.'
+                : 'Queue empty — awaiting new tasks.'}
+          </Typography>
+
+          {!isRunning && !isPaused && !isComplete && (
+            <Typography variant="body2" color="text.secondary">
+              Start a batch to populate live queue metrics.
+            </Typography>
+          )}
+        </>
+      )}
+    </SectionCard>
+  );
+
+  const renderResultsSection = () => (
+    <SectionCard
+      title="Simulation Results"
+      subtitle={isComplete ? 'Latest finished batch' : 'Results appear once the batch completes'}
+      actions={isComplete ? (
+        <Chip size="small" color="success" label="Ready" icon={<Check size={16} />} />
+      ) : undefined}
+    >
+      {error && (
+        <Alert severity="error">{error}</Alert>
+      )}
+
+      {isRunning && results.length === 0 && (
+        <Stack spacing={2}>
+          {[1, 2, 3].map(item => (
+            <Skeleton key={item} variant="rectangular" height={80} sx={{ borderRadius: 2 }} />
+          ))}
+          <Typography variant="caption" color="text.secondary">
+            Crunching numbers… this updates automatically when results land.
+          </Typography>
+        </Stack>
+      )}
+
+      {isComplete && results.length > 0 && (
+        <SimulationResultsView results={results} />
+      )}
+
+      {!isRunning && !isComplete && results.length > 0 && (
+        <Alert severity="info">
+          Showing cached results from your last completed run.
+        </Alert>
+      )}
+
+      {!isRunning && !isComplete && results.length === 0 && (
+        <Alert severity="info">
+          Run a batch to view combined EnergyPlus outputs here.
+        </Alert>
+      )}
+    </SectionCard>
+  );
+
+  const renderResourcePanel = () => {
+    const metrics = [
+      {
+        key: 'cpu',
+        label: 'CPU',
+        icon: <Cpu size={18} color={theme.palette.primary.main} />,
+        value: resourceStats?.cpu ? `${clampPercent(resourceStats.cpu.usage_percent)}%` : '—',
+        detail: resourceStats?.cpu
+          ? `${resourceStats.cpu.physical_cores || resourceStats.cpu.logical_cores || '?'} cores`
+          : 'Awaiting data',
+      },
+      {
+        key: 'memory',
+        label: 'Memory',
+        icon: <BarChart3 size={18} color={theme.palette.success.main} />,
+        value: resourceStats?.memory ? `${clampPercent(resourceStats.memory.usage_percent)}%` : '—',
+        detail: resourceStats?.memory
+          ? `${toNumber(resourceStats.memory.available_gb).toFixed(1)} GB free`
+          : 'Awaiting data',
+      },
+      {
+        key: 'disk',
+        label: 'Disk',
+        icon: <Info size={18} color={theme.palette.warning.main} />, // using Info as placeholder icon
+        value: resourceStats?.disk ? `${clampPercent(resourceStats.disk.usage_percent)}%` : '—',
+        detail: resourceStats?.disk
+          ? `${toNumber(resourceStats.disk.free_gb).toFixed(1)} GB free`
+          : 'Awaiting data',
+      },
+      {
+        key: 'network',
+        label: 'Network',
+        icon: <Clock size={18} color={theme.palette.info.main} />, // using Clock as throughput icon substitute
+        value: resourceStats?.network
+          ? `${Math.round((toNumber(resourceStats.network.bytes_sent_per_sec) + toNumber(resourceStats.network.bytes_recv_per_sec)) / 1024)} KB/s`
+          : '—',
+        detail: resourceStats?.network
+          ? `↑ ${Math.round(toNumber(resourceStats.network.bytes_sent_per_sec) / 1024)} KB/s · ↓ ${Math.round(toNumber(resourceStats.network.bytes_recv_per_sec) / 1024)} KB/s`
+          : 'Awaiting data',
+      },
+    ];
+
+    return (
+      <SectionCard
+        title="Live System Health"
+        subtitle="Resource telemetry streamed from the simulation host"
+        actions={
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip
+              size="small"
+              label={backendAvailable ? 'Backend online' : 'Backend offline'}
+              color={backendAvailable ? 'success' : 'error'}
+              variant={backendAvailable ? 'filled' : 'outlined'}
+            />
+            <Chip
+              size="small"
+              label={wsConnected ? 'WebSocket live' : 'Polling'}
+              color={wsConnected ? 'primary' : 'warning'}
+              variant={monitorStale ? 'outlined' : 'filled'}
+            />
+          </Stack>
+        }
+      >
+        {monitorStale && (
+          <Alert severity="warning">
+            Resource monitoring appears stale or disconnected.
+          </Alert>
+        )}
+
+        {resourceStats ? (
+          <>
+            <Grid container spacing={2}>
+              {metrics.map(({ key, label, icon, value, detail }) => (
+                <Grid item xs={12} sm={6} key={key}>
+                  <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {icon}
+                      <Typography variant="body2" color="text.secondary">
+                        {label}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="h6">{value}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {detail}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Simulation Assignment
+              </Typography>
+              <Paper variant="outlined" sx={{ p: 1, mt: 1 }}>
+                <CoreLaneView
+                  totalSimulations={totalSimulations}
+                  cpuCores={cpuLogical}
+                  completedSimulations={completedSimulations}
+                  progress={progress}
+                  maxSegments={160}
+                  width={900}
+                  height={320}
+                />
+              </Paper>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary">
+                Usage History (last {MAX_HISTORY_POINTS} samples)
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={cpuHistory}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                        <RechartsTooltip
+                          formatter={(value) => [`${value}%`, 'CPU']}
+                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#8884d8" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={memoryHistory}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                        <RechartsTooltip
+                          formatter={(value) => [`${value}%`, 'Memory']}
+                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#82ca9d" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={diskHistory}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                        <RechartsTooltip
+                          formatter={(value) => [`${value}%`, 'Disk']}
+                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#ffc658" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={networkHistory}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                        <YAxis tickFormatter={(value) => `${value} KB/s`} tick={{ fontSize: 10 }} />
+                        <RechartsTooltip
+                          formatter={(value) => [`${value} KB/s`, 'Network']}
+                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </Paper>
+                </Grid>
+              </Grid>
+            </Box>
+          </>
+        ) : (
+          <Stack spacing={2}>
+            {[1, 2].map(item => (
+              <Skeleton key={item} variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+            ))}
+            <Alert severity="info">Waiting for the backend to stream system metrics…</Alert>
+          </Stack>
+        )}
+      </SectionCard>
+    );
+  };
+
+  const renderHistorySection = () => (
+    <SectionCard
+      title="Recent Runs"
+      subtitle="Session-only history of the last few simulations"
+      actions={historyItems.length > 0 && typeof clearHistory === 'function' ? (
+        <Button size="small" color="inherit" onClick={() => clearHistory()}>
+          Clear
+        </Button>
+      ) : undefined}
+    >
+      {historyItems.length === 0 ? (
+        <Alert severity="info">Run a simulation to build your recent history.</Alert>
+      ) : (
+        <Stack spacing={1.5}>
+          {historyItems.map(item => (
+            <Paper key={item.id} variant="outlined" sx={{ p: 1.5 }}>
+              <Stack direction="row" spacing={1} alignItems="flex-start" justifyContent="space-between">
+                <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <History size={16} />
+                    <Typography variant="subtitle2" noWrap>{item.title || item.id}</Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatTimestamp(item.ts)}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  {typeof toggleFavorite === 'function' && (
+                    <Tooltip title={item.favorite ? 'Unfavorite' : 'Favorite'}>
+                      <IconButton size="small" onClick={() => toggleFavorite(item.id)}>
+                        {item.favorite ? <Star size={16} color={theme.palette.warning.main} /> : <StarOff size={16} />}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  {typeof togglePin === 'function' && (
+                    <Tooltip title={item.pinned ? 'Unpin' : 'Pin'}>
+                      <IconButton size="small" onClick={() => togglePin(item.id)}>
+                        {item.pinned ? <Pin size={16} color={theme.palette.primary.main} /> : <PinOff size={16} />}
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Stack>
+              </Stack>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => handleRecallHistory(item.id)}
+                  startIcon={historyLoading === item.id ? <CircularProgress size={14} /> : undefined}
+                  disabled={historyLoading === item.id}
+                >
+                  View
+                </Button>
+                {typeof removeHistoryEntry === 'function' && (
+                  <Button size="small" color="inherit" onClick={() => removeHistoryEntry(item.id)}>
+                    Remove
+                  </Button>
+                )}
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+    </SectionCard>
+  );
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -785,716 +1555,32 @@ const SimulationPage = () => {
         </Alert>
       )}
       
-      <Grid container spacing={3}>
-        {/* Control Panel */}
-        <Grid item xs={12} md={5}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Simulation Control
-              </Typography>
-              
-              {scenarios.length === 0 ? (
-                <Alert severity="info">
-                  No scenarios available. Create a scenario first on the Scenario Setup page.
-                </Alert>
-              ) : (
-                <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel>Select Scenario</InputLabel>
-                  <Select
-                    value={selectedScenario}
-                    label="Select Scenario"
-                    onChange={handleScenarioChange}
-                    disabled={isRunning || isPaused}
-                  >
-                    <MenuItem value="">
-                      <em>Select a scenario</em>
-                    </MenuItem>
-                    {scenarios.map(scenario => (
-                      <MenuItem key={scenario.id} value={scenario.id}>
-                        {scenario.name} ({scenario.total_simulations} simulations)
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-
-              {/* Files Section */}
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <FileText size={16} />
-                  Simulation Files
-                </Typography>
-                <Stack spacing={1}>
-                  {(localIdfFiles.length > 0 || uploadedFiles.length > 0) ? (
-                    <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                      <Typography variant="body2" gutterBottom>
-                        <strong>IDF Files ({localIdfFiles.length || uploadedFiles.length}):</strong>
-                      </Typography>
-                      <Stack spacing={0.5}>
-                        {(localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).map((file, index) => (
-                          <Chip
-                            key={index}
-                            label={file.name}
-                            color="primary"
-                            variant="outlined"
-                            size="small"
-                            onDelete={() => {
-                              const newFiles = (localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles).filter((_, i) => i !== index);
-                              setLocalIdfFiles(newFiles);
-                              if (typeof updateUploadedFiles === 'function') updateUploadedFiles(newFiles);
-                            }}
-                          />
-                        ))}
-                      </Stack>
-                    </Box>
-                  ) : (
-                    <Alert severity="info" icon={<Upload size={18} />}>
-                      No IDF files selected. Upload files to continue.
-                    </Alert>
-                  )}
-
-                  {weatherFile ? (
-                    <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                      <Typography variant="body2" gutterBottom>
-                        <strong>Weather File:</strong>
-                      </Typography>
-                      <Chip
-                        label={weatherFile.name}
-                        color="secondary"
-                        variant="outlined"
-                        size="small"
-                        onDelete={() => setWeatherFile(null)}
-                      />
-                    </Box>
-                  ) : (
-                    <Alert severity="info" icon={<Upload size={18} />}>
-                      No weather file selected. Upload an EPW file to continue.
-                    </Alert>
-                  )}
-
-                  <Button
-                    variant="outlined"
-                    startIcon={<Upload size={18} />}
-                    onClick={() => setUploadDialogOpen(true)}
-                    fullWidth
-                  >
-                    {uploadedFiles.length === 0 && !weatherFile 
-                      ? "Upload Files"
-                      : "Modify Files"}
-                  </Button>
-                </Stack>
-              </Box>
-
-              {/* Simulation Details Section */}
-              {selectedScenario && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Info size={16} />
-                    Simulation Details
-                  </Typography>
-                  <Box sx={{ bgcolor: 'background.default', p: 2, borderRadius: 1, mb: 3 }}>
-                    <Stack spacing={2}>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Description:
-                        </Typography>
-                        <Typography variant="body2">
-                          {scenarios.find(s => s.id === selectedScenario)?.description || "No description available"}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider />
-                      
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            Base IDF Files:
-                          </Typography>
-                          <Typography variant="h6">
-                            {localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="body2" color="text.secondary">
-                            Construction Variants:
-                          </Typography>
-                          <Typography variant="h6">
-                            {(() => {
-                              const scenario = scenarios.find(s => s.id === selectedScenario);
-                              // Use total_simulations instead of total_variants
-                              return scenario?.total_simulations || 1;
-                            })()}
-                          </Typography>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <Typography variant="body2" color="text.secondary">
-                            Total Simulations:
-                          </Typography>
-                          <Typography variant="h6" color="primary.main">
-                            {totalSimulations} simulations
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            ({localIdfFiles.length > 0 ? localIdfFiles.length : uploadedFiles.length} files × {(() => {
-                              const scenario = scenarios.find(s => s.id === selectedScenario);
-                              // Use total_simulations instead of total_variants
-                              return scenario?.total_simulations || 1;
-                            })()} variants)
-                          </Typography>
-                        </Grid>
-                      </Grid>
-                    </Stack>
-                  </Box>
-                  
-                  {/* Progress Section */}
-                  {(isRunning || isPaused || isComplete) && (
-                    <Box sx={{ mb: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                        <Stack spacing={0.5}>
-                          <Typography variant="body2">
-                            Completed: {completedSimulations} of {totalSimulations}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Progress: {Math.round(progress)}%
-                          </Typography>
-                        </Stack>
-                        <Chip 
-                          size="small" 
-                          label={isComplete ? "Complete" : isPaused ? "Paused" : "Running"} 
-                          color={isComplete ? "success" : isPaused ? "warning" : "primary"}
-                          icon={isComplete ? <Check size={16} /> : isPaused ? <Pause size={16} /> : <Play size={16} />}
-                        />
-                      </Box>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={progress} 
-                        sx={{ 
-                          height: 8, 
-                          borderRadius: 4,
-                          bgcolor: 'background.default',
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 4
-                          }
-                        }}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              )}
-              
-              <Stack spacing={2} sx={{ mt: 3 }}>
-                {!isRunning && !isPaused && !isComplete && (
-                  <Button 
-                    variant="contained" 
-                    color="primary" 
-                    startIcon={<Play size={18} />}
-                    fullWidth
-                    onClick={() => setConfirmDialogOpen(true)}
-                  >
-                    Run Batch Simulation
-                  </Button>
-                )}
-
-                {(isRunning || isPaused) && !isComplete && (
-                  <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap sx={{ mb: 1.5, flexWrap: 'wrap' }}>
-                      {isPaused ? (
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={<Play size={18} />}
-                          onClick={handleResumeSimulation}
-                        >
-                          Resume
-                        </Button>
-                      ) : backendAvailable ? (
-                        <Tooltip title="Pause/resume is coming soon for Celery batches.">
-                          <span>
-                            <Button
-                              variant="outlined"
-                              color="inherit"
-                              startIcon={<Pause size={18} />}
-                              disabled
-                            >
-                              Pause
-                            </Button>
-                          </span>
-                        </Tooltip>
-                      ) : (
-                        <Button
-                          variant="outlined"
-                          color="inherit"
-                          startIcon={<Pause size={18} />}
-                          onClick={handlePauseSimulation}
-                          disabled={isPaused || progress >= 100}
-                        >
-                          Pause
-                        </Button>
-                      )}
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        startIcon={<StopCircle size={18} />}
-                        onClick={handleStopSimulation}
-                      >
-                        Stop
-                      </Button>
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary">
-                      {backendAvailable 
-                        ? 'Celery workers finish their current variant before stop takes effect.'
-                        : 'Pause and stop controls work immediately with the local dummy worker.'}
-                    </Typography>
-                  </Box>
-                )}
-
-                {!isRunning && !isPaused && !isComplete && (
-                  <Alert severity="info">
-                    Click "Run Batch Simulation" to start processing the selected scenario.
-                  </Alert>
-                )}
-              </Stack>
-
-              {!selectedScenario && (
-                <Alert severity="info" sx={{ mt: 3 }}>
-                  Select a scenario to run simulations.
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Queue and Resources */}
-        <Grid item xs={12} md={7}>
+      <Grid container spacing={3} alignItems="flex-start">
+        <Grid item xs={12} lg={8}>
           <Stack spacing={3}>
-            {/* Queue & Worker Overview */}
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="h6">Queue & Worker Overview</Typography>
-                  {selectedScenario && (
-                    <Chip
-                      size="small"
-                      label={isComplete ? 'Complete' : isPaused ? 'Paused' : isRunning ? 'Running' : 'Idle'}
-                      color={isComplete ? 'success' : isPaused ? 'warning' : isRunning ? 'primary' : 'default'}
-                      variant={isRunning || isPaused || isComplete ? 'filled' : 'outlined'}
-                    />
-                  )}
-                </Box>
-
-                {!queueMetrics.hasScenario ? (
-                  <Alert severity="info">
-                    Select a scenario to see real-time queue statistics.
-                  </Alert>
-                ) : (
-                  <>
-                    <Grid container spacing={2} sx={{ mb: 2 }}>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Typography variant="caption" color="text.secondary">
-                          Completed
-                        </Typography>
-                        <Typography variant="h5">
-                          {completedSimulations}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          of {totalSimulations || '—'}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Typography variant="caption" color="text.secondary">
-                          Active Workers
-                        </Typography>
-                        <Typography variant="h5">
-                          {queueMetrics.activeWorkers}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          of {queueMetrics.batchSize}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Typography variant="caption" color="text.secondary">
-                          Waiting Variants
-                        </Typography>
-                        <Typography variant="h5">
-                          {queueMetrics.queueVariants}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {queueMetrics.queuedBatches ? `≈ ${queueMetrics.queuedBatches} batch${queueMetrics.queuedBatches === 1 ? '' : 'es'}` : 'Queue drains soon'}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Typography variant="caption" color="text.secondary">
-                          Remaining Variants
-                        </Typography>
-                        <Typography variant="h5">
-                          {queueMetrics.remainingVariants}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Progress {Math.round(progress)}%
-                        </Typography>
-                      </Grid>
-                    </Grid>
-
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                      {queueMetrics.workerStatusLabel}
-                    </Typography>
-
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
-                      <Chip
-                        size="small"
-                        color={queueMetrics.remainingVariants ? 'primary' : 'default'}
-                        label={queueMetrics.runningLabel}
-                      />
-                      <Chip
-                        size="small"
-                        color={queueMetrics.queueVariants ? 'secondary' : 'default'}
-                        label={queueMetrics.queueLabel}
-                      />
-                      <Chip
-                        size="small"
-                        color={queueMetrics.remainingVariants ? 'warning' : 'default'}
-                        label={`Remaining ${queueMetrics.remainingVariants}`}
-                      />
-                      {queueMetrics.idleWorkers > 0 && (
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label={`${queueMetrics.idleWorkers} idle worker${queueMetrics.idleWorkers === 1 ? '' : 's'}`}
-                        />
-                      )}
-                    </Stack>
-
-                    <LinearProgress variant="determinate" value={queueMetrics.batchProgress} sx={{ height: 6, borderRadius: 3, mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary">
-                      {queueMetrics.remainingVariants > 0
-                        ? queueMetrics.nextQueuedVariant
-                          ? `Queue spans ${queueMetrics.queueVariants} variant${queueMetrics.queueVariants === 1 ? '' : 's'} — next to dispatch #${queueMetrics.nextQueuedVariant}.`
-                          : 'All available workers are busy.'
-                        : queueMetrics.idleWorkers === queueMetrics.batchSize
-                          ? 'Queue empty — all workers idle and ready.'
-                          : 'Queue empty — awaiting new tasks.'}
-                    </Typography>
-
-                    {!isRunning && !isPaused && !isComplete && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                        Start a batch to populate live queue metrics.
-                      </Typography>
-                    )}
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Results Section */}
-            {isComplete && results.length > 0 && (
-              <Box>
-                <SimulationResultsView results={results} />
-              </Box>
-            )}
-
-            {error && (
-              <Alert severity="error">
-                {error}
-              </Alert>
-            )}
-
-            {/* System Resource Monitoring */}
-            <Card>
-              <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                <BarChart3 size={20} style={{ marginRight: 8 }} />
-                System Resources Monitor
-              </Typography>
-              {monitorStale && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  Resource monitoring appears stale or disconnected.
-                </Alert>
-              )}
-              
-              <Grid container spacing={2} sx={{ mb: 2 }}>
-                <Grid item xs={6} sm={3}>
-                  <Card variant="outlined" sx={{ minHeight: 120 }}>
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Cpu size={18} style={{ marginRight: 8 }} />
-                        <Typography variant="body2" color="text.secondary">
-                          CPU Usage
-                        </Typography>
-                      </Box>
-                      <Typography variant="h6">
-                        {clampPercent(resourceStats?.cpu?.usage_percent)}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {resourceStats?.cpu?.physical_cores || resourceStats?.cpu?.logical_cores || 0} cores
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card variant="outlined" sx={{ minHeight: 120 }}>
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Clock size={18} style={{ marginRight: 8 }} />
-                        <Typography variant="body2" color="text.secondary">
-                          Memory
-                        </Typography>
-                      </Box>
-                      <Typography variant="h6">
-                        {clampPercent(resourceStats?.memory?.usage_percent)}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {((toNumber(resourceStats?.memory?.total_gb) - toNumber(resourceStats?.memory?.available_gb)) || 0).toFixed(1)} GB / {toNumber(resourceStats?.memory?.total_gb).toFixed(1)} GB
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card variant="outlined" sx={{ minHeight: 120 }}>
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <svg 
-                          xmlns="http://www.w3.org/2000/svg" 
-                          width="18" 
-                          height="18" 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          strokeWidth="2" 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          style={{ marginRight: 8 }}
-                        >
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <path d="M12 2a14 14 0 0 0 0 20 14 14 0 0 0 0-20"></path>
-                          <path d="M2 12h20"></path>
-                        </svg>
-                        <Typography variant="body2" color="text.secondary">
-                          Disk
-                        </Typography>
-                      </Box>
-                      <Typography variant="h6">
-                        {clampPercent(resourceStats?.disk?.usage_percent)}%
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {((toNumber(resourceStats?.disk?.total_gb) - toNumber(resourceStats?.disk?.free_gb)) || 0).toFixed(1)} GB / {toNumber(resourceStats?.disk?.total_gb).toFixed(1)} GB
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card variant="outlined" sx={{ minHeight: 120 }}>
-                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <svg 
-                          xmlns="http://www.w3.org/2000/svg" 
-                          width="18" 
-                          height="18" 
-                          viewBox="0 0 24 24" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          strokeWidth="2" 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          style={{ marginRight: 8 }}
-                        >
-                          <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9"></path>
-                        </svg>
-                        <Typography variant="body2" color="text.secondary">
-                          Network
-                        </Typography>
-                      </Box>
-                      <Typography variant="h6">
-                        {resourceStats?.network?.bytes_sent_per_sec ? Math.round((toNumber(resourceStats.network.bytes_sent_per_sec) + toNumber(resourceStats.network.bytes_recv_per_sec)) / 1024) : 0} KB/s
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        ↑ {resourceStats?.network?.bytes_sent_per_sec ? Math.round(toNumber(resourceStats.network.bytes_sent_per_sec) / 1024) : 0} KB/s  
-                        ↓ {resourceStats?.network?.bytes_recv_per_sec ? Math.round(toNumber(resourceStats.network.bytes_recv_per_sec) / 1024) : 0} KB/s
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-              {/* Dendrogram showing assignment of simulations to cores. Aggregates leaves when too many. */}
-              <Grid item xs={12}>
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Simulation Assignment
-                  </Typography>
-                  <Paper variant="outlined" sx={{ p: 1 }}>
-                    <Paper sx={{ p: 1, height: 360 }} variant="outlined">
-                      <CoreLaneView
-                        totalSimulations={totalSimulations}
-                        cpuCores={cpuLogical}
-                        completedSimulations={completedSimulations}
-                        progress={progress}
-                        maxSegments={160}
-                        width={900}
-                        height={320}
-                      />
-                    </Paper>
-                  </Paper>
-                </Box>
-              </Grid>
-              
-              {/* Resource History Charts */}
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    CPU Usage History
-                  </Typography>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={cpuHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="index"
-                          type="number"
-                          domain={['dataMin', 'dataMax']}
-                          tickFormatter={() => ''}
-                          tick={false}
-                        />
-                        <YAxis 
-                          domain={[0, 100]} 
-                          tickFormatter={(value) => `${value}%`}
-                          tick={{fontSize: 10}}
-                        />
-                        <RechartsTooltip 
-                          formatter={(value) => [`${value}%`, 'CPU']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#8884d8" 
-                          strokeWidth={2}
-                          dot={false}
-                          name="CPU"
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Memory Usage History
-                  </Typography>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={memoryHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="index"
-                          type="number"
-                          domain={['dataMin', 'dataMax']}
-                          tickFormatter={() => ''}
-                          tick={false}
-                        />
-                        <YAxis 
-                          domain={[0, 100]} 
-                          tickFormatter={(value) => `${value}%`}
-                          tick={{fontSize: 10}}
-                        />
-                        <RechartsTooltip 
-                          formatter={(value) => [`${value}%`, 'Memory']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#82ca9d" 
-                          strokeWidth={2}
-                          dot={false}
-                          name="Memory"
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Disk Usage History
-                  </Typography>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={diskHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="index"
-                          type="number"
-                          domain={['dataMin', 'dataMax']}
-                          tickFormatter={() => ''}
-                          tick={false}
-                        />
-                        <YAxis 
-                          domain={[0, 100]} 
-                          tickFormatter={(value) => `${value}%`}
-                          tick={{fontSize: 10}}
-                        />
-                        <RechartsTooltip 
-                          formatter={(value) => [`${value}%`, 'Disk']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#ffc658" 
-                          strokeWidth={2}
-                          dot={false}
-                          name="Disk"
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Network Activity (KB/s)
-                  </Typography>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={networkHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis 
-                          dataKey="index"
-                          type="number"
-                          domain={['dataMin', 'dataMax']}
-                          tickFormatter={() => ''}
-                          tick={false}
-                        />
-                        <YAxis 
-                          domain={[0, 'dataMax']}
-                          tickFormatter={(value) => `${value}`}
-                          tick={{fontSize: 10}}
-                        />
-                        <RechartsTooltip 
-                          formatter={(value) => [`${value} KB/s`, 'Network']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#ff7300" 
-                          strokeWidth={2}
-                          dot={false}
-                          name="Network"
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-              </Grid>
-              </CardContent>
-            </Card>
+            {renderSimulationSetup()}
+            {renderQueueOverview()}
+            {renderResultsSection()}
+          </Stack>
+        </Grid>
+        <Grid item xs={12} lg={4}>
+          <Stack spacing={3}>
+            {renderResourcePanel()}
+            {renderHistorySection()}
           </Stack>
         </Grid>
       </Grid>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleSnackbarClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
 
       {/* File Upload Dialog */}
       <Dialog
