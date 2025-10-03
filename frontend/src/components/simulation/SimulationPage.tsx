@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { authenticatedFetch } from '../../lib/auth-api';
 import { 
   Box, 
@@ -22,7 +22,8 @@ import {
   DialogActions,
   IconButton,
   Chip,
-  Divider
+  Divider,
+  Tooltip
 } from '@mui/material';
 import { 
   Play, 
@@ -258,9 +259,57 @@ const SimulationPage = () => {
   const availableMem = toNumber(resourceStats?.memory?.available_gb);
   const totalMem = toNumber(resourceStats?.memory?.total_gb);
   const estMemGb = availableMem > 0 ? Math.max(1, Math.round(availableMem)) : (totalMem > 0 ? Math.max(1, Math.round(totalMem / 2)) : 4);
-  
 
-  
+  // Celery queue metrics calculation
+  const queueMetrics = useMemo(() => {
+    const batchSize = suggestedParallel;
+    const totalBatches = totalSimulations ? Math.ceil(totalSimulations / batchSize) : 0;
+    const completedBatchesRaw = totalSimulations ? completedSimulations / batchSize : 0;
+    const completedBatches = Math.min(totalBatches, Math.floor(completedBatchesRaw));
+    const remainingVariants = Math.max(totalSimulations - completedSimulations, 0);
+    const activeWorkers = Math.min(batchSize, remainingVariants);
+    const activeStart = remainingVariants > 0 ? completedSimulations + 1 : null;
+    const activeEnd = remainingVariants > 0 ? Math.min(completedSimulations + activeWorkers, totalSimulations) : null;
+    const queueVariants = Math.max(0, remainingVariants - activeWorkers);
+    const queuedBatches = queueVariants > 0 ? Math.ceil(queueVariants / batchSize) : 0;
+    const batchProgress = totalBatches ? Math.min(100, (completedBatchesRaw / totalBatches) * 100) : 0;
+    const nextQueuedVariant = remainingVariants > activeWorkers ? completedSimulations + activeWorkers + 1 : null;
+    const idleWorkers = Math.max(batchSize - activeWorkers, 0);
+    const runningLabel = remainingVariants
+      ? activeStart !== null && activeEnd !== null && activeStart !== activeEnd
+        ? `Running variants #${activeStart}-${activeEnd}`
+        : `Running variant #${activeStart ?? activeEnd}`
+      : 'No variants in flight';
+    const queueLabel = queueVariants
+      ? `Queue ${queueVariants}${queuedBatches ? ` (${queuedBatches} batch${queuedBatches === 1 ? '' : 'es'})` : ''}`
+      : 'Queue empty';
+    const workerStatusLabel = [
+      `${activeWorkers}/${batchSize} worker${activeWorkers === 1 ? '' : 's'} busy`,
+      idleWorkers ? `${idleWorkers} idle` : null,
+      queueVariants ? `${queuedBatches} batch${queuedBatches === 1 ? '' : 'es'} queued` : null,
+    ]
+      .filter(Boolean)
+      .join(' • ');
+
+    return {
+      batchSize,
+      totalBatches,
+      completedBatches,
+      remainingVariants,
+      activeWorkers,
+      activeStart,
+      activeEnd,
+      queueVariants,
+      queuedBatches,
+      batchProgress,
+      nextQueuedVariant,
+      idleWorkers,
+      runningLabel,
+      queueLabel,
+      workerStatusLabel,
+      hasScenario: !!selectedScenario,
+    };
+  }, [totalSimulations, completedSimulations, suggestedParallel, selectedScenario]);
 
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
@@ -929,7 +978,7 @@ const SimulationPage = () => {
                 </Box>
               )}
               
-              <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
+              <Stack spacing={2} sx={{ mt: 3 }}>
                 {!isRunning && !isPaused && !isComplete && (
                   <Button 
                     variant="contained" 
@@ -941,103 +990,213 @@ const SimulationPage = () => {
                     Run Batch Simulation
                   </Button>
                 )}
-                
-                {isRunning && (
-                  <Button 
-                    variant="outlined" 
-                    color="primary" 
-                    startIcon={<Pause size={18} />}
-                    onClick={handlePauseSimulation}
-                  >
-                    Pause
-                  </Button>
-                )
-                }
-                
-                {isPaused && (
-                  <Button 
-                    variant="contained" 
-                    color="primary" 
-                    startIcon={<Play size={18} />}
-                    onClick={handleResumeSimulation}
-                  >
-                    Resume
-                  </Button>
+
+                {(isRunning || isPaused) && !isComplete && (
+                  <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} useFlexGap sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+                      {isPaused ? (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<Play size={18} />}
+                          onClick={handleResumeSimulation}
+                        >
+                          Resume
+                        </Button>
+                      ) : backendAvailable ? (
+                        <Tooltip title="Pause/resume is coming soon for Celery batches.">
+                          <span>
+                            <Button
+                              variant="outlined"
+                              color="inherit"
+                              startIcon={<Pause size={18} />}
+                              disabled
+                            >
+                              Pause
+                            </Button>
+                          </span>
+                        </Tooltip>
+                      ) : (
+                        <Button
+                          variant="outlined"
+                          color="inherit"
+                          startIcon={<Pause size={18} />}
+                          onClick={handlePauseSimulation}
+                          disabled={isPaused || progress >= 100}
+                        >
+                          Pause
+                        </Button>
+                      )}
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<StopCircle size={18} />}
+                        onClick={handleStopSimulation}
+                      >
+                        Stop
+                      </Button>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {backendAvailable 
+                        ? 'Celery workers finish their current variant before stop takes effect.'
+                        : 'Pause and stop controls work immediately with the local dummy worker.'}
+                    </Typography>
+                  </Box>
                 )}
-                
-                {(isRunning || isPaused) && (
-                  <Button 
-                    variant="outlined" 
-                    color="error" 
-                    startIcon={<StopCircle size={18} />}
-                    onClick={handleStopSimulation}
-                  >
-                    Stop
-                  </Button>
+
+                {!isRunning && !isPaused && !isComplete && (
+                  <Alert severity="info">
+                    Click "Run Batch Simulation" to start processing the selected scenario.
+                  </Alert>
                 )}
-              </Box>
+              </Stack>
+
+              {!selectedScenario && (
+                <Alert severity="info" sx={{ mt: 3 }}>
+                  Select a scenario to run simulations.
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Progress and Results */}
+        {/* Queue and Resources */}
         <Grid item xs={12} md={7}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Simulation Progress
-            </Typography>
+          <Stack spacing={3}>
+            {/* Queue & Worker Overview */}
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6">Queue & Worker Overview</Typography>
+                  {selectedScenario && (
+                    <Chip
+                      size="small"
+                      label={isComplete ? 'Complete' : isPaused ? 'Paused' : isRunning ? 'Running' : 'Idle'}
+                      color={isComplete ? 'success' : isPaused ? 'warning' : isRunning ? 'primary' : 'default'}
+                      variant={isRunning || isPaused || isComplete ? 'filled' : 'outlined'}
+                    />
+                  )}
+                </Box>
 
-            {/* Recent simulations moved to Baseline page (baselineHistory) */}
-            
+                {!queueMetrics.hasScenario ? (
+                  <Alert severity="info">
+                    Select a scenario to see real-time queue statistics.
+                  </Alert>
+                ) : (
+                  <>
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Typography variant="caption" color="text.secondary">
+                          Completed
+                        </Typography>
+                        <Typography variant="h5">
+                          {completedSimulations}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          of {totalSimulations || '—'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Typography variant="caption" color="text.secondary">
+                          Active Workers
+                        </Typography>
+                        <Typography variant="h5">
+                          {queueMetrics.activeWorkers}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          of {queueMetrics.batchSize}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Typography variant="caption" color="text.secondary">
+                          Waiting Variants
+                        </Typography>
+                        <Typography variant="h5">
+                          {queueMetrics.queueVariants}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {queueMetrics.queuedBatches ? `≈ ${queueMetrics.queuedBatches} batch${queueMetrics.queuedBatches === 1 ? '' : 'es'}` : 'Queue drains soon'}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Typography variant="caption" color="text.secondary">
+                          Remaining Variants
+                        </Typography>
+                        <Typography variant="h5">
+                          {queueMetrics.remainingVariants}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Progress {Math.round(progress)}%
+                        </Typography>
+                      </Grid>
+                    </Grid>
+
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      {queueMetrics.workerStatusLabel}
+                    </Typography>
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} useFlexGap sx={{ mb: 2, flexWrap: 'wrap' }}>
+                      <Chip
+                        size="small"
+                        color={queueMetrics.remainingVariants ? 'primary' : 'default'}
+                        label={queueMetrics.runningLabel}
+                      />
+                      <Chip
+                        size="small"
+                        color={queueMetrics.queueVariants ? 'secondary' : 'default'}
+                        label={queueMetrics.queueLabel}
+                      />
+                      <Chip
+                        size="small"
+                        color={queueMetrics.remainingVariants ? 'warning' : 'default'}
+                        label={`Remaining ${queueMetrics.remainingVariants}`}
+                      />
+                      {queueMetrics.idleWorkers > 0 && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          label={`${queueMetrics.idleWorkers} idle worker${queueMetrics.idleWorkers === 1 ? '' : 's'}`}
+                        />
+                      )}
+                    </Stack>
+
+                    <LinearProgress variant="determinate" value={queueMetrics.batchProgress} sx={{ height: 6, borderRadius: 3, mb: 1 }} />
+                    <Typography variant="caption" color="text.secondary">
+                      {queueMetrics.remainingVariants > 0
+                        ? queueMetrics.nextQueuedVariant
+                          ? `Queue spans ${queueMetrics.queueVariants} variant${queueMetrics.queueVariants === 1 ? '' : 's'} — next to dispatch #${queueMetrics.nextQueuedVariant}.`
+                          : 'All available workers are busy.'
+                        : queueMetrics.idleWorkers === queueMetrics.batchSize
+                          ? 'Queue empty — all workers idle and ready.'
+                          : 'Queue empty — awaiting new tasks.'}
+                    </Typography>
+
+                    {!isRunning && !isPaused && !isComplete && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                        Start a batch to populate live queue metrics.
+                      </Typography>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Results Section */}
+            {isComplete && results.length > 0 && (
+              <Box>
+                <SimulationResultsView results={results} />
+              </Box>
+            )}
+
             {error && (
-              <Alert severity="error" sx={{ mb: 2 }}>
+              <Alert severity="error">
                 {error}
               </Alert>
             )}
-            
-            {selectedScenario ? (
-              <Box>
-                {(isRunning || isPaused || isComplete) && (
-                  <Box sx={{ mb: 3 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Progress: {completedSimulations} of {totalSimulations} simulations ({Math.round(progress)}%)
-                      </Typography>
-                      <Chip 
-                        size="small" 
-                        label={isComplete ? "Complete" : isPaused ? "Paused" : "Running"} 
-                        color={isComplete ? "success" : isPaused ? "warning" : "primary"}
-                      />
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={progress || 0} // Always provide a value, fallback to 0
-                      sx={{ height: 8, borderRadius: 4 }}
-                    />
-                  </Box>
-                )}
 
-                {/* Results Section */}
-                {isComplete && results.length > 0 && (
-                  <SimulationResultsView results={results} />
-                )}
-
-                {!isRunning && !isPaused && !isComplete && (
-                  <Box sx={{ textAlign: 'center', p: 2 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Click "Run Batch Simulation" to start
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-            ) : (
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Select a scenario to run simulations.
-              </Alert>
-            )}
-            
-            {/* System Resource Monitoring - Now always visible regardless of scenario selection */}
-            <Box sx={{ mb: 3, mt: 3 }}>
+            {/* System Resource Monitoring */}
+            <Card>
+              <CardContent>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <BarChart3 size={20} style={{ marginRight: 8 }} />
                 System Resources Monitor
@@ -1327,8 +1486,9 @@ const SimulationPage = () => {
                   </Paper>
                 </Grid>
               </Grid>
-            </Box>
-          </Paper>
+              </CardContent>
+            </Card>
+          </Stack>
         </Grid>
       </Grid>
 

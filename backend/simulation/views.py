@@ -490,30 +490,47 @@ def run_simulation(request):
             except Exception as e:
                 print(f"Warning: failed to build construction_sets for scenario {scenario_id}: {e}")
 
-        # Start simulation in background thread with configured options
-        import threading
-
-        def run_sim_in_background():
-            try:
-                from .services import EnergyPlusSimulator
-                simulator = EnergyPlusSimulator(simulation)
-                simulator.run_simulation(parallel=parallel, max_workers=max_workers, batch_mode=batch_mode, construction_sets=construction_sets)
-            except Exception as e:
-                import traceback
-                print(f"ERROR in background thread: {str(e)}")
-                print(traceback.format_exc())
-                simulation.status = 'failed'
-                simulation.error_message = str(e)
-                simulation.save()
-
-        # Start the background thread
-        thread = threading.Thread(target=run_sim_in_background)
-        thread.daemon = True
-        thread.start()
+        # Dispatch Celery task for async execution (replaces threading approach)
+        from .tasks import run_energyplus_batch_task
+        
+        # Prepare file paths for Celery task
+        idf_file_paths = [f.file_path for f in SimulationFile.objects.filter(
+            simulation=simulation,
+            file_type='idf'
+        )]
+        
+        weather_file_obj = SimulationFile.objects.filter(
+            simulation=simulation,
+            file_type='weather'
+        ).first()
+        
+        if not weather_file_obj:
+            simulation.status = 'failed'
+            simulation.error_message = 'Weather file not found'
+            simulation.save()
+            return JsonResponse({
+                'error': 'Weather file not found'
+            }, status=400)
+        
+        # Dispatch the Celery task asynchronously
+        task = run_energyplus_batch_task.delay(
+            simulation_id=str(simulation.id),
+            idf_file_paths=idf_file_paths,
+            weather_file_path=weather_file_obj.file_path,
+            parallel=parallel,
+            max_workers=max_workers,
+            batch_mode=batch_mode,
+            construction_sets=construction_sets
+        )
+        
+        # Store the Celery task ID on the simulation for tracking
+        simulation.celery_task_id = task.id
+        simulation.save()
         
         return JsonResponse({
             'simulation_id': simulation.id,
-            'message': 'Simulation started successfully',
+            'task_id': task.id,
+            'message': 'Simulation task queued successfully',
             'file_count': len(idf_files)
         })
         
@@ -733,15 +750,40 @@ def parallel_simulation_results(request, simulation_id):
     Fetch simulation results from PostgreSQL database for parallel/batch simulations.
     """
     try:
-        from .models import SimulationResult
-        
-        # Get all results for this simulation
+        from .models import SimulationResult, Simulation
+        from .services import parse_simulation_results
+
+        try:
+            simulation = Simulation.objects.get(id=simulation_id)
+        except Simulation.DoesNotExist:
+            return JsonResponse({'error': 'Simulation not found'}, status=404)
+
+        # Get all results for this simulation from the results database
         results = SimulationResult.objects.filter(simulation_id=simulation_id).select_related()
-        
+
         if not results.exists():
+            # Fallback #1: if simulation isn't marked completed yet, return a 202 so the
+            # frontend keeps polling without logging an error.
+            if simulation.status != 'completed':
+                return JsonResponse({
+                    'status': simulation.status,
+                    'message': 'Simulation is still running. Results will be available once processing finishes.'
+                }, status=202)
+
+            # Fallback #2: try to read combined_results.json or per-IDF output on disk
+            try:
+                fallback = parse_simulation_results(simulation)
+                if fallback:
+                    return JsonResponse(fallback, safe=False)
+            except Exception as parse_err:
+                print(f"parallel_simulation_results fallback parse failed: {parse_err}")
+
+            # If we still have nothing, respond with a soft failure to avoid breaking the UI.
             return JsonResponse({
-                'error': f'No simulation results found for simulation {simulation_id}'
-            }, status=404)
+                'status': 'processing',
+                'message': 'Results are not yet available. The backend may still be consolidating output.',
+                'retry_after_seconds': 2
+            }, status=202)
 
         # Convert to list format similar to SQLite version
         results_data = []
@@ -1779,3 +1821,105 @@ def api_construction_set_detail(request, id):
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def celery_task_status(request, task_id):
+    """
+    Check the status of a Celery task by its task ID.
+    Returns task state, progress, and result if available.
+    """
+    try:
+        from celery.result import AsyncResult
+        from .models import Simulation
+        
+        task = AsyncResult(task_id)
+        
+        response_data = {
+            'task_id': task_id,
+            'state': task.state,
+            'ready': task.ready(),
+        }
+        
+        # Add state-specific information
+        if task.state == 'PENDING':
+            response_data['status'] = 'pending'
+            response_data['progress'] = 0
+        elif task.state == 'PROGRESS':
+            # Get progress info from task meta
+            info = task.info
+            response_data['status'] = 'running'
+            response_data['current'] = info.get('current', 0)
+            response_data['total'] = info.get('total', 100)
+            response_data['progress'] = int((info.get('current', 0) / info.get('total', 100)) * 100) if info.get('total', 100) > 0 else 0
+            response_data['message'] = info.get('status', 'Processing...')
+        elif task.state == 'SUCCESS':
+            response_data['status'] = 'completed'
+            response_data['progress'] = 100
+            response_data['result'] = task.result
+        elif task.state == 'FAILURE':
+            response_data['status'] = 'failed'
+            response_data['error'] = str(task.info)
+        else:
+            response_data['status'] = task.state.lower()
+        
+        # Try to get simulation info if available
+        try:
+            sim = Simulation.objects.filter(celery_task_id=task_id).first()
+            if sim:
+                response_data['simulation_id'] = str(sim.id)
+                response_data['simulation_status'] = sim.status
+                response_data['simulation_progress'] = sim.progress
+        except Exception:
+            pass
+        
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e),
+            'task_id': task_id
+        }, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def cancel_task(request, task_id):
+    """
+    Cancel a running Celery task.
+    """
+    try:
+        from celery.result import AsyncResult
+        from .models import Simulation
+        
+        task = AsyncResult(task_id)
+        
+        # Revoke the task
+        task.revoke(terminate=True, signal='SIGKILL')
+        
+        # Update simulation status
+        try:
+            sim = Simulation.objects.filter(celery_task_id=task_id).first()
+            if sim:
+                sim.status = 'failed'
+                sim.error_message = 'Task cancelled by user'
+                sim.save()
+        except Exception as e:
+            print(f"Failed to update simulation status: {e}")
+        
+        return JsonResponse({
+            'status': 'cancelled',
+            'task_id': task_id,
+            'message': 'Task cancellation requested'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'error': str(e),
+            'task_id': task_id
+        }, status=500)

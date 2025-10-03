@@ -209,3 +209,14 @@ SIMULATION_DOCKER_IMAGE = os.getenv('ENERGYPLUS_DOCKER_IMAGE', 'nrel/energyplus:
 SIMULATION_TIMEOUT = int(os.getenv('SIMULATION_TIMEOUT', '600'))  # 10 minutes default
 WEATHER_FILES_DIR = BASE_DIR / 'weather_files'
 SIMULATION_RESULTS_DIR = BASE_DIR / 'media/simulation_results'
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 3600  # 1 hour hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 3300  # 55 minutes soft limit

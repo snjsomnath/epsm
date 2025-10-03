@@ -26,6 +26,8 @@ class Simulation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     # Progress percentage 0-100. Updated by simulator as runs complete.
     progress = models.IntegerField(default=0)
+    # Celery task ID for tracking async task status
+    celery_task_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
 
     class Meta:
         db_table = 'simulation_runs'

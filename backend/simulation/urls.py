@@ -13,6 +13,10 @@ urlpatterns = [
     path('<uuid:simulation_id>/download/', views.simulation_download, name='simulation_download'),
     # Top-level listing endpoint for aggregated results
     path('results/', views.list_simulation_results, name='list_simulation_results'),
+    
+    # Celery task status endpoints
+    path('task/<str:task_id>/status/', views.celery_task_status, name='celery_task_status'),
+    path('task/<str:task_id>/cancel/', views.cancel_task, name='cancel_task'),
 
     # Existing endpoints
     path('parse/idf/', views.parse_idf, name='parse_idf'),
