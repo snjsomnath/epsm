@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { authenticatedFetch } from '../../lib/auth-api';
 import { 
   Box, 
@@ -114,6 +114,10 @@ const SimulationPage = () => {
     togglePin,
     toggleFavorite,
     removeHistoryEntry,
+    activeRun,
+    setActiveRun,
+    updateActiveRun,
+    clearActiveRun,
   } = useSimulation();
   // Add local state to track files for immediate UI feedback
   const [localIdfFiles, setLocalIdfFiles] = useState<File[]>([]);
@@ -144,6 +148,30 @@ const SimulationPage = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [wsConnected, setWsConnected] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
+  const [currentSimulationId, setCurrentSimulationId] = useState<string | null>(activeRun?.simulationId ?? null);
+
+  const totalSimulationsRef = useRef(totalSimulations);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const progressWsRef = useRef<WebSocket | null>(null);
+  const monitorStopRef = useRef(false);
+  const lastProgressRef = useRef(0);
+  const lastFetchProgressRef = useRef(0);
+  const resultsCountRef = useRef(Array.isArray(results) ? results.length : 0);
+  const progressRef = useRef(progress);
+  const resumeAttemptedRef = useRef(false);
+  const completionHandledRef = useRef(false);
+
+  useEffect(() => {
+    totalSimulationsRef.current = totalSimulations;
+  }, [totalSimulations]);
+
+  useEffect(() => {
+    resultsCountRef.current = Array.isArray(results) ? results.length : 0;
+  }, [results]);
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   const openSnackbar = useCallback((message: string, severity: AlertColor = 'info') => {
     setSnackbar({ open: true, message, severity });
@@ -157,6 +185,313 @@ const SimulationPage = () => {
     setError(message);
     openSnackbar(message, 'error');
   }, [openSnackbar]);
+
+  const stopMonitoring = useCallback(() => {
+    monitorStopRef.current = true;
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    if (progressWsRef.current) {
+      try {
+        progressWsRef.current.close();
+      } catch (e) {
+        // ignore close errors
+      }
+      progressWsRef.current = null;
+    }
+  }, []);
+
+  const fetchSimulationResults = useCallback(
+    async (simulationId: string, { force = false }: { force?: boolean } = {}) => {
+      if (!backendAvailable || !simulationId) {
+        return;
+      }
+      try {
+        const response = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+        if (response.status === 202) {
+          return;
+        }
+        if (!response.ok) {
+          if (force) {
+            console.warn('Failed to fetch simulation results', response.status, response.statusText);
+          }
+          return;
+        }
+        const data = await response.json();
+        const resultsArray = Array.isArray(data) ? data : [data];
+        setResults(resultsArray);
+        resultsCountRef.current = resultsArray.length;
+        cacheLastResults?.(resultsArray);
+
+        const total = Math.max(totalSimulationsRef.current || 0, resultsArray.length);
+        if (total > 0) {
+          const computedProgress = Math.min(100, Math.round((resultsArray.length / total) * 100));
+          if (computedProgress > progressRef.current) {
+            setProgress(computedProgress);
+            progressRef.current = computedProgress;
+          }
+        }
+        setCompletedSimulations(prev => Math.max(prev, resultsArray.length));
+        updateActiveRun?.({
+          completedSimulations: resultsArray.length,
+          progress: progressRef.current,
+          totalSimulations: totalSimulationsRef.current || total,
+        });
+        lastFetchProgressRef.current = progressRef.current;
+      } catch (err) {
+        if (force) {
+          console.error('Error fetching simulation results', err);
+        }
+      }
+    },
+    [backendAvailable, cacheLastResults, updateActiveRun, authenticatedFetch]
+  );
+
+  const finalizeSimulation = useCallback(
+    async (simulationId: string) => {
+      if (completionHandledRef.current) return;
+      completionHandledRef.current = true;
+      await fetchSimulationResults(simulationId, { force: true });
+      stopMonitoring();
+      setIsComplete(true);
+      setIsRunning(false);
+      setIsPaused(false);
+      updateActiveRun?.({
+        status: 'completed',
+        progress: 100,
+        completedSimulations: totalSimulationsRef.current || resultsCountRef.current,
+      });
+      clearActiveRun?.();
+      setCurrentSimulationId(null);
+      try {
+        addToHistory?.(String(simulationId), `Run ${simulationId}`);
+      } catch (e) {
+        // ignore history errors
+      }
+    },
+    [fetchSimulationResults, stopMonitoring, updateActiveRun, clearActiveRun, addToHistory]
+  );
+
+  const handleSimulationFailure = useCallback(
+    (_simulationId: string, message?: string) => {
+      if (completionHandledRef.current) return;
+      completionHandledRef.current = true;
+      stopMonitoring();
+      setIsRunning(false);
+      setIsPaused(false);
+      setIsComplete(true);
+      reportError(message || 'Simulation failed');
+      updateActiveRun?.({ status: 'failed', progress: progressRef.current });
+      clearActiveRun?.();
+      setCurrentSimulationId(null);
+    },
+    [stopMonitoring, reportError, updateActiveRun, clearActiveRun]
+  );
+
+  const startMonitoring = useCallback(
+    (simulationId: string, enableWebSocket: boolean = true) => {
+      if (!backendAvailable || !simulationId) return;
+
+      stopMonitoring();
+      monitorStopRef.current = false;
+      completionHandledRef.current = false;
+      lastProgressRef.current = 0;
+      lastFetchProgressRef.current = progressRef.current;
+
+      const poll = async () => {
+        if (monitorStopRef.current) return;
+        try {
+          const statusResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+          if (monitorStopRef.current) return;
+          if (statusResponse.status === 429) return;
+          if (!statusResponse.ok) {
+            console.warn('Status poll failed', statusResponse.status, statusResponse.statusText);
+            return;
+          }
+          const statusData = await statusResponse.json();
+          const progressValue = Number(statusData.progress ?? 0);
+          lastProgressRef.current = progressValue;
+          progressRef.current = progressValue;
+          setProgress(progressValue);
+
+          const estimatedCompleted = Math.max(
+            resultsCountRef.current,
+            Math.floor(((totalSimulationsRef.current || 0) * progressValue) / 100)
+          );
+          setCompletedSimulations(estimatedCompleted);
+
+          const nextStatus = statusData.status === 'failed' ? 'failed' : 'running';
+          updateActiveRun?.({
+            status: nextStatus,
+            progress: progressValue,
+            completedSimulations: estimatedCompleted,
+            totalSimulations: totalSimulationsRef.current || undefined,
+          });
+
+          if (statusData.status === 'completed') {
+            await finalizeSimulation(simulationId);
+            return;
+          }
+
+          if (statusData.status === 'failed') {
+            handleSimulationFailure(simulationId, statusData.error || statusData.error_message);
+            return;
+          }
+
+          if (
+            progressValue - lastFetchProgressRef.current >= 1 ||
+            estimatedCompleted > resultsCountRef.current
+          ) {
+            await fetchSimulationResults(simulationId);
+          }
+        } catch (err) {
+          console.error('Error while polling simulation status', err);
+        }
+      };
+
+      poll();
+      pollTimerRef.current = setInterval(poll, 2000);
+
+      if (!enableWebSocket) {
+        return;
+      }
+
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const host = window.location.host;
+      const hostnameFallback = window.location.hostname || 'localhost';
+      const candidateUrls = [
+        `${wsProtocol}://${host}/ws/simulation-progress/${simulationId}/`,
+        `${wsProtocol}://${hostnameFallback}:8000/ws/simulation-progress/${simulationId}/`,
+      ];
+
+      const connect = (index: number) => {
+        if (index >= candidateUrls.length || monitorStopRef.current) {
+          return;
+        }
+        try {
+          const socket = new WebSocket(candidateUrls[index]);
+          progressWsRef.current = socket;
+
+          socket.onopen = () => {
+            console.log('Connected to simulation progress WebSocket for', simulationId, 'via', candidateUrls[index]);
+          };
+
+          socket.onmessage = async (event: MessageEvent) => {
+            if (monitorStopRef.current) return;
+            try {
+              const data = JSON.parse(event.data as string);
+              if (typeof data.progress !== 'undefined') {
+                const pct = Number(data.progress);
+                progressRef.current = pct;
+                lastProgressRef.current = pct;
+                setProgress(pct);
+                const estimatedCompleted = Math.max(
+                  resultsCountRef.current,
+                  Math.floor(((totalSimulationsRef.current || 0) * pct) / 100)
+                );
+                setCompletedSimulations(estimatedCompleted);
+                updateActiveRun?.({
+                  progress: pct,
+                  completedSimulations: estimatedCompleted,
+                  totalSimulations: totalSimulationsRef.current || undefined,
+                });
+                if (
+                  pct - lastFetchProgressRef.current >= 1 ||
+                  estimatedCompleted > resultsCountRef.current
+                ) {
+                  await fetchSimulationResults(simulationId);
+                }
+              }
+              if (data.status === 'completed') {
+                await finalizeSimulation(simulationId);
+              } else if (data.status === 'failed') {
+                handleSimulationFailure(simulationId, data.error || data.error_message);
+              }
+            } catch (err) {
+              console.warn('Malformed progress WS message', err);
+            }
+          };
+
+          socket.onerror = () => {
+            if (progressWsRef.current === socket) {
+              progressWsRef.current = null;
+            }
+            if (!monitorStopRef.current) {
+              connect(index + 1);
+            }
+          };
+
+          socket.onclose = () => {
+            if (progressWsRef.current === socket) {
+              progressWsRef.current = null;
+            }
+            if (!monitorStopRef.current) {
+              connect(index + 1);
+            }
+          };
+        } catch (err) {
+          console.warn('Failed to open progress WebSocket', err);
+          connect(index + 1);
+        }
+      };
+
+      connect(0);
+    },
+    [
+      backendAvailable,
+      stopMonitoring,
+      fetchSimulationResults,
+      finalizeSimulation,
+      handleSimulationFailure,
+      updateActiveRun,
+      authenticatedFetch,
+    ]
+  );
+
+  // Cleanup effect for stopMonitoring
+  useEffect(() => () => {
+    stopMonitoring();
+  }, [stopMonitoring]);
+
+  // Resume active run on mount
+  useEffect(() => {
+    if (!activeRun) {
+      resumeAttemptedRef.current = false;
+      return;
+    }
+    if (!backendAvailable) {
+      return;
+    }
+    if (activeRun.status === 'completed' || activeRun.status === 'failed') {
+      return;
+    }
+    if (resumeAttemptedRef.current && currentSimulationId === activeRun.simulationId) {
+      return;
+    }
+    resumeAttemptedRef.current = true;
+    if (activeRun.scenarioId) {
+      setSelectedScenario(activeRun.scenarioId);
+    }
+    setCurrentSimulationId(activeRun.simulationId);
+    // Check status safely - activeRun.status might not include 'completed'
+    setIsComplete(false);
+    setIsRunning(activeRun.status === 'running');
+    setIsPaused(activeRun.status === 'paused');
+    if (typeof activeRun.progress === 'number') {
+      setProgress(activeRun.progress);
+      progressRef.current = activeRun.progress;
+    }
+    if (typeof activeRun.completedSimulations === 'number') {
+      setCompletedSimulations(activeRun.completedSimulations);
+      resultsCountRef.current = Math.max(resultsCountRef.current, activeRun.completedSimulations);
+    }
+    if (activeRun.totalSimulations) {
+      setTotalSimulations(activeRun.totalSimulations);
+    }
+    fetchSimulationResults(activeRun.simulationId, { force: true });
+    startMonitoring(activeRun.simulationId, true);
+  }, [activeRun, fetchSimulationResults, startMonitoring, currentSimulationId, backendAvailable]);
 
   // Check backend availability
   useEffect(() => {
@@ -384,9 +719,9 @@ const SimulationPage = () => {
       runningLabel,
       queueLabel,
       workerStatusLabel,
-      hasScenario: !!selectedScenario,
+      hasScenario: !!selectedScenario || !!currentSimulationId,
     };
-  }, [totalSimulations, completedSimulations, backendAvailable, selectedScenario]);
+  }, [totalSimulations, completedSimulations, backendAvailable, selectedScenario, currentSimulationId]);
 
   // Dynamically update totalSimulations based on IDFs and construction variants
   useEffect(() => {
@@ -407,13 +742,16 @@ const SimulationPage = () => {
 
   // Fix: Reset isComplete and results on scenario or file change
   useEffect(() => {
+    if (currentSimulationId) {
+      return;
+    }
     setIsComplete(false);
     setResults([]);
     setProgress(0);
     setCompletedSimulations(0);
     setIsRunning(false);
     setIsPaused(false);
-  }, [selectedScenario, uploadedFiles, weatherFile]);
+  }, [selectedScenario, uploadedFiles, weatherFile, currentSimulationId]);
 
   // Update resource stats history when new data arrives - ONLY when we have valid data
   useEffect(() => {
@@ -472,6 +810,10 @@ const SimulationPage = () => {
 
   const handleScenarioChange = (event: any) => {
     const scenarioId = event.target.value;
+    if (currentSimulationId && (isRunning || isPaused)) {
+        openSnackbar('Simulation in progress. Stop it before switching scenarios.', 'warning');
+        return;
+    }
     setSelectedScenario(scenarioId);
     
     // Remove the direct setting of totalSimulations
@@ -487,28 +829,45 @@ const SimulationPage = () => {
   };
 
   const handleStartSimulation = async () => {
-    // Check localIdfFiles first, then fall back to uploadedFiles
     const filesAvailable = localIdfFiles.length > 0 ? localIdfFiles : uploadedFiles;
-    
+
     if (filesAvailable.length === 0 || !weatherFile) {
       setUploadDialogOpen(true);
       return;
     }
 
     if (!backendAvailable) {
+      stopMonitoring();
+      const fallbackId = currentSimulationId ?? `dev-${Date.now()}`;
+      setCurrentSimulationId(fallbackId);
+      setActiveRun?.({
+        simulationId: fallbackId,
+        scenarioId: selectedScenario || undefined,
+        status: 'running',
+        startedAt: Date.now(),
+        totalSimulations: totalSimulationsRef.current || totalSimulations || filesAvailable.length,
+        completedSimulations: 0,
+        progress: 0,
+      });
+      resumeAttemptedRef.current = true;
       simulateDummyProgress();
       return;
     }
 
     try {
+      stopMonitoring();
       setError(null);
+      setResults([]);
       setIsRunning(true);
       setIsComplete(false);
+      setIsPaused(false);
       setProgress(0);
       setCompletedSimulations(0);
+      resultsCountRef.current = 0;
+      lastFetchProgressRef.current = 0;
+      progressRef.current = 0;
 
       const formData = new FormData();
-      // Use the files we just checked for availability
       filesAvailable.forEach(file => {
         formData.append('idf_files', file);
       });
@@ -516,205 +875,57 @@ const SimulationPage = () => {
       if (selectedScenario) {
         formData.append('scenario_id', selectedScenario);
       }
-
-      // Add aditional params to formData for batch simulation
-      formData.append('parallel', 'true');  // Boolean as string
-      //formData.append('max_workers', '4');  // Let backend decide
-      formData.append('batch_mode', 'true'); // Boolean as string
-
-      // Log the payload (file names instead of file bodies) before calling the batch API
-      try {
-        const payloadLog: any = {};
-        for (const pair of (formData as any).entries()) {
-          const [key, value] = pair;
-          if (!payloadLog[key]) payloadLog[key] = [];
-          if (value instanceof File) {
-            payloadLog[key].push(value.name);
-          } else {
-            payloadLog[key].push(value);
-          }
-        }
-        console.log('Calling batch simulation API', { url: 'http://localhost:8000/api/simulation/run/', payload: payloadLog });
-      } catch (logErr) {
-        console.warn('Failed to log batch simulation payload', logErr);
-      }
+      formData.append('parallel', 'true');
+      formData.append('batch_mode', 'true');
 
       const response = await authenticatedFetch('http://localhost:8000/api/simulation/run/', {
         method: 'POST',
         body: formData,
-        // let authenticatedFetch add credentials and headers
       });
-
-      console.log('Batch simulation API responded', { status: response.status, ok: response.ok });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Batch simulation API error response', { status: response.status, statusText: response.statusText, body: errorText });
         throw new Error(`Server error: ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('Batch simulation API success', data);
       const simulationId = data.simulation_id;
-
-      // Try WebSocket first for real-time progress updates, fall back to polling
-      let pollInterval: NodeJS.Timeout | null = null;
-  let stopped = false;
-  let progWs: WebSocket | null = null;
-      let wsHandled = false;
-
-      const startPolling = () => {
-        if (pollInterval) return;
-        pollInterval = setInterval(async () => {
-          if (stopped) return;
-            try {
-            const statusResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
-            if (statusResponse.status === 429) return;
-            const statusData = await statusResponse.json();
-
-            console.debug('Simulation status update (poll)', { simulationId, status: statusData.status, progress: statusData.progress });
-            setProgress(statusData.progress ?? 0);
-            setCompletedSimulations(Math.floor(((statusData.progress ?? 0) / 100) * totalSimulations));
-
-            if (statusData.status === 'completed') {
-              if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-              stopped = true;
-              try {
-                const resultsResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
-                if (resultsResponse.ok) {
-                  const resultsData = await resultsResponse.json();
-                  setResults(resultsData);
-                  if (typeof cacheLastResults === 'function') { try { cacheLastResults(resultsData); } catch (e) { } }
-                  if (typeof addToHistory === 'function') { try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { } }
-                } else {
-                  const bodyText = await resultsResponse.text();
-                  console.error('Failed to fetch parallel results', { simulationId, status: resultsResponse.status, body: bodyText });
-                }
-              } catch (e) {
-                console.error('Error fetching parallel results', { simulationId, error: e });
-              }
-              setIsComplete(true);
-              setIsRunning(false);
-              openSnackbar('Simulation completed successfully', 'success');
-            } else if (statusData.status === 'failed') {
-              if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-              stopped = true;
-              console.error('Simulation failed', { simulationId, error: statusData.error });
-              reportError(statusData.error || 'Simulation failed');
-              setIsRunning(false);
-            }
-          } catch (err) {
-            console.error('Error while polling simulation status', err);
-          }
-        }, 2000);
-      };
-
-      // Attempt a single native WebSocket for progress updates to avoid noisy reconnect logs
-      try {
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const host = window.location.host; // include port if present
-        const hostnameFallback = window.location.hostname || 'localhost';
-        const candidateUrls = [
-          // 1) try same origin (works when backend is proxied)
-          `${wsProtocol}://${host}/ws/simulation-progress/${simulationId}/`,
-          // 2) fall back to explicit backend port (common in local dev)
-          `${wsProtocol}://${hostnameFallback}:8000/ws/simulation-progress/${simulationId}/`,
-        ];
-
-        // Try the candidate URLs in order by creating a WebSocket for the first one.
-        // Browser will emit its own low-level error if connection is refused; we avoid repeated warn logs.
-        let firstErrorLogged = false;
-        const tryUrl = (url: string) => {
-          progWs = new WebSocket(url);
-
-          progWs.onopen = () => {
-            console.log('Connected to simulation progress WebSocket for', simulationId, 'via', url);
-            wsHandled = true;
-            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-          };
-
-          progWs.onmessage = (ev: MessageEvent) => {
-          try {
-            const data = JSON.parse(ev.data as string);
-            if (typeof data.progress !== 'undefined') {
-              setProgress(data.progress);
-              setCompletedSimulations(Math.floor((data.progress / 100) * totalSimulations));
-            }
-            if (data.status === 'completed') {
-                (async () => {
-                try {
-                  const resultsResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
-                  if (resultsResponse.ok) {
-                    const resultsData = await resultsResponse.json();
-                    setResults(resultsData);
-                    if (typeof cacheLastResults === 'function') { try { cacheLastResults(resultsData); } catch (e) { } }
-                    if (typeof addToHistory === 'function') { try { addToHistory(String(simulationId), `Run ${simulationId}`); } catch (e) { } }
-                  }
-                } catch (e) {
-                  console.error('Failed to fetch results after WS completion', e);
-                }
-                setIsComplete(true);
-                setIsRunning(false);
-              })();
-            }
-            if (data.status === 'failed') {
-              setIsRunning(false);
-              setIsComplete(true);
-              reportError(data.error || 'Simulation failed');
-            }
-          } catch (e) {
-            console.warn('Malformed progress WS message', e);
-          }
-        };
-
-          progWs.onerror = (e) => {
-            // Avoid logging the browser-level connection failure repeatedly. Log once and start polling.
-            if (!firstErrorLogged) {
-              console.warn('Progress WS error, falling back to polling', e);
-              firstErrorLogged = true;
-            }
-            if (!wsHandled) startPolling();
-          };
-
-          progWs.onclose = () => {
-            if (!wsHandled) {
-              if (!firstErrorLogged) console.log('Progress WS closed, falling back to polling');
-              startPolling();
-            }
-          };
-        };
-
-        // Start with the first candidate URL; browser-level errors will appear in console if connection fails.
-        tryUrl(candidateUrls[0]);
-      } catch (e) {
-          console.warn('Failed to create progress websocket, using polling', e);
-          startPolling();
-      }
-
-      // If WS hasn't attached within 2s, ensure polling starts
-      setTimeout(() => {
-        if (!wsHandled) startPolling();
-      }, 2000);
-
+      setCurrentSimulationId(simulationId);
+      setActiveRun?.({
+        simulationId,
+        scenarioId: selectedScenario || undefined,
+        status: 'running',
+        startedAt: Date.now(),
+        totalSimulations: totalSimulationsRef.current || totalSimulations || filesAvailable.length,
+        completedSimulations: 0,
+        progress: 0,
+      });
+      resumeAttemptedRef.current = true;
+      openSnackbar('Simulation dispatched to Celery workers', 'info');
+      startMonitoring(simulationId, true);
     } catch (err) {
       reportError(err instanceof Error ? err.message : 'Failed to run simulation');
       setIsRunning(false);
+      clearActiveRun?.();
+      setCurrentSimulationId(null);
     }
   };
+;
 
   const simulateDummyProgress = () => {
+    const totalEstimate = totalSimulationsRef.current || totalSimulations || localIdfFiles.length || uploadedFiles.length || 1;
     setIsRunning(true);
     setProgress(0);
     setCompletedSimulations(0);
 
     const interval = setInterval(() => {
       setProgress(prev => {
-        const next = prev + (Math.random() * 5);
+        const next = prev + Math.random() * 5;
+        updateActiveRun?.({ progress: Math.min(100, next), status: 'running', totalSimulations: totalEstimate });
         if (next >= 100) {
           clearInterval(interval);
           setIsComplete(true);
           setIsRunning(false);
-          // Generate dummy results
           setResults([
             {
               fileName: 'simulation_1.idf',
@@ -723,12 +934,14 @@ const SimulationPage = () => {
               coolingDemand: 45.3,
               runTime: 12.5
             },
-            // Add more dummy results as needed
           ]);
+          updateActiveRun?.({ status: 'completed', progress: 100, completedSimulations: totalEstimate, totalSimulations: totalEstimate });
+          clearActiveRun?.();
           openSnackbar('Simulation completed with mock data', 'success');
           return 100;
         }
-        setCompletedSimulations(Math.floor((next / 100) * totalSimulations));
+        const estimatedCompleted = Math.min(totalEstimate, Math.floor((next / 100) * totalEstimate));
+        setCompletedSimulations(estimatedCompleted);
         return next;
       });
     }, 500);
@@ -745,8 +958,13 @@ const SimulationPage = () => {
   };
 
   const handleStopSimulation = () => {
+    stopMonitoring();
     setIsRunning(false);
     setIsPaused(false);
+    updateActiveRun?.({ status: 'failed' });
+    clearActiveRun?.();
+    setCurrentSimulationId(null);
+    openSnackbar('Monitoring stopped. Currently queued tasks will continue on the server.', 'warning');
   };
 
   // Replace the handleIdfFilesSelected with a new version that updates both context and local state
