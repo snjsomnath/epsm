@@ -335,11 +335,11 @@ const AppLayout = () => {
           flexGrow: 1,
           minHeight: '100vh',
           bgcolor: 'background.default',
-          p: open ? 3 : 0.5,
+          p: open ? 4 : 1,
           mt: 8,
           pb: 10,
-          pl: open ? 3 : 0.5,
-          pr: open ? 3 : 0.5,
+          pl: open ? 4 : 1,
+          pr: open ? 4 : 1,
           position: 'relative',
           transition: theme => theme.transitions.create(['padding'], {
             easing: theme.transitions.easing.sharp,
@@ -352,7 +352,7 @@ const AppLayout = () => {
           disableGutters
           sx={{
             height: '100%',
-            px: { xs: 1.5, md: open ? 3 : 0.5 },
+            px: { xs: 2, md: open ? 4 : 1 },
             transition: theme => theme.transitions.create(['padding'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.standard,
