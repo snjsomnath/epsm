@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -17,7 +17,8 @@ import {
   Grid,
   Card,
   CardContent,
-  CardActions
+  CardActions,
+  CircularProgress
 } from '@mui/material';
 import { Download, FileText, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import {
@@ -49,9 +50,14 @@ interface ResultsTabProps {
 
 const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: ResultsTabProps) => {
   const [tabValue, setTabValue] = useState(0);
+  const [rawDataRendered, setRawDataRendered] = useState(false);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+    // Only render raw data when the tab is actually selected
+    if (newValue === 2 && !rawDataRendered) {
+      setRawDataRendered(true);
+    }
   };
 
   // Format energy use data for the chart
@@ -244,6 +250,13 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
 
   // Get chart data from the first result (if multiple files)
   const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
+
+  // Memoize the stringified JSON to avoid re-computing on every render
+  // Only compute when raw data tab has been selected
+  const stringifiedResults = useMemo(() => {
+    if (!rawDataRendered) return '';
+    return JSON.stringify(resultsArray, null, 2);
+  }, [resultsArray, rawDataRendered]);
 
   return (
     <Box>
@@ -438,7 +451,13 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 Raw Simulation Data
               </Typography>
               <Paper sx={{ p: 2, maxHeight: '400px', overflow: 'auto' }}>
-                <pre>{JSON.stringify(resultsArray, null, 2)}</pre>
+                {rawDataRendered ? (
+                  <pre style={{ margin: 0 }}>{stringifiedResults}</pre>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+                    <CircularProgress />
+                  </Box>
+                )}
               </Paper>
             </Box>
           )}
