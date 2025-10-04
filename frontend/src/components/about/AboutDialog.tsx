@@ -191,6 +191,17 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
           <Stack spacing={2}>
             <Box>
               <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Brain size={18} /> Principal Investigator
+              </Typography>
+              <Typography variant="body1">Alexander Hollberg (Contact)</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Chalmers, Architecture and Civil Engineering, Building Technology
+              </Typography>
+            </Box>
+
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <User size={18} /> Lead Developer
               </Typography>
               <Typography variant="body1">Sanjay Somanath</Typography>
@@ -201,15 +212,7 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
               </Typography>
             </Box>
 
-            <Box>
-              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Brain size={18} /> Principal Investigator
-              </Typography>
-              <Typography variant="body1">Alexander Hollberg (Contact)</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Chalmers, Architecture and Civil Engineering, Building Technology
-              </Typography>
-            </Box>
+
 
             <Box>
               <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -223,11 +226,24 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="body1">Sanjay Somanath</Typography>
+                  <Typography variant="body1">Dag Wästberg</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    (also lead developer)
+                    Stiftelsen Chalmers Industriteknik – Gothenburg, Sweden
                   </Typography>
                 </Box>
+                <Box>
+                  <Typography variant="body1">Alexandra Hegmann</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Lindholmen Science Park – Gothenburg, Sweden
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body1">Claudio Nägeli</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Sinom AB – Göteborg, Sweden
+                  </Typography>
+                </Box>
+
               </Stack>
             </Box>
           </Stack>
