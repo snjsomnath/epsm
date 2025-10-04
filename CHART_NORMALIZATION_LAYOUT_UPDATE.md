@@ -1,7 +1,7 @@
-# Chart Normalization and Layout Update
+# Chart and Table Normalization Update
 
 ## Overview
-Updated the ResultsTab charts to normalize all energy values per square meter (kWh/m²) and placed the two charts side by side in a responsive grid layout to save vertical space.
+Updated the ResultsTab to normalize all energy values per square meter (kWh/m²) across charts and tables, and placed the two charts side by side in a responsive grid layout to save vertical space.
 
 ## Changes Made
 
@@ -18,6 +18,13 @@ Updated the ResultsTab charts to normalize all energy values per square meter (k
 - Already using normalized data (kWh/m²)
 - Tooltip format consistent: shows values with one decimal place
 - Y-axis label: "kWh/m²"
+
+**Energy Use Breakdown Table (Tab 1):**
+- Table title updated to "Energy Use Breakdown (Normalized per m²)"
+- Column headers changed from "(kWh)" to "(kWh/m²)"
+- All values divided by floor area before display
+- Consistent `.toFixed(1)` formatting for one decimal place
+- Uses the same `floorArea` variable as the charts
 
 ### 2. Side-by-Side Layout
 
@@ -81,7 +88,8 @@ Heating (kWh/m²): 85.5 kWh/m²
 ### 2. Better Comparisons
 - Charts side by side enable direct visual comparison
 - Normalized values (kWh/m²) allow fair comparison across different building sizes
-- Consistent units across all charts and tooltips
+- Consistent units across all charts, tables, and tooltips
+- Energy Use table now shows normalized values matching the charts
 
 ### 3. Improved Readability
 - Cleaner, more compact design
