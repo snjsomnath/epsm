@@ -134,89 +134,80 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     }
   };
 
-  const indicatorConfigs = [
-    {
-      key: 'totalEnergyUse',
-      label: 'Total Energy Use (kWh/m²)',
-      color: 'rgba(54, 162, 235, 0.8)',
-      borderColor: 'rgba(54, 162, 235, 1)'
-    },
-    {
-      key: 'heatingDemand',
-      label: 'Heating (kWh/m²)',
-      color: 'rgba(255, 99, 132, 0.8)',
-      borderColor: 'rgba(255, 99, 132, 1)'
-    },
-    {
-      key: 'coolingDemand',
-      label: 'Cooling (kWh/m²)',
-      color: 'rgba(75, 192, 192, 0.8)',
-      borderColor: 'rgba(75, 192, 192, 1)'
-    },
-    {
-      key: 'lightingDemand',
-      label: 'Lighting (kWh/m²)',
-      color: 'rgba(255, 206, 86, 0.8)',
-      borderColor: 'rgba(255, 206, 86, 1)'
-    },
-    {
-      key: 'equipmentDemand',
-      label: 'Equipment (kWh/m²)',
-      color: 'rgba(153, 102, 255, 0.8)',
-      borderColor: 'rgba(153, 102, 255, 1)'
-    }
-  ];
+  const toNumber = (value: unknown) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
 
+  const buildEnergyBreakdownChartData = (items: any[]) => {
+    const labels = items.map((result, idx) => result.fileName || `Result ${idx + 1}`);
+    const heating = items.map(result => toNumber(result.heating ?? result.heatingDemand ?? result.heating_intensity));
+    const cooling = items.map(result => toNumber(result.cooling ?? result.coolingDemand ?? result.cooling_intensity));
+    const lighting = items.map(result => toNumber(result.lightingDemand ?? result.lighting_demand));
+    const equipment = items.map(result => toNumber(result.equipmentDemand ?? result.equipment_demand));
+    const electricity = lighting.map((value, idx) => Math.max(0, value + equipment[idx]));
 
-  // Helper to build a stacked bar chart where each indicator is a group and each IDF is a stack
-  const buildStackedBarChartData = () => {
     return {
-      labels: indicatorConfigs.map(ind => ind.label),
-      datasets: resultsArray.map((result, idx) => ({
-        label: result.fileName || `Result ${idx+1}`,
-        data: indicatorConfigs.map(ind => result[ind.key] ?? 0),
-        backgroundColor: fileColors[idx % fileColors.length],
-        borderColor: fileColors[idx % fileColors.length].replace('0.8', '1'),
-        borderWidth: 1,
-        stack: 'Stack 0'
-      }))
+      labels,
+      datasets: [
+        {
+          label: 'Heating (kWh/m²)',
+          data: heating,
+          backgroundColor: 'rgba(244, 67, 54, 0.8)',
+          borderColor: 'rgba(211, 47, 47, 1)',
+          borderWidth: 1,
+          stack: 'energy'
+        },
+        {
+          label: 'Cooling (kWh/m²)',
+          data: cooling,
+          backgroundColor: 'rgba(33, 150, 243, 0.8)',
+          borderColor: 'rgba(25, 118, 210, 1)',
+          borderWidth: 1,
+          stack: 'energy'
+        },
+        {
+          label: 'Electric (kWh/m²)',
+          data: electricity,
+          backgroundColor: 'rgba(255, 193, 7, 0.8)',
+          borderColor: 'rgba(255, 160, 0, 1)',
+          borderWidth: 1,
+          stack: 'energy'
+        }
+      ]
     };
   };
 
-  // Helper to generate a color for each file
-  const fileColors = [
-    'rgba(54, 162, 235, 0.8)',
-    'rgba(255, 99, 132, 0.8)',
-    'rgba(75, 192, 192, 0.8)',
-    'rgba(255, 206, 86, 0.8)',
-    'rgba(153, 102, 255, 0.8)',
-    'rgba(255, 159, 64, 0.8)',
-    'rgba(100, 100, 100, 0.8)'
-  ];
-
-
-  const groupedBarChartOptions = {
+  const energyBreakdownChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'index' as const,
+      intersect: false
+    },
     plugins: {
       legend: { position: 'top' as const },
-      title: { display: true, text: 'Compare IDFs by Indicator' }
+      title: { display: true, text: 'Heating vs Cooling vs Electric (kWh/m²)' },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => {
+            const rawValue = typeof context.raw === 'number' ? context.raw : Number(context.raw || 0);
+            return `${context.dataset.label}: ${rawValue.toFixed(1)} kWh/m²`;
+          }
+        }
+      }
     },
     scales: {
       x: {
-        stacked: false,
-        title: { display: false }
+        stacked: true,
+        title: { display: true, text: 'Simulation File' }
       },
       y: {
-        stacked: false,
+        stacked: true,
         title: { display: true, text: 'kWh/m²' }
       }
     }
   };
-
-  // Add this definition if you still need stackedBarChartOptions for legacy code,
-  // or remove all references to stackedBarChartOptions if you only want the grouped bar chart.
-  
 
   if (!simulationComplete) {
     return (
@@ -250,6 +241,7 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
 
   // Get chart data from the first result (if multiple files)
   const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
+  const energyBreakdownChartData = buildEnergyBreakdownChartData(resultsArray);
 
   // Memoize the stringified JSON to avoid re-computing on every render
   // Only compute when raw data tab has been selected
@@ -381,24 +373,9 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 </Table>
               </TableContainer>
               
-              {/* Only show the stacked bar chart for multiple results */}
-              {resultsArray.length > 1 && (
+              {resultsArray.length > 0 && (
                 <Box sx={{ height: 400, mt: 4 }}>
-                  <Bar
-                    data={buildStackedBarChartData()}
-                    options={{
-                      ...groupedBarChartOptions,
-                      plugins: {
-                        ...groupedBarChartOptions.plugins,
-                        title: { display: true, text: 'Stacked Comparison: IDFs per Indicator' }
-                      },
-                      scales: {
-                        ...groupedBarChartOptions.scales,
-                        x: { ...groupedBarChartOptions.scales.x, stacked: true },
-                        y: { ...groupedBarChartOptions.scales.y, stacked: true }
-                      }
-                    }}
-                  />
+                  <Bar data={energyBreakdownChartData} options={energyBreakdownChartOptions} />
                 </Box>
               )}
 
