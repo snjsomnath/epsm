@@ -212,14 +212,6 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
   // or remove all references to stackedBarChartOptions if you only want the grouped bar chart.
   
 
-  if (uploadedFiles.length === 0) {
-    return (
-      <Alert severity="info" sx={{ mt: 2 }}>
-        Please upload IDF files to view simulation results.
-      </Alert>
-    );
-  }
-
   if (!simulationComplete) {
     return (
       <Alert severity="warning" sx={{ mt: 2 }}>
@@ -232,6 +224,15 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     return (
       <Alert severity="warning" sx={{ mt: 2 }}>
         No simulation results available.
+      </Alert>
+    );
+  }
+
+  // Allow viewing results even without uploaded files (for historical runs)
+  if (uploadedFiles.length === 0 && !simulationResults) {
+    return (
+      <Alert severity="info" sx={{ mt: 2 }}>
+        Please upload IDF files to view simulation results.
       </Alert>
     );
   }
