@@ -12,6 +12,7 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  ListItemButton,
   Switch,
   FormControlLabel,
   Stack,
@@ -20,10 +21,11 @@ import {
   
   CircularProgress,
   LinearProgress,
-  Tooltip
+  Tooltip,
+  Collapse
 } from '@mui/material';
 // Fix the import for Lucide icons
-import { Database, Home, FlaskConical, Activity, BarChart, Cpu, HardDrive, MemoryStick } from 'lucide-react';
+import { Database, Home, FlaskConical, Activity, BarChart, Cpu, HardDrive, MemoryStick, ChevronDown, ChevronRight } from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
 import { getMaterials, getConstructions } from '../../lib/database-browser';
 import { useAuth } from '../../context/AuthContext';
@@ -69,6 +71,7 @@ const HomePage = () => {
   // New state for system resources
   const [systemResources, setSystemResources] = useState<any>(null);
   const [loadingResources, setLoadingResources] = useState(false);
+  const [showSystemResources, setShowSystemResources] = useState(false);
 
   // Helper formatters for system resource display
   const toNumber = (v: any) => {
@@ -413,138 +416,168 @@ const HomePage = () => {
                   <Divider sx={{ my: 1 }} />
                   
                   {/* System Resources Section */}
-                  {loadingResources && <LinearProgress />}
-                  
-                  {/* EnergyPlus Status */}
-                  {systemResources?.energyplus && (
-                    <ListItem>
-                      <ListItemIcon>
-                        <FlaskConical size={20} />
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary="EnergyPlus" 
-                        secondary={
-                          systemResources.energyplus.exists ? 
-                            `Version ${systemResources.energyplus.version} (Installed)` : 
-                            "Not found or not configured"
-                        }
-                      />
-                    </ListItem>
-                  )}
-                  
-                  {/* Hardware Resources */}
-                  {systemResources && !systemResources.error && systemResources.cpu && (
-                    <>
-                      <ListItem>
-                        <ListItemIcon>
-                          <Cpu size={20} />
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              CPU Usage
-                              <Tooltip title={`${clampPercent(systemResources.cpu.usage_percent)}% used`}>
-                                <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                                  <CircularProgress
-                                    variant="determinate"
-                                    value={clampPercent(systemResources.cpu.usage_percent)}
-                                    size={28}
-                                    thickness={5}
-                                    color={severityColor(clampPercent(systemResources.cpu.usage_percent))}
-                                  />
+                  <ListItemButton
+                    onClick={() => setShowSystemResources((prev) => !prev)}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    <ListItemIcon>
+                      <Activity size={20} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="System Resources"
+                      secondary={
+                        loadingResources
+                          ? "Loading..."
+                          : systemResources?.error
+                            ? "Error loading resource usage"
+                            : showSystemResources
+                              ? "Hide resource usage details"
+                              : "Show resource usage details"
+                      }
+                    />
+                    {showSystemResources ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </ListItemButton>
+
+                  <Collapse in={showSystemResources} timeout="auto" unmountOnExit>
+                    <List disablePadding dense>
+                      {loadingResources && (
+                        <ListItem sx={{ pl: 4 }}>
+                          <LinearProgress sx={{ width: '100%' }} />
+                        </ListItem>
+                      )}
+
+                      {/* EnergyPlus Status */}
+                      {systemResources?.energyplus && (
+                        <ListItem sx={{ pl: 4 }}>
+                          <ListItemIcon>
+                            <FlaskConical size={20} />
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary="EnergyPlus" 
+                            secondary={
+                              systemResources.energyplus.exists ? 
+                                `Version ${systemResources.energyplus.version} (Installed)` : 
+                                "Not found or not configured"
+                            }
+                          />
+                        </ListItem>
+                      )}
+                      
+                      {/* Hardware Resources */}
+                      {systemResources && !systemResources.error && systemResources.cpu && (
+                        <>
+                          <ListItem sx={{ pl: 4 }}>
+                            <ListItemIcon>
+                              <Cpu size={20} />
+                            </ListItemIcon>
+                            <ListItemText 
+                              primary={
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  CPU Usage
+                                  <Tooltip title={`${clampPercent(systemResources.cpu.usage_percent)}% used`}>
+                                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                      <CircularProgress
+                                        variant="determinate"
+                                        value={clampPercent(systemResources.cpu.usage_percent)}
+                                        size={28}
+                                        thickness={5}
+                                        color={severityColor(clampPercent(systemResources.cpu.usage_percent))}
+                                      />
+                                    </Box>
+                                  </Tooltip>
                                 </Box>
-                              </Tooltip>
-                            </Box>
-                          }
-                          secondary={`${systemResources.cpu.physical_cores || systemResources.cpu.logical_cores || 0} cores`}
-                        />
-                      </ListItem>
-                      
-                      {systemResources.memory && (
-                        <ListItem>
-                          <ListItemIcon>
-                            <MemoryStick size={20} />
-                          </ListItemIcon>
-                          <ListItemText 
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                Memory
-                                <Tooltip title={`${clampPercent(systemResources.memory.usage_percent)}% used`}>
-                                  <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                                    <CircularProgress
-                                      variant="determinate"
-                                      value={clampPercent(systemResources.memory.usage_percent)}
-                                      size={28}
-                                      thickness={5}
-                                      color={severityColor(clampPercent(systemResources.memory.usage_percent))}
-                                    />
+                              }
+                              secondary={`${systemResources.cpu.physical_cores || systemResources.cpu.logical_cores || 0} cores`}
+                            />
+                          </ListItem>
+                          
+                          {systemResources.memory && (
+                            <ListItem sx={{ pl: 4 }}>
+                              <ListItemIcon>
+                                <MemoryStick size={20} />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    Memory
+                                    <Tooltip title={`${clampPercent(systemResources.memory.usage_percent)}% used`}>
+                                      <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                        <CircularProgress
+                                          variant="determinate"
+                                          value={clampPercent(systemResources.memory.usage_percent)}
+                                          size={28}
+                                          thickness={5}
+                                          color={severityColor(clampPercent(systemResources.memory.usage_percent))}
+                                        />
+                                      </Box>
+                                    </Tooltip>
                                   </Box>
-                                </Tooltip>
-                              </Box>
-                            }
-                            secondary={`${(Math.max(0, toNumber(systemResources.memory.total_gb) - toNumber(systemResources.memory.available_gb))).toFixed(1)} GB used of ${toNumber(systemResources.memory.total_gb).toFixed(1)} GB`}
-                          />
-                        </ListItem>
-                      )}
-                      
-                      {systemResources.disk && (
-                        <ListItem>
-                          <ListItemIcon>
-                            <HardDrive size={20} />
-                          </ListItemIcon>
-                          <ListItemText 
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                Disk Space
-                                <Tooltip title={`${clampPercent(systemResources.disk.usage_percent)}% used`}>
-                                  <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                                    <CircularProgress
-                                      variant="determinate"
-                                      value={clampPercent(systemResources.disk.usage_percent)}
-                                      size={28}
-                                      thickness={5}
-                                      color={severityColor(clampPercent(systemResources.disk.usage_percent))}
-                                    />
+                                }
+                                secondary={`${(Math.max(0, toNumber(systemResources.memory.total_gb) - toNumber(systemResources.memory.available_gb))).toFixed(1)} GB used of ${toNumber(systemResources.memory.total_gb).toFixed(1)} GB`}
+                              />
+                            </ListItem>
+                          )}
+                          
+                          {systemResources.disk && (
+                            <ListItem sx={{ pl: 4 }}>
+                              <ListItemIcon>
+                                <HardDrive size={20} />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    Disk Space
+                                    <Tooltip title={`${clampPercent(systemResources.disk.usage_percent)}% used`}>
+                                      <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                        <CircularProgress
+                                          variant="determinate"
+                                          value={clampPercent(systemResources.disk.usage_percent)}
+                                          size={28}
+                                          thickness={5}
+                                          color={severityColor(clampPercent(systemResources.disk.usage_percent))}
+                                        />
+                                      </Box>
+                                    </Tooltip>
                                   </Box>
-                                </Tooltip>
-                              </Box>
-                            }
-                            secondary={`${(Math.max(0, toNumber(systemResources.disk.total_gb) - toNumber(systemResources.disk.free_gb))).toFixed(1)} GB used of ${toNumber(systemResources.disk.total_gb).toFixed(1)} GB`}
+                                }
+                                secondary={`${(Math.max(0, toNumber(systemResources.disk.total_gb) - toNumber(systemResources.disk.free_gb))).toFixed(1)} GB used of ${toNumber(systemResources.disk.total_gb).toFixed(1)} GB`}
+                              />
+                            </ListItem>
+                          )}
+                          
+                          {systemResources.platform && (
+                            <ListItem sx={{ pl: 4 }}>
+                              <ListItemIcon>
+                                <Activity size={20} />
+                              </ListItemIcon>
+                              <ListItemText 
+                                primary="System"
+                                secondary={`${systemResources.platform.system || ''} ${systemResources.platform.release || ''} (Python ${systemResources.platform.python || ''})`}
+                              />
+                            </ListItem>
+                          )}
+                        </>
+                      )}
+
+                      {systemResources?.error && (
+                        <ListItem sx={{ pl: 4 }}>
+                          <ListItemText 
+                            primary="System Resources Error"
+                            secondary={systemResources.error}
                           />
                         </ListItem>
                       )}
                       
-                      {systemResources.platform && (
-                        <ListItem>
-                          <ListItemIcon>
-                            <Activity size={20} />
-                          </ListItemIcon>
+                      {!systemResources && !loadingResources && (
+                        <ListItem sx={{ pl: 4 }}>
                           <ListItemText 
-                            primary="System"
-                            secondary={`${systemResources.platform.system || ''} ${systemResources.platform.release || ''} (Python ${systemResources.platform.python || ''})`}
+                            primary="System Resources"
+                            secondary="No data available"
                           />
                         </ListItem>
                       )}
-                    </>
-                  )}
-                  
-                  {systemResources?.error && (
-                    <ListItem>
-                      <ListItemText 
-                        primary="System Resources Error"
-                        secondary={systemResources.error}
-                      />
-                    </ListItem>
-                  )}
-                  
-                  {!systemResources && !loadingResources && (
-                    <ListItem>
-                      <ListItemText 
-                        primary="System Resources"
-                        secondary="No data available"
-                      />
-                    </ListItem>
-                  )}
+                    </List>
+                  </Collapse>
                 </List>
               </CardContent>
             </Card>
