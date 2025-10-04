@@ -13,13 +13,14 @@ import {
   Link,
   Divider,
   Container,
-  Stack,
   useTheme as useMuiTheme
 } from '@mui/material';
-import { Mail, Eye, EyeOff, Sun, Moon, Building2, BarChart2, Database } from 'lucide-react';
+import { Mail, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import AuthTest from './AuthTest';
+import LoginAnimation from './LoginAnimation';
+import LoginPageExplainer from './LoginPageExplainer';
 
 const LoginPage = () => {
   const { signIn, error, clearError } = useAuth();
@@ -66,6 +67,11 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  // Show loading animation when authenticating
+  if (loading) {
+    return <LoginAnimation />;
+  }
 
   return (
     <Box sx={{ 
@@ -129,108 +135,10 @@ const LoginPage = () => {
           py: 4
         }}
       >
-        <Grid container spacing={6} alignItems="center">
-          {/* Left Content */}
+        <Grid container spacing={6} alignItems="flex-start">
+          {/* Left Content - EPSM Explainer */}
           <Grid item xs={12} md={7}>
-            <Stack spacing={6}>
-              <Box>
-                <Typography 
-                  variant="h3" 
-                  gutterBottom
-                  sx={{ 
-                    fontWeight: 700,
-                    mb: 2,
-                    background: isDarkMode 
-                      ? 'linear-gradient(45deg, #fff 30%, #90caf9 90%)'
-                      : 'linear-gradient(45deg, #1976d2 30%, #42a5f5 90%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent'
-                  }}
-                >
-                  EnergyPlus Simulation Manager
-                </Typography>
-                <Typography 
-                  variant="h6" 
-                  sx={{ 
-                    mb: 4,
-                    color: 'text.secondary',
-                    fontWeight: 500
-                  }}
-                >
-                  Department of Architecture and Civil Engineering
-                  <br />
-                  Sustainable Built Environment Research Group
-                </Typography>
-
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    color: 'text.secondary',
-                    maxWidth: '80ch',
-                    lineHeight: 1.8
-                  }}
-                >
-                  EPSM is a comprehensive platform for building energy modeling and analysis, 
-                  designed to streamline the process of running EnergyPlus simulations for 
-                  building performance optimization.
-                </Typography>
-              </Box>
-
-              {/* Feature Cards */}
-              <Grid container spacing={3}>
-                {[
-                  {
-                    icon: <Building2 size={24} />,
-                    title: 'Building Components',
-                    description: 'Manage materials, constructions, and building templates with environmental impact data.'
-                  },
-                  {
-                    icon: <BarChart2 size={24} />,
-                    title: 'Energy Analysis',
-                    description: 'Run simulations, analyze results, and optimize building performance through various scenarios.'
-                  },
-                  {
-                    icon: <Database size={24} />,
-                    title: 'Data Management',
-                    description: 'Centralized database for materials, constructions, and simulation results with version control.'
-                  }
-                ].map((feature, index) => (
-                  <Grid item xs={12} sm={6} md={4} key={index}>
-                    <Card 
-                      sx={{ 
-                        height: '100%',
-                        bgcolor: 'background.paper',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 6
-                        }
-                      }}
-                    >
-                      <CardContent>
-                        <Box 
-                          sx={{ 
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            mb: 2,
-                            color: 'primary.main'
-                          }}
-                        >
-                          {feature.icon}
-                          <Typography variant="h6">
-                            {feature.title}
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary">
-                          {feature.description}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </Stack>
+            <LoginPageExplainer />
           </Grid>
 
           {/* Sign In Card */}
