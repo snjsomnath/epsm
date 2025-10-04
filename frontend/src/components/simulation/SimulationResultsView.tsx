@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -30,8 +30,46 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
 } from 'recharts';
+import { useTheme, alpha } from '@mui/material/styles';
 
 // Using Recharts for scatter plots for scalability with many simulations.
+
+const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+
+const hexToRgb = (hex: string) => {
+  if (!hex) return null;
+  const sanitized = hex.replace('#', '');
+  if (sanitized.length !== 3 && sanitized.length !== 6) return null;
+  const expanded = sanitized.length === 3
+    ? sanitized.split('').map((char) => char + char).join('')
+    : sanitized;
+  const parsed = Number.parseInt(expanded, 16);
+  if (Number.isNaN(parsed)) return null;
+  return {
+    r: (parsed >> 16) & 0xff,
+    g: (parsed >> 8) & 0xff,
+    b: parsed & 0xff,
+  };
+};
+
+const rgbToHex = (r: number, g: number, b: number) => {
+  const componentToHex = (component: number) => {
+    const clamped = Math.round(Math.min(255, Math.max(0, component)));
+    return clamped.toString(16).padStart(2, '0');
+  };
+  return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
+};
+
+const interpolateHex = (start: string, end: string, ratio: number) => {
+  const startRgb = hexToRgb(start);
+  const endRgb = hexToRgb(end);
+  if (!startRgb || !endRgb) return start || end;
+  const clampedRatio = clamp(ratio);
+  const r = startRgb.r + (endRgb.r - startRgb.r) * clampedRatio;
+  const g = startRgb.g + (endRgb.g - startRgb.g) * clampedRatio;
+  const b = startRgb.b + (endRgb.b - startRgb.b) * clampedRatio;
+  return rgbToHex(r, g, b);
+};
 
 interface SimulationResultsViewProps {
   results: any[];
@@ -42,6 +80,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [openCS, setOpenCS] = useState<Record<string, boolean>>({});
   const [openResult, setOpenResult] = useState<Record<string, boolean>>({});
   const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
+  const theme = useTheme();
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -106,25 +145,34 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const minRuntime = Math.min(...resultsWithPerArea.map(r => r.runTime));
   const maxRuntime = Math.max(...resultsWithPerArea.map(r => r.runTime));
 
-  // Color function: soft red (high) to soft green (low) with muted, pleasant tones
-  const getColorFromValue = (value: number, min: number, max: number) => {
-    if (max === min) return 'rgba(156, 39, 176, 0.25)'; // Neutral purple if all values are the same
-    const normalized = (value - min) / (max - min); // 0 (low) to 1 (high)
-    
-    // Blue-Orange gradient (works in both light and dark mode)
-    // Low values (good): Soft blue rgba(100, 181, 246, 0.5)
-    // High values (bad): Soft orange rgba(255, 167, 38, 0.5)
-    const red = Math.round(100 + normalized * 155);
-    const green = Math.round(181 - normalized * 14);
-    const blue = Math.round(246 - normalized * 208);
-    
-    return `rgba(${red}, ${green}, ${blue}, 0.5)`;
-  };
+  const baseLowColor = theme.palette.success.main;
+  const baseMidColor = theme.palette.warning.main;
+  const baseHighColor = theme.palette.error.main;
+  const fallbackColor = theme.palette.info.main;
 
-  // Legacy function for scatter plot (keeping for compatibility)
-  const getColorFromHeating = (heating: number, minHeating: number, maxHeating: number) => {
-    return getColorFromValue(heating, minHeating, maxHeating);
-  };
+  const getBaseColor = useCallback((value: number, min: number, max: number) => {
+    if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max === min) {
+      return fallbackColor;
+    }
+    const normalized = clamp((value - min) / (max - min));
+    if (!Number.isFinite(normalized)) {
+      return fallbackColor;
+    }
+    if (normalized <= 0.5) {
+      const segmentRatio = normalized / 0.5;
+      return interpolateHex(baseLowColor, baseMidColor, segmentRatio);
+    }
+    const segmentRatio = (normalized - 0.5) / 0.5;
+    return interpolateHex(baseMidColor, baseHighColor, segmentRatio);
+  }, [baseLowColor, baseMidColor, baseHighColor, fallbackColor]);
+
+  const getColorFromValue = useCallback((value: number, min: number, max: number, opacity = 0.24) => {
+    return alpha(getBaseColor(value, min, max), opacity);
+  }, [getBaseColor]);
+
+  const getColorFromHeating = useCallback((heating: number, minHeating: number, maxHeating: number) => {
+    return getColorFromValue(heating, minHeating, maxHeating, 0.65);
+  }, [getColorFromValue]);
 
   // Format data for chart (use normalized results)
   // Scatter plot data: x = totalEnergyPerArea, y = runTime
@@ -141,7 +189,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
       index: i,
       color
     };
-  }), [resultsWithPerArea, minHeating, maxHeating]);
+  }), [getColorFromHeating, resultsWithPerArea, minHeating, maxHeating]);
 
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
