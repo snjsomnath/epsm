@@ -24,7 +24,9 @@ import {
   ListItemButton,
   ListItemText,
   Divider,
-  LinearProgress
+  LinearProgress,
+  Card,
+  CardContent
 } from '@mui/material';
 import { 
   
@@ -45,7 +47,9 @@ import {
   Droplet,
   Wind,
   Sun,
-  Activity
+  Activity,
+  Zap,
+  Clock
 } from 'lucide-react';
 import {
   XAxis,
@@ -83,7 +87,7 @@ const ResultsPage: React.FC = () => {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const [expandedWeatherKey, setExpandedWeatherKey] = useState<string | null>(null);
-  const [chartTab, setChartTab] = useState<'performance' | 'economics'>('performance');
+  const [chartTab, setChartTab] = useState<'performance' | 'economics' | 'hourly'>('performance');
   const [rawJsonReady, setRawJsonReady] = useState(false);
   const [rawJsonLoading, setRawJsonLoading] = useState(false);
   const [rawJsonText, setRawJsonText] = useState('');
@@ -801,6 +805,8 @@ const ResultsPage: React.FC = () => {
     if (!hourlyTimeseriesData.length) {
       if (selectedTimeseriesKey !== null) setSelectedTimeseriesKey(null);
       if (selectedTimeseriesCategory !== null) setSelectedTimeseriesCategory(null);
+      // Reset to 'performance' tab if currently on 'hourly' tab but no hourly data available
+      if (chartTab === 'hourly') setChartTab('performance');
       return;
     }
     const categories = Object.keys(groupedTimeseries);
@@ -818,7 +824,7 @@ const ResultsPage: React.FC = () => {
       ? selectedTimeseriesKey
       : (items[0]?.name ?? null);
     if (nextKey !== selectedTimeseriesKey) setSelectedTimeseriesKey(nextKey);
-  }, [groupedTimeseries, hourlyTimeseriesData.length, selectedTimeseriesCategory, selectedTimeseriesKey]);
+  }, [groupedTimeseries, hourlyTimeseriesData.length, selectedTimeseriesCategory, selectedTimeseriesKey, chartTab]);
 
   const selectedTimeseries = useMemo(() => {
     if (!selectedTimeseriesKey) return null;
@@ -1135,71 +1141,70 @@ const ResultsPage: React.FC = () => {
   };
 
   const cols: any[] = [
-  { field: 'user', headerName: 'User', width: 190, sortable: false, renderCell: (params: any) => {
+  { field: 'user', headerName: '', width: 50, sortable: false, renderCell: (params: any) => {
     const info = deriveUser(params?.row || {});
     return (
-      <Stack direction="row" spacing={1} alignItems="center">
-        <UserAvatar name={info.userName} size={28} />
-        <Typography variant="body2">{info.userName}</Typography>
-      </Stack>
+      <Tooltip title={`${info.userName}${info.userEmail ? ` (${info.userEmail})` : ''}`} placement="right">
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+          <UserAvatar name={info.userName} size={28} />
+        </Box>
+      </Tooltip>
     );
   } },
-  { field: 'scenario', headerName: 'Scenario', flex: 1, minWidth: 160, valueGetter: (params: any) => params?.row ? (params.row.scenario_name || params.row.scenario || params.row.scenario_id) : undefined },
-  { field: 'energy', headerName: 'Energy (kWh/m²)', type: 'number', width: 160,
+  { field: 'energy', headerName: 'Energy', type: 'number', width: 85,
     valueGetter: (params: any) => {
       if (!params?.row) return undefined;
       return params.row.energyUse ?? params.row.totalEnergy ?? getMetric(params.row, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']);
     },
     renderCell: (params: any) => {
       const v = params?.value ?? getMetric(params?.row, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']);
-      return <Typography variant="body2">{v === undefined ? '-' : v}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{v === undefined ? '-' : v}</Typography>;
     }
   },
-  { field: 'heating', headerName: 'Heating (kWh/m²)', type: 'number', width: 150,
+  { field: 'heating', headerName: 'Heat', type: 'number', width: 75,
     valueGetter: (params: any) => params?.row ? (params.row.heatingDemand ?? params.row.heating_demand ?? getMetric(params.row, ['heating_demand','heatingDemand','heating'])) : undefined,
     renderCell: (params: any) => {
       const v = params?.value ?? getMetric(params?.row, ['heating_demand','heatingDemand','heating']);
-      return <Typography variant="body2">{v === undefined ? '-' : v}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{v === undefined ? '-' : v}</Typography>;
     }
   },
-  { field: 'cooling', headerName: 'Cooling (kWh/m²)', type: 'number', width: 150,
+  { field: 'cooling', headerName: 'Cool', type: 'number', width: 75,
     valueGetter: (params: any) => params?.row ? (params.row.coolingDemand ?? params.row.cooling_demand ?? getMetric(params.row, ['cooling_demand','coolingDemand','cooling'])) : undefined,
     renderCell: (params: any) => {
       const v = params?.value ?? getMetric(params?.row, ['cooling_demand','coolingDemand','cooling']);
-      return <Typography variant="body2">{v === undefined ? '-' : v}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{v === undefined ? '-' : v}</Typography>;
     }
   },
-  { field: 'cost', headerName: 'Cost (SEK/m²)', type: 'number', width: 150, valueGetter: (params: any) => params?.row ? params.row.cost : undefined },
-  { field: 'gwp', headerName: 'GWP (kgCO₂e/m²)', type: 'number', width: 170, valueGetter: (params: any) => params?.row ? params.row.gwp : undefined },
-  { field: 'variant', headerName: 'Variant', width: 110, valueGetter: (params: any) => params?.row ? (params.row.variant_idx ?? params.row.variant) : undefined },
-  { field: 'area', headerName: 'Area (m²)', type: 'number', width: 130,
+  { field: 'cost', headerName: 'Cost', type: 'number', width: 75, valueGetter: (params: any) => params?.row ? params.row.cost : undefined,
+    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
+  },
+  { field: 'gwp', headerName: 'GWP', type: 'number', width: 75, valueGetter: (params: any) => params?.row ? params.row.gwp : undefined,
+    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
+  },
+  { field: 'variant', headerName: 'Var', width: 60, valueGetter: (params: any) => params?.row ? (params.row.variant_idx ?? params.row.variant) : undefined,
+    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
+  },
+  { field: 'area', headerName: 'Area', type: 'number', width: 75,
     valueGetter: (params: any) => {
       if (!params?.row) return undefined;
       return params.row.totalArea ?? params.row.total_area ?? params.row.total_area_m2 ?? getMetric(params.row, ['total_area','totalArea','area','floor_area']);
     },
     renderCell: (params: any) => {
       const v = params?.value ?? getMetric(params?.row, ['total_area','totalArea','area','floor_area']);
-      return <Typography variant="body2">{v === undefined ? '-' : v}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{v === undefined ? '-' : v}</Typography>;
     }
   },
-  { field: 'weather', headerName: 'Weather', flex: 1, minWidth: 160,
-    valueGetter: (params: any) => {
-      if (!params?.row) return undefined;
-      return params.row.weather_file || params.row.epw || params.row.weather || params.row._weatherKey || (params.row.outputs && (params.row.outputs.weather_file || params.row.outputs.epw)) || undefined;
-    },
-    renderCell: (params: any) => <Typography variant="body2">{params?.value ?? '-'}</Typography>
-  },
-  { field: 'runtime', headerName: 'Run Time (s)', type: 'number', width: 130,
+  { field: 'runtime', headerName: 'Time', type: 'number', width: 70,
     valueGetter: (params: any) => {
       if (!params?.row) return undefined;
       return params.row.runTime ?? params.row.run_time ?? getMetric(params.row, ['run_time','runTime','runtime','elapsed','duration','execution_time']);
     },
     renderCell: (params: any) => {
       const v = params?.value ?? getMetric(params?.row, ['run_time','runTime','runtime','elapsed','duration','execution_time']);
-      return <Typography variant="body2">{v === undefined ? '-' : v}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{v === undefined ? '-' : v}</Typography>;
     }
   },
-  { field: 'created_at', headerName: 'Created', width: 170, type: 'dateTime',
+  { field: 'created_at', headerName: 'Created', width: 140, type: 'dateTime',
     valueGetter: (params: any) => {
       if (!params?.row) return undefined;
       const raw = params.row.created_at ?? params.row.createdAt ?? params.row.ts ?? params.row.timestamp ?? getMetric(params.row, ['created_at','createdAt','ts','timestamp']);
@@ -1208,30 +1213,30 @@ const ResultsPage: React.FC = () => {
     },
     renderCell: (params: any) => {
       const v = params?.value;
-      return <Typography variant="body2">{v ? new Date(v).toLocaleString() : '-'}</Typography>;
+      return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{v ? new Date(v).toLocaleString() : '-'}</Typography>;
     }
   },
     {
-      field: 'actions', headerName: 'Actions', width: 140, sortable: false,
+      field: 'actions', headerName: 'Actions', width: 110, sortable: false,
       renderCell: (params: any) => (
-        <Stack direction="row" spacing={1}>
-          <Tooltip title="View Details"><IconButton size="small" onClick={() => openDetails(params?.row)}><Info size={18} /></IconButton></Tooltip>
-          <Tooltip title="Download"><IconButton size="small" onClick={() => downloadRow(params?.row)}><Download size={18} /></IconButton></Tooltip>
-          <Tooltip title="Set Baseline"><IconButton size="small" onClick={() => addToBaseline(params?.row)}><FileText size={18} /></IconButton></Tooltip>
+        <Stack direction="row" spacing={0.5}>
+          <Tooltip title="View Details"><IconButton size="small" onClick={() => openDetails(params?.row)}><Info size={16} /></IconButton></Tooltip>
+          <Tooltip title="Download"><IconButton size="small" onClick={() => downloadRow(params?.row)}><Download size={16} /></IconButton></Tooltip>
+          <Tooltip title="Set Baseline"><IconButton size="small" onClick={() => addToBaseline(params?.row)}><FileText size={16} /></IconButton></Tooltip>
         </Stack>
       )
     },
     // small KPI column to ensure status helpers are used
     {
-      field: 'kpi', headerName: 'KPI', width: 120, sortable: false,
+      field: 'kpi', headerName: 'KPI', width: 80, sortable: false,
   valueGetter: (p: any) => p?.row ? (p.row.energyUse ?? p.row.totalEnergy) : undefined,
       renderCell: (p: any) => {
         const v = p?.value ?? 0;
         const icon = getStatusIcon(v, 100);
         return (
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={0.5} alignItems="center">
             {icon}
-            <Chip size="small" label={v} color={getStatusColor(v, 'energy') as any} />
+            <Chip size="small" label={v} color={getStatusColor(v, 'energy') as any} sx={{ fontSize: '0.7rem', height: 20 }} />
           </Stack>
         );
       }
@@ -1377,69 +1382,84 @@ const ResultsPage: React.FC = () => {
 
         <Grid item xs={12} md={isWideLayout ? 10.5 : 10}>
           <Stack spacing={2} sx={{ height: '100%' }}>
-            <Paper sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>Browse Results</Typography>
+            <Paper sx={{ p: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Browse Results</Typography>
                 {(selectedRun || selectedWeather || selectedIdf) && (
-                  <Button size="small" onClick={clearSelections}>Clear focus</Button>
+                  <Button size="small" variant="outlined" onClick={clearSelections}>Clear</Button>
                 )}
               </Box>
-              <List dense disablePadding sx={{ maxHeight: { xs: 320, md: isWideLayout ? 400 : 360 }, overflowY: 'auto' }}>
+              <List dense disablePadding sx={{ maxHeight: { xs: 280, md: isWideLayout ? 320 : 300 }, overflowY: 'auto' }}>
                 {runTree.map(runNode => {
                   const compositeSelected = selectedRun?.id && String(selectedRun.id) === runNode.runId;
                   return (
-                    <Box key={`run-${runNode.runId}`}>
+                    <Box key={`run-${runNode.runId}`} sx={{ mb: 0.5, border: '1px solid', borderColor: compositeSelected ? 'primary.main' : 'divider', borderRadius: 1, bgcolor: compositeSelected ? 'action.selected' : 'transparent' }}>
                       <ListItemButton
                         onClick={() => handleRunToggle(runNode)}
                         selected={compositeSelected}
-                        sx={{ borderRadius: 1, mb: 0.4, minWidth: 0, alignItems: 'flex-start' }}
+                        sx={{ py: 0.5, px: 1, minHeight: 'auto', alignItems: 'flex-start', '&.Mui-selected': { bgcolor: 'transparent' } }}
                       >
+                        <Box sx={{ mr: 0.75, mt: 0.25 }}>
+                          {expandedRunId === runNode.runId ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </Box>
                         <ListItemText
                           primary={runNode.label}
-                          primaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
-                          secondary={`User: ${runNode.userName} • ${runNode.total} IDFs`}
-                          secondaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                          primaryTypographyProps={{ sx: { fontSize: '0.85rem', fontWeight: 500, lineHeight: 1.3, whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                          secondary={`${runNode.userName} • ${runNode.total} IDFs`}
+                          secondaryTypographyProps={{ sx: { fontSize: '0.7rem', lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word' } }}
                         />
-                        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>{runNode.total}</Typography>
-                        {expandedRunId === runNode.runId ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </ListItemButton>
                       <Collapse in={expandedRunId === runNode.runId} timeout="auto" unmountOnExit>
-                        <List dense disablePadding sx={{ pl: 2 }}>
+                        <List dense disablePadding sx={{ pl: 1.5, pr: 0.5, py: 0.5, borderLeft: '2px solid', borderColor: 'divider' }}>
                           {runNode.weatherNodes.map(weatherNode => {
                             const compositeKey = `${runNode.runId}::${weatherNode.weatherKey}`;
                             const weatherSelected = expandedWeatherKey === compositeKey;
+                            const isSelected = !!(selectedWeather && String(selectedWeather).toLowerCase() === String(weatherNode.weatherKey).toLowerCase());
                             return (
-                              <Box key={compositeKey}>
+                              <Box key={compositeKey} sx={{ mb: 0.3, ml: 0.5, bgcolor: isSelected ? 'action.hover' : 'transparent', borderRadius: 0.5 }}>
                                 <ListItemButton
                                   onClick={() => handleWeatherToggle(runNode, weatherNode)}
-                                  selected={selectedWeather && String(selectedWeather).toLowerCase() === String(weatherNode.weatherKey).toLowerCase()}
-                                  sx={{ borderRadius: 1, mb: 0.3, minWidth: 0, alignItems: 'flex-start' }}
+                                  selected={isSelected}
+                                  sx={{ py: 0.4, px: 0.75, minHeight: 'auto', alignItems: 'flex-start', borderRadius: 0.5, '&.Mui-selected': { bgcolor: 'transparent' } }}
                                 >
+                                  <Box sx={{ mr: 0.5, mt: 0.2 }}>
+                                    {weatherSelected ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                  </Box>
                                   <ListItemText
                                     primary={weatherNode.weatherKey}
-                                    primaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                                    primaryTypographyProps={{ sx: { fontSize: '0.75rem', fontWeight: 500, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word' } }}
                                     secondary={`${weatherNode.rows.length} IDFs`}
-                                    secondaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                                    secondaryTypographyProps={{ sx: { fontSize: '0.65rem', lineHeight: 1.1, whiteSpace: 'normal', wordBreak: 'break-word' } }}
                                   />
-                                  {weatherSelected ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                 </ListItemButton>
                                 <Collapse in={weatherSelected} timeout="auto" unmountOnExit>
-                                  <List dense disablePadding sx={{ pl: 2 }}>
+                                  <List dense disablePadding sx={{ pl: 1.5, pr: 0.5, py: 0.3, ml: 0.5, borderLeft: '2px solid', borderColor: 'action.disabled' }}>
                                     {weatherNode.rows.map((row: any) => {
                                       const rowId = String(row.id);
-                                      const isSelected = selectedIdf === rowId;
+                                      const isIdfSelected = selectedIdf === rowId;
                                       return (
                                         <ListItemButton
                                           key={rowId}
-                                          selected={isSelected}
+                                          selected={isIdfSelected}
                                           onClick={() => handleIdfSelect(runNode, weatherNode, row)}
-                                          sx={{ borderRadius: 1, mb: 0.25, py: 0.75, alignItems: 'flex-start', minWidth: 0 }}
+                                          sx={{ 
+                                            borderRadius: 0.5, 
+                                            mb: 0.2, 
+                                            py: 0.4, 
+                                            px: 0.75, 
+                                            minHeight: 'auto', 
+                                            alignItems: 'flex-start', 
+                                            bgcolor: isIdfSelected ? 'primary.light' : 'transparent',
+                                            '&.Mui-selected': { bgcolor: 'primary.light', color: 'primary.contrastText' },
+                                            '&.Mui-selected:hover': { bgcolor: 'primary.main' }
+                                          }}
                                         >
+                                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: isIdfSelected ? 'primary.main' : 'text.disabled', mr: 0.75, mt: 0.5, flexShrink: 0 }} />
                                           <ListItemText
                                             primary={row.fileName || row.name || rowId}
-                                            primaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
-                                            secondary={`Energy ${formatNumber(row.energyUse ?? row.totalEnergy ?? getMetric(row, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']))} kWh/m²`}
-                                            secondaryTypographyProps={{ sx: { whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                                            primaryTypographyProps={{ sx: { fontSize: '0.7rem', fontWeight: isIdfSelected ? 600 : 400, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word' } }}
+                                            secondary={`E: ${formatNumber(row.energyUse ?? row.totalEnergy ?? getMetric(row, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']))} kWh/m²`}
+                                            secondaryTypographyProps={{ sx: { fontSize: '0.65rem', lineHeight: 1.1, whiteSpace: 'normal', wordBreak: 'break-word' } }}
                                           />
                                         </ListItemButton>
                                       );
@@ -1484,7 +1504,173 @@ const ResultsPage: React.FC = () => {
 
             {selectedIdfRow && (
               <Paper sx={{ p: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>Simulation Results</Typography>
+                
+                {/* Simulation Results Card - similar to baseline page */}
+                <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" color="primary" gutterBottom>
+                          {selectedIdfRow.fileName || selectedIdfRow.name || selectedIdfRow.id}
+                        </Typography>
+                        
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                          <Grid item xs={6} md={3}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Zap size={16} /> Total Energy:
+                            </Typography>
+                            <Typography variant="h5">
+                              {formatNumber(selectedIdfRow.energyUse ?? selectedIdfRow.totalEnergy ?? getMetric(selectedIdfRow, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']))} kWh/m²
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} md={3}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Thermometer size={16} /> Heating:
+                            </Typography>
+                            <Typography variant="h6" color="error.main">
+                              {formatNumber(selectedIdfRow.heatingDemand ?? getMetric(selectedIdfRow, ['heating_demand','heatingDemand','heating']))} kWh/m²
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} md={3}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Snowflake size={16} /> Cooling:
+                            </Typography>
+                            <Typography variant="h6" color="info.main">
+                              {formatNumber(selectedIdfRow.coolingDemand ?? getMetric(selectedIdfRow, ['cooling_demand','coolingDemand','cooling']))} kWh/m²
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6} md={3}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Clock size={16} /> Runtime:
+                            </Typography>
+                            <Typography variant="h6">
+                              {formatNumber(selectedIdfRow.runTime ?? getMetric(selectedIdfRow, ['run_time','runTime','runtime','elapsed','duration','execution_time']), 0)} s
+                            </Typography>
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* Tabbed interface for Summary, Energy Use, Hourly Data */}
+                <Paper>
+                  <Tabs value={chartTab} onChange={(_, value) => setChartTab(value)} textColor="primary" indicatorColor="primary">
+                    <Tab label="Summary" value="performance" />
+                    <Tab label="Energy Use" value="economics" />
+                    {hourlyTimeseriesData.length > 0 && <Tab label="Hourly Data" value="hourly" />}
+                  </Tabs>
+                  <Box sx={{ p: 2 }}>
+                    {chartTab === 'performance' && (
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>Energy Performance Summary</Typography>
+                        {chartRows.length > 0 ? (
+                          <Box sx={{ mt: 2, height: { xs: 260, md: 340 } }}>
+                            <ReactECharts option={energyOpts} onChartReady={onChartReady} style={{ height: '100%', width: '100%' }} />
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No chart data available.</Typography>
+                        )}
+                      </Box>
+                    )}
+                    
+                    {chartTab === 'economics' && (
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>Economics & Environmental Impact</Typography>
+                        {chartRows.length > 0 ? (
+                          <Box sx={{ mt: 2, height: { xs: 260, md: 340 } }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <ComposedChart data={economicsChartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="gwp" name="GWP (kg CO₂e/m²)" tick={{ fontSize: 12 }} />
+                                <YAxis dataKey="cost" name="Cost (SEK/m²)" tick={{ fontSize: 12 }} />
+                                <RechartsTooltip />
+                                <Scatter data={economicsChartData} fill="#1976d2" />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No economics data available.</Typography>
+                        )}
+                      </Box>
+                    )}
+                    
+                    {chartTab === 'hourly' && hourlyTimeseriesData.length > 0 && (
+                      <Box>
+                        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>Hourly Energy Profiles</Typography>
+                        {hourlyKpis && (
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
+                            <Chip size="small" color="primary" label={`Datasets: ${hourlyKpis.totalDatasets}`} />
+                            <Chip size="small" color="secondary" label={`Categories: ${hourlyKpis.categories}`} />
+                            <Chip size="small" color="warning" label={`Peak: ${formatNumber(hourlyKpis.peakLoad)} kWh`} />
+                            <Chip size="small" color="success" label={`Avg daily: ${formatNumber(hourlyKpis.avgDailyEnergy)} kWh`} />
+                          </Stack>
+                        )}
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={4}>
+                            <List dense disablePadding sx={{ maxHeight: 320, overflowY: 'auto' }}>
+                              {Object.entries(groupedTimeseries).map(([category, items]) => (
+                                <Box key={category} sx={{ mb: 1 }}>
+                                  <ListItemButton
+                                    selected={selectedTimeseriesCategory === category}
+                                    onClick={() => {
+                                      setSelectedTimeseriesCategory(category);
+                                      const first = items[0]?.name ?? null;
+                                      if (first) setSelectedTimeseriesKey(first);
+                                    }}
+                                    sx={{ borderRadius: 1, alignItems: 'flex-start', minWidth: 0 }}
+                                  >
+                                    <ListItemText
+                                      primary={category}
+                                      primaryTypographyProps={{ sx: { fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 } }}
+                                      secondary={`${items.length} profiles`}
+                                    />
+                                    {getTimeseriesCategoryIcon(category)}
+                                  </ListItemButton>
+                                  {selectedTimeseriesCategory === category && (
+                                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                      {items.map(item => (
+                                        <Chip
+                                          key={item.name}
+                                          label={item.label}
+                                          size="small"
+                                          color={selectedTimeseriesKey === item.name ? getTimeseriesCategoryColor(category) : 'default'}
+                                          onClick={() => setSelectedTimeseriesKey(item.name)}
+                                          sx={{ maxWidth: '100%', textOverflow: 'ellipsis', overflow: 'hidden' }}
+                                        />
+                                      ))}
+                                    </Stack>
+                                  )}
+                                </Box>
+                              ))}
+                            </List>
+                          </Grid>
+                          <Grid item xs={12} md={8}>
+                            {hourlyChartOption ? (
+                              <Box sx={{ height: { xs: 260, md: 320 } }}>
+                                <ReactECharts option={hourlyChartOption} style={{ height: '100%', width: '100%' }} />
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">Select a profile to visualize daily averages.</Typography>
+                            )}
+                            {selectedTimeseries && (
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                Showing daily average load for <strong>{selectedTimeseries.label}</strong>
+                              </Typography>
+                            )}
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    )}
+                  </Box>
+                </Paper>
+              </Paper>
+            )}
+
+            {!selectedIdfRow && (
+              <Paper sx={{ p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                   <Typography variant="h6" sx={{ fontWeight: 600 }}>Charts</Typography>
                   <Tabs value={chartTab} onChange={(_, value) => setChartTab(value)} textColor="primary" indicatorColor="primary">
                     <Tab label="Performance" value="performance" />
