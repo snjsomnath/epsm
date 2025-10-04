@@ -19,7 +19,6 @@ import { Mail, Eye, EyeOff, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import AuthTest from './AuthTest';
-import LoginAnimation from './LoginAnimation';
 import LoginPageExplainer from './LoginPageExplainer';
 
 const LoginPage = () => {
@@ -69,9 +68,9 @@ const LoginPage = () => {
   };
 
   // Show loading animation when authenticating
-  if (loading) {
-    return <LoginAnimation />;
-  }
+  // if (loading) {
+  //   return <LoginAnimation />;
+  // }
 
   return (
     <Box sx={{ 
