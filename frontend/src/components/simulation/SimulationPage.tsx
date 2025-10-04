@@ -22,6 +22,7 @@ import {
   DialogActions,
   IconButton,
   Chip,
+  Collapse,
   Divider,
   Tooltip,
   Snackbar,
@@ -43,7 +44,9 @@ import {
   StarOff,
   Pin,
   PinOff,
-  History
+  History,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 // history-related icons removed; history UI moved to Baseline page
 import SimulationResultsView from './SimulationResultsView';
@@ -132,6 +135,7 @@ const SimulationPage = () => {
   const [results, setResults] = useState<any[]>(() => lastResults || []);
   const [error, setError] = useState<string | null>(null);
   const [resourceStats, setResourceStats] = useState<any>(null);
+  const [showResourceDetails, setShowResourceDetails] = useState(false);
   const [lastResourceAt, setLastResourceAt] = useState<number | null>(null);
   const [monitorStale, setMonitorStale] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
@@ -1539,133 +1543,146 @@ const SimulationPage = () => {
               color={wsConnected ? 'primary' : 'warning'}
               variant={monitorStale ? 'outlined' : 'filled'}
             />
+            <Tooltip title={showResourceDetails ? 'Hide system metrics' : 'Show system metrics'}>
+              <IconButton
+                size="small"
+                onClick={() => setShowResourceDetails(prev => !prev)}
+                aria-label={showResourceDetails ? 'Hide system metrics' : 'Show system metrics'}
+              >
+                {showResourceDetails ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </IconButton>
+            </Tooltip>
           </Stack>
         }
       >
-        {monitorStale && (
-          <Alert severity="warning">
-            Resource monitoring appears stale or disconnected.
-          </Alert>
-        )}
+        <Collapse in={showResourceDetails} timeout="auto" unmountOnExit>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {monitorStale && (
+              <Alert severity="warning">
+                Resource monitoring appears stale or disconnected.
+              </Alert>
+            )}
 
-        {resourceStats ? (
-          <>
-            <Grid container spacing={2}>
-              {metrics.map(({ key, label, icon, value, detail }) => (
-                <Grid item xs={12} sm={6} key={key}>
-                  <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      {icon}
-                      <Typography variant="body2" color="text.secondary">
-                        {label}
-                      </Typography>
-                    </Stack>
-                    <Typography variant="h6">{value}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {detail}
-                    </Typography>
-                  </Paper>
+            {resourceStats ? (
+              <>
+                <Grid container spacing={2}>
+                  {metrics.map(({ key, label, icon, value, detail }) => (
+                    <Grid item xs={12} sm={6} key={key}>
+                      <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          {icon}
+                          <Typography variant="body2" color="text.secondary">
+                            {label}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="h6">{value}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {detail}
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  ))}
                 </Grid>
-              ))}
-            </Grid>
 
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Simulation Assignment
-              </Typography>
-              <Paper variant="outlined" sx={{ p: 1, mt: 1 }}>
-                <CoreLaneView
-                  totalSimulations={totalSimulations}
-                  cpuCores={cpuLogical}
-                  completedSimulations={completedSimulations}
-                  progress={progress}
-                  maxSegments={160}
-                  width={900}
-                  height={320}
-                />
-              </Paper>
-            </Box>
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Simulation Assignment
+                  </Typography>
+                  <Paper variant="outlined" sx={{ p: 1, mt: 1 }}>
+                    <CoreLaneView
+                      totalSimulations={totalSimulations}
+                      cpuCores={cpuLogical}
+                      completedSimulations={completedSimulations}
+                      progress={progress}
+                      maxSegments={160}
+                      width={900}
+                      height={320}
+                    />
+                  </Paper>
+                </Box>
 
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary">
-                Usage History (last {MAX_HISTORY_POINTS} samples)
-              </Typography>
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={cpuHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
-                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
-                        <RechartsTooltip
-                          formatter={(value) => [`${value}%`, 'CPU']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line type="monotone" dataKey="value" stroke="#8884d8" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={memoryHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
-                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
-                        <RechartsTooltip
-                          formatter={(value) => [`${value}%`, 'Memory']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line type="monotone" dataKey="value" stroke="#82ca9d" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={diskHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
-                        <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
-                        <RechartsTooltip
-                          formatter={(value) => [`${value}%`, 'Disk']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line type="monotone" dataKey="value" stroke="#ffc658" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={networkHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
-                        <YAxis tickFormatter={(value) => `${value} KB/s`} tick={{ fontSize: 10 }} />
-                        <RechartsTooltip
-                          formatter={(value) => [`${value} KB/s`, 'Network']}
-                          labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
-                        />
-                        <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2} dot={false} isAnimationActive={false} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </Paper>
-                </Grid>
-              </Grid>
-            </Box>
-          </>
-        ) : (
-          <Stack spacing={2}>
-            {[1, 2].map(item => (
-              <Skeleton key={item} variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
-            ))}
-            <Alert severity="info">Waiting for the backend to stream system metrics…</Alert>
-          </Stack>
-        )}
+                <Box>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Usage History (last {MAX_HISTORY_POINTS} samples)
+                  </Typography>
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    <Grid item xs={12} md={6}>
+                      <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={cpuHistory}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                            <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                            <RechartsTooltip
+                              formatter={(value) => [`${value}%`, 'CPU']}
+                              labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#8884d8" strokeWidth={2} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={memoryHistory}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                            <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                            <RechartsTooltip
+                              formatter={(value) => [`${value}%`, 'Memory']}
+                              labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#82ca9d" strokeWidth={2} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={diskHistory}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                            <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tick={{ fontSize: 10 }} />
+                            <RechartsTooltip
+                              formatter={(value) => [`${value}%`, 'Disk']}
+                              labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#ffc658" strokeWidth={2} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Paper>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Paper variant="outlined" sx={{ p: 1, height: 180 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={networkHistory}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="index" type="number" domain={['dataMin', 'dataMax']} tick={false} />
+                            <YAxis tickFormatter={(value) => `${value} KB/s`} tick={{ fontSize: 10 }} />
+                            <RechartsTooltip
+                              formatter={(value) => [`${value} KB/s`, 'Network']}
+                              labelFormatter={(_, data) => `Time: ${data[0]?.payload?.time || ''}`}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#00bcd4" strokeWidth={2} dot={false} isAnimationActive={false} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </>
+            ) : (
+              <Stack spacing={2}>
+                {[1, 2].map(item => (
+                  <Skeleton key={item} variant="rectangular" height={120} sx={{ borderRadius: 2 }} />
+                ))}
+                <Alert severity="info">Waiting for the backend to stream system metrics…</Alert>
+              </Stack>
+            )}
+          </Box>
+        </Collapse>
       </SectionCard>
     );
   };
