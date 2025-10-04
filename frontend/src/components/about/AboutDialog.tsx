@@ -11,7 +11,7 @@ import {
   IconButton,
   useTheme
 } from '@mui/material';
-import { X, Brain, User, Users, Landmark, Coins, Target, Search, ExternalLink, Clock } from 'lucide-react';
+import { X, Brain, User, Users, Landmark, Coins, Target, Search, ExternalLink, Clock, Github, FileText } from 'lucide-react';
 
 interface AboutDialogProps {
   open: boolean;
@@ -255,42 +255,89 @@ const AboutDialog = ({ open, onClose }: AboutDialogProps) => {
 
         <Box sx={{ 
           display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
+          gap: 3,
+          flexDirection: 'column',
           mt: 2
         }}>
-          <Link 
-            href="https://www.chalmers.se/en/projects/Pages/12229.aspx" 
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ 
-              textDecoration: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              color: 'primary.main',
-              '&:hover': {
-                color: 'primary.dark'
-              }
-            }}
-          >
-            <ExternalLink size={16} />
-            <Typography variant="body2">
-              Chalmers Research Project – 12229
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Link 
+              href="https://github.com/snjsomnath/epsm" 
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                color: 'primary.main',
+                '&:hover': {
+                  color: 'primary.dark'
+                }
+              }}
+            >
+              <Github size={16} />
+              <Typography variant="body2">
+                GitHub Repository
+              </Typography>
+            </Link>
+            <Link 
+              href="https://snjsomnath.github.io/epsm/" 
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                color: 'primary.main',
+                '&:hover': {
+                  color: 'primary.dark'
+                }
+              }}
+            >
+              <FileText size={16} />
+              <Typography variant="body2">
+                Documentation
+              </Typography>
+            </Link>
+            <Link 
+              href="https://www.chalmers.se/en/projects/Pages/12229.aspx" 
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ 
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                color: 'primary.main',
+                '&:hover': {
+                  color: 'primary.dark'
+                }
+              }}
+            >
+              <ExternalLink size={16} />
+              <Typography variant="body2">
+                Chalmers Research Project – 12229
+              </Typography>
+            </Link>
+          </Box>
+          <Box sx={{ 
+            display: 'flex',
+            justifyContent: 'flex-end'
+          }}>
+            <Typography 
+              variant="caption" 
+              color="text.secondary"
+              sx={{ 
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5
+              }}
+            >
+              <Clock size={14} />
+              Last updated: 6 May 2025
             </Typography>
-          </Link>
-          <Typography 
-            variant="caption" 
-            color="text.secondary"
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5
-            }}
-          >
-            <Clock size={14} />
-            Last updated: 6 May 2025
-          </Typography>
+          </Box>
         </Box>
       </DialogContent>
     </Dialog>
