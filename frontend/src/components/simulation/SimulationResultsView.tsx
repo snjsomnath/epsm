@@ -41,6 +41,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [tabValue, setTabValue] = useState(0);
   const [openCS, setOpenCS] = useState<Record<string, boolean>>({});
   const [openResult, setOpenResult] = useState<Record<string, boolean>>({});
+  const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -95,19 +96,34 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
     };
   }), [normalizedResults]);
 
-  // Calculate min and max heating energy values for dynamic color scaling
+  // Calculate min and max values for each metric for dynamic color scaling
   const minHeating = Math.min(...resultsWithPerArea.map(r => r.heatingPerArea));
   const maxHeating = Math.max(...resultsWithPerArea.map(r => r.heatingPerArea));
+  const minCooling = Math.min(...resultsWithPerArea.map(r => r.coolingPerArea));
+  const maxCooling = Math.max(...resultsWithPerArea.map(r => r.coolingPerArea));
+  const minTotalEnergy = Math.min(...resultsWithPerArea.map(r => r.totalEnergyPerArea));
+  const maxTotalEnergy = Math.max(...resultsWithPerArea.map(r => r.totalEnergyPerArea));
+  const minRuntime = Math.min(...resultsWithPerArea.map(r => r.runTime));
+  const maxRuntime = Math.max(...resultsWithPerArea.map(r => r.runTime));
 
-  // Update color palette to use pastel shades with alpha transparency
+  // Color function: soft red (high) to soft green (low) with muted, pleasant tones
+  const getColorFromValue = (value: number, min: number, max: number) => {
+    if (max === min) return 'rgba(156, 39, 176, 0.25)'; // Neutral purple if all values are the same
+    const normalized = (value - min) / (max - min); // 0 (low) to 1 (high)
+    
+    // Blue-Orange gradient (works in both light and dark mode)
+    // Low values (good): Soft blue rgba(100, 181, 246, 0.5)
+    // High values (bad): Soft orange rgba(255, 167, 38, 0.5)
+    const red = Math.round(100 + normalized * 155);
+    const green = Math.round(181 - normalized * 14);
+    const blue = Math.round(246 - normalized * 208);
+    
+    return `rgba(${red}, ${green}, ${blue}, 0.5)`;
+  };
+
+  // Legacy function for scatter plot (keeping for compatibility)
   const getColorFromHeating = (heating: number, minHeating: number, maxHeating: number) => {
-    if (heating === minHeating) return 'rgba(173, 216, 230, 0.6)'; // Light blue for minimum
-    if (heating === maxHeating) return 'rgba(255, 182, 193, 0.6)'; // Light pink for maximum
-    const normalizedHeating = (heating - minHeating) / (maxHeating - minHeating); // Normalize to 0–1
-    const blue = Math.round((1 - normalizedHeating) * 230 + 25); // Blend with white
-    const red = Math.round(normalizedHeating * 193 + 62); // Blend with white
-    const green = Math.round((1 - normalizedHeating) * 216 + 39); // Blend with white
-    return `rgba(${red}, ${green}, ${blue}, 0.6)`; // Pastel gradient with alpha
+    return getColorFromValue(heating, minHeating, maxHeating);
   };
 
   // Format data for chart (use normalized results)
@@ -179,30 +195,100 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                   <TableHead>
                     <TableRow>
                       <TableCell>File</TableCell>
-                      <TableCell align="right">Total Energy (kWh/m²)</TableCell>
-                      <TableCell align="right">Heating (kWh/m²)</TableCell>
-                      <TableCell align="right">Cooling (kWh/m²)</TableCell>
-                      <TableCell align="right">Runtime (s)</TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('totalEnergy')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Total Energy (kWh/m²)
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('heating')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Heating (kWh/m²)
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('cooling')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Cooling (kWh/m²)
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('runtime')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer' }}
+                      >
+                        Runtime (s)
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {resultsWithPerArea.map((result, index) => (
-                      <TableRow key={index} hover>
+                      <TableRow key={index}>
                         <TableCell>{result.fileName}</TableCell>
-                        <TableCell align="right">{fmt(result.totalEnergyPerArea)}</TableCell>
-                        {/* Ensure table cell coloring matches scatter plot logic */}
+                        <TableCell 
+                          align="right"
+                          onMouseEnter={() => setHoveredColumn('totalEnergy')}
+                          onMouseLeave={() => setHoveredColumn(null)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'totalEnergy' 
+                              ? getColorFromValue(result.totalEnergyPerArea, minTotalEnergy, maxTotalEnergy)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
+                          }}
+                        >
+                          {fmt(result.totalEnergyPerArea)}
+                        </TableCell>
                         <TableCell
                           align="right"
+                          onMouseEnter={() => setHoveredColumn('heating')}
+                          onMouseLeave={() => setHoveredColumn(null)}
                           sx={{
-                            '&:hover': {
-                              backgroundColor: getColorFromHeating(result.heatingPerArea, minHeating, maxHeating)
-                            }
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'heating'
+                              ? getColorFromValue(result.heatingPerArea, minHeating, maxHeating)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
                           }}
                         >
                           {fmt(result.heatingPerArea)}
                         </TableCell>
-                        <TableCell align="right">{fmt(result.coolingPerArea)}</TableCell>
-                        <TableCell align="right">{fmt(result.runTime)}</TableCell>
+                        <TableCell 
+                          align="right"
+                          onMouseEnter={() => setHoveredColumn('cooling')}
+                          onMouseLeave={() => setHoveredColumn(null)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'cooling'
+                              ? getColorFromValue(result.coolingPerArea, minCooling, maxCooling)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
+                          }}
+                        >
+                          {fmt(result.coolingPerArea)}
+                        </TableCell>
+                        <TableCell 
+                          align="right"
+                          onMouseEnter={() => setHoveredColumn('runtime')}
+                          onMouseLeave={() => setHoveredColumn(null)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'runtime'
+                              ? getColorFromValue(result.runTime, minRuntime, maxRuntime)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
+                          }}
+                        >
+                          {fmt(result.runTime)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
