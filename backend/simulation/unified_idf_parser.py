@@ -132,6 +132,47 @@ def _safe_float(x: Any) -> Optional[float]:
         return None
 
 
+def _calculate_polygon_area(vertices: List[tuple]) -> float:
+    """Calculate the area of a 3D polygon using the Newell method.
+    
+    This method works correctly regardless of the polygon's orientation in 3D space
+    and is not affected by the absolute position of the vertices.
+    
+    Parameters
+    ----------
+    vertices : List[tuple]
+        List of (x, y, z) coordinate tuples representing polygon vertices.
+        
+    Returns
+    -------
+    float
+        The area of the polygon in square units.
+    """
+    if len(vertices) < 3:
+        return 0.0
+    
+    import math
+    
+    # Use Newell's method to calculate the area vector
+    # The magnitude of this vector is twice the polygon area
+    n = len(vertices)
+    area_vec = [0.0, 0.0, 0.0]
+    
+    for i in range(n):
+        v1 = vertices[i]
+        v2 = vertices[(i + 1) % n]
+        
+        # Cross product components for consecutive edges
+        area_vec[0] += (v1[1] - v2[1]) * (v1[2] + v2[2])  # x component
+        area_vec[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])  # y component  
+        area_vec[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])  # z component
+    
+    # The area is half the magnitude of the area vector
+    area = 0.5 * math.sqrt(area_vec[0]**2 + area_vec[1]**2 + area_vec[2]**2)
+    
+    return area
+
+
 # ---------------------------- Unified Parser --------------------------------
 class UnifiedIDFParser:
     """A single robust parser that supports *both* read-only inspection and
@@ -530,6 +571,9 @@ def _parse_constructions_eppy(self) -> None:
 
 def _parse_zones_eppy(self) -> None:
     self.zones.clear()
+    
+    # First pass: collect zone data
+    zone_data = {}  # {zone_name: {'area': float|None, 'volume': float|None}}
     for zone in self._idf.idfobjects.get("ZONE", []):
         try:
             name = getattr(zone, "Name", None)
@@ -537,6 +581,57 @@ def _parse_zones_eppy(self) -> None:
                 continue
             area = _safe_float(getattr(zone, "Floor_Area", None))
             volume = _safe_float(getattr(zone, "Volume", None))
+            zone_data[name] = {'area': area, 'volume': volume}
+        except Exception:
+            continue
+    
+    # Second pass: calculate floor areas from surfaces (only for zones missing area)
+    # Build a dict of zone -> list of floor surfaces for efficiency
+    zones_needing_area = {name for name, data in zone_data.items() if data['area'] is None}
+    
+    if zones_needing_area:
+        # Initialize accumulator for zones that need area calculation
+        calculated_areas = {name: 0.0 for name in zones_needing_area}
+        
+        for surface in self._idf.idfobjects.get("BUILDINGSURFACE:DETAILED", []):
+            try:
+                zone_name = getattr(surface, "Zone_Name", None)
+                surface_type = getattr(surface, "Surface_Type", "")
+                
+                # Skip if not a floor or zone doesn't need area calculation
+                if zone_name not in zones_needing_area or surface_type.upper() != "FLOOR":
+                    continue
+                
+                # Extract vertices efficiently
+                vertices = []
+                for i in range(1, 100):  # Max 100 vertices (more than enough)
+                    x = _safe_float(getattr(surface, f"Vertex_{i}_Xcoordinate", None))
+                    y = _safe_float(getattr(surface, f"Vertex_{i}_Ycoordinate", None))
+                    z = _safe_float(getattr(surface, f"Vertex_{i}_Zcoordinate", None))
+                    
+                    # Break if any coordinate is missing (None) or invalid
+                    if x is None or y is None or z is None:
+                        break
+                    
+                    vertices.append((x, y, z))
+                
+                # Calculate and accumulate area
+                if len(vertices) >= 3:
+                    calculated_area = _calculate_polygon_area(vertices)
+                    calculated_areas[zone_name] += calculated_area
+            except Exception:
+                continue
+        
+        # Update zone_data with calculated areas
+        for zone_name, calc_area in calculated_areas.items():
+            if calc_area > 0:
+                zone_data[zone_name]['area'] = calc_area
+    
+    # Third pass: create Zone objects
+    for name, data in zone_data.items():
+        try:
+            area = data['area']
+            volume = data['volume']
             ceiling_height = (volume / area) if (area and volume) else None
             self.zones[name] = Zone(name=name, area=area, volume=volume, ceiling_height=ceiling_height)
         except Exception:
