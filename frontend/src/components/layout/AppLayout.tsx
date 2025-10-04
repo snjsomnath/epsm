@@ -40,6 +40,7 @@ import { useDatabase } from '../../context/DatabaseContext';
 import AboutDialog from '../about/AboutDialog';
 
 const drawerWidth = 280;
+const collapsedDrawerWidth = 73;
 
 const navItems = [
   { text: 'Home', icon: <Home size={24} />, path: '/' },
@@ -269,23 +270,20 @@ const AppLayout = () => {
       <Drawer
         variant="permanent"
         sx={{
-          width: drawerWidth,
+          width: open ? drawerWidth : collapsedDrawerWidth,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
+            width: open ? drawerWidth : collapsedDrawerWidth,
             boxSizing: 'border-box',
             border: 'none',
             borderRight: '1px solid',
             borderColor: 'divider',
             bgcolor: 'background.default',
-            transition: theme => theme.transitions.create(['width', 'margin'], {
+            transition: theme => theme.transitions.create(['width'], {
               easing: theme.transitions.easing.sharp,
               duration: theme.transitions.duration.enteringScreen,
             }),
-            ...(!open && {
-              width: theme => theme.spacing(7),
-              overflowX: 'hidden',
-            }),
+            overflowX: 'hidden',
           },
         }}
         open={open}
@@ -337,13 +335,30 @@ const AppLayout = () => {
           flexGrow: 1,
           minHeight: '100vh',
           bgcolor: 'background.default',
-          p: 3,
+          p: open ? 3 : 0.5,
           mt: 8,
           pb: 10,
-          position: 'relative'
+          pl: open ? 3 : 0.5,
+          pr: open ? 3 : 0.5,
+          position: 'relative',
+          transition: theme => theme.transitions.create(['padding'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.standard,
+          })
         }}
       >
-        <Container maxWidth="xl" sx={{ height: '100%' }}>
+        <Container
+          maxWidth={false}
+          disableGutters
+          sx={{
+            height: '100%',
+            px: { xs: 1.5, md: open ? 3 : 0.5 },
+            transition: theme => theme.transitions.create(['padding'], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.standard,
+            })
+          }}
+        >
           <Outlet />
         </Container>
 
@@ -352,7 +367,7 @@ const AppLayout = () => {
           sx={{
             position: 'fixed',
             bottom: 0,
-            left: open ? drawerWidth : 73,
+            left: open ? drawerWidth : collapsedDrawerWidth,
             right: 0,
             bgcolor: 'background.paper',
             borderTop: '1px solid',
