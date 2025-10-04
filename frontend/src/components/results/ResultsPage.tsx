@@ -26,7 +26,10 @@ import {
   Divider,
   LinearProgress,
   Card,
-  CardContent
+  CardContent,
+  CircularProgress,
+  Fade,
+  Grow
 } from '@mui/material';
 import { 
   
@@ -49,7 +52,10 @@ import {
   Sun,
   Activity,
   Zap,
-  Clock
+  Clock,
+  Building,
+  BarChart3,
+  Database
 } from 'lucide-react';
 import {
   XAxis,
@@ -64,6 +70,225 @@ import ReactECharts from 'echarts-for-react';
 import { DataGrid, GridToolbar } from '@mui/x-data-grid';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useSimulation } from '../../context/SimulationContext';
+
+// Fun loading animation component for EPSM
+const EPSMLoadingAnimation: React.FC = () => {
+  const [activeIcon, setActiveIcon] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  const simulationSteps = [
+    { icon: <Building size={48} />, label: 'Loading building models...', color: '#1976d2' },
+    { icon: <Database size={48} />, label: 'Fetching simulation data...', color: '#2e7d32' },
+    { icon: <Thermometer size={48} />, label: 'Analyzing thermal performance...', color: '#d32f2f' },
+    { icon: <Zap size={48} />, label: 'Computing energy metrics...', color: '#f57c00' },
+    { icon: <Snowflake size={48} />, label: 'Calculating cooling loads...', color: '#0288d1' },
+    { icon: <Sun size={48} />, label: 'Processing solar gains...', color: '#fbc02d' },
+    { icon: <BarChart3 size={48} />, label: 'Preparing visualizations...', color: '#7b1fa2' },
+  ];
+
+  useEffect(() => {
+    const iconInterval = setInterval(() => {
+      setActiveIcon((prev) => (prev + 1) % simulationSteps.length);
+    }, 1000);
+
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) return prev;
+        return prev + Math.random() * 10;
+      });
+    }, 400);
+
+    return () => {
+      clearInterval(iconInterval);
+      clearInterval(progressInterval);
+    };
+  }, []);
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '70vh',
+        gap: 3,
+        p: 4,
+        pt: 12,
+      }}
+    >
+      {/* Animated building icon with pulsing energy */}
+      <Box sx={{ position: 'relative', mb: 8 }}>
+        {/* Outer energy pulse rings */}
+        {[0, 1, 2].map((ring) => (
+          <Box
+            key={ring}
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 140 + ring * 50,
+              height: 140 + ring * 50,
+              borderRadius: '50%',
+              border: '3px solid',
+              borderColor: simulationSteps[activeIcon].color,
+              opacity: 0,
+              animation: `pulse ${2.5}s ease-out infinite`,
+              animationDelay: `${ring * 0.5}s`,
+              '@keyframes pulse': {
+                '0%': {
+                  transform: 'translate(-50%, -50%) scale(0.8)',
+                  opacity: 0.7,
+                },
+                '100%': {
+                  transform: 'translate(-50%, -50%) scale(1.5)',
+                  opacity: 0,
+                },
+              },
+            }}
+          />
+        ))}
+
+        {/* Center icon container with rotation */}
+        <Grow in timeout={700}>
+          <Box
+            sx={{
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 140,
+              height: 140,
+              borderRadius: '50%',
+              bgcolor: 'background.paper',
+              boxShadow: `0 0 40px ${simulationSteps[activeIcon].color}40`,
+              transition: 'all 1s ease-in-out',
+              border: '4px solid',
+              borderColor: simulationSteps[activeIcon].color,
+            }}
+          >
+            {/* Rotating icons */}
+            {simulationSteps.map((step, idx) => (
+              <Fade key={idx} in={activeIcon === idx} timeout={700}>
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    color: step.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transform: activeIcon === idx ? 'scale(1) rotate(0deg)' : 'scale(0.5) rotate(180deg)',
+                    transition: 'all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  }}
+                >
+                  {step.icon}
+                </Box>
+              </Fade>
+            ))}
+          </Box>
+        </Grow>
+      </Box>
+
+      {/* Animated status text */}
+      <Box sx={{ textAlign: 'center', minHeight: 80, mb: 2, mt: 4 }}>
+        <Fade in timeout={600} key={activeIcon}>
+          <Typography
+            variant="h5"
+            sx={{
+              color: simulationSteps[activeIcon].color,
+              fontWeight: 600,
+              mb: 2,
+              animation: 'fadeSlide 0.8s ease-in-out',
+              '@keyframes fadeSlide': {
+                '0%': {
+                  opacity: 0,
+                  transform: 'translateY(10px)',
+                },
+                '100%': {
+                  opacity: 1,
+                  transform: 'translateY(0)',
+                },
+              },
+            }}
+          >
+            {simulationSteps[activeIcon].label}
+          </Typography>
+        </Fade>
+        
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 3, fontSize: '1.1rem' }}>
+          Analyzing energy performance simulation results
+        </Typography>
+
+        {/* Progress bar */}
+        <Box sx={{ width: 500, maxWidth: '90vw', mx: 'auto' }}>
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{
+              height: 10,
+              borderRadius: 5,
+              bgcolor: 'action.hover',
+              '& .MuiLinearProgress-bar': {
+                bgcolor: simulationSteps[activeIcon].color,
+                borderRadius: 5,
+                transition: 'all 0.4s ease',
+              },
+            }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, display: 'block' }}>
+            {Math.round(progress)}% complete
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* Floating simulation metrics */}
+      <Stack direction="row" spacing={3} flexWrap="wrap" justifyContent="center" sx={{ mt: 2 }}>
+        {[
+          { icon: <Thermometer size={18} />, label: 'Thermal Analysis', color: '#d32f2f' },
+          { icon: <Zap size={18} />, label: 'Energy Metrics', color: '#f57c00' },
+          { icon: <Activity size={18} />, label: 'Performance Data', color: '#1976d2' },
+          { icon: <BarChart3 size={18} />, label: 'Results Processing', color: '#7b1fa2' },
+        ].map((metric, idx) => (
+          <Fade key={idx} in timeout={1000} style={{ transitionDelay: `${idx * 250}ms` }}>
+            <Chip
+              icon={metric.icon}
+              label={metric.label}
+              size="medium"
+              sx={{
+                bgcolor: 'background.paper',
+                borderColor: metric.color,
+                color: metric.color,
+                border: '2px solid',
+                boxShadow: 2,
+                px: 1,
+                py: 2.5,
+                fontSize: '0.95rem',
+                animation: 'float 3.5s ease-in-out infinite',
+                animationDelay: `${idx * 0.4}s`,
+                '@keyframes float': {
+                  '0%, 100%': { transform: 'translateY(0px)' },
+                  '50%': { transform: 'translateY(-10px)' },
+                },
+              }}
+            />
+          </Fade>
+        ))}
+      </Stack>
+
+      {/* Spinning loading indicator */}
+      <CircularProgress
+        size={32}
+        thickness={3.5}
+        sx={{
+          color: simulationSteps[activeIcon].color,
+          transition: 'color 1s ease',
+          mt: 3,
+        }}
+      />
+    </Box>
+  );
+};
 
 const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
@@ -1291,7 +1516,7 @@ const ResultsPage: React.FC = () => {
   }
 
   // only show global loading when initial results are being fetched and there are no results yet
-  if (loading && (!results || results.length === 0)) return <Box sx={{ mt: 4 }}>Loading…</Box>;
+  if (loading && (!results || results.length === 0)) return <EPSMLoadingAnimation />;
 
   const isWideLayout = layoutMode === 'wide';
 

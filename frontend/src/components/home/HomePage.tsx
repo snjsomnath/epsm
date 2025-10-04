@@ -18,18 +18,28 @@ import {
   Stack,
   Divider,
   Chip,
-  
   CircularProgress,
   LinearProgress,
   Tooltip,
   Collapse
 } from '@mui/material';
-// Fix the import for Lucide icons
-import { Database, Home, FlaskConical, Activity, BarChart, Cpu, HardDrive, MemoryStick, ChevronDown, ChevronRight } from 'lucide-react';
+import { 
+  Database, 
+  Home, 
+  FlaskConical, 
+  Activity, 
+  BarChart, 
+  Cpu, 
+  HardDrive, 
+  MemoryStick, 
+  ChevronDown, 
+  ChevronRight
+} from 'lucide-react';
 import Joyride, { Step, CallBackProps } from 'react-joyride';
 import { getMaterials, getConstructions } from '../../lib/database-browser';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
+import EPSMExplainerAnimation from './EPSMExplainer';
 
 const steps: Step[] = [
   {
@@ -229,6 +239,9 @@ const HomePage = () => {
         }}
         callback={handleTourCallback}
       />
+
+      {/* EPSM Explainer Animation */}
+      <EPSMExplainerAnimation />
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
