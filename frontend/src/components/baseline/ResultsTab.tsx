@@ -77,37 +77,70 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     setCurrentPage(1); // Reset to first page when changing page size
   };
 
-  // Format energy use data for the chart
-  const formatEnergyUseData = (energyUse: any) => {
+  // Format energy use data for the chart (normalized per m²)
+  const formatEnergyUseData = (energyUse: any, floorArea: number = 1) => {
     if (!energyUse) return null;
 
     const categories = Object.keys(energyUse).filter(key => 
       energyUse[key].total > 0 // Only show categories with non-zero values
     );
 
-    const electricityData = categories.map(cat => energyUse[cat].electricity || 0);
-    const districtHeatingData = categories.map(cat => energyUse[cat].district_heating || 0);
+    // Create two main labels for the stacks
+    const labels = ['Electric', 'District Heating'];
+
+    // Color palettes
+    const blueShades = [
+      'rgba(13, 71, 161, 0.8)',   // Dark blue
+      'rgba(25, 118, 210, 0.8)',  // Medium blue
+      'rgba(66, 165, 245, 0.8)',  // Light blue
+      'rgba(100, 181, 246, 0.8)', // Lighter blue
+      'rgba(144, 202, 249, 0.8)', // Very light blue
+    ];
+
+    const redPinkShades = [
+      'rgba(183, 28, 28, 0.8)',   // Dark red
+      'rgba(211, 47, 47, 0.8)',   // Medium red
+      'rgba(244, 67, 54, 0.8)',   // Red
+      'rgba(239, 83, 80, 0.8)',   // Light red
+      'rgba(255, 138, 128, 0.8)', // Pink
+    ];
+
+    const datasets: any[] = [];
+    let blueIndex = 0;
+    let redIndex = 0;
+
+    categories.forEach(category => {
+      const electricity = (energyUse[category].electricity || 0) / floorArea;
+      const districtHeating = (energyUse[category].district_heating || 0) / floorArea;
+
+      if (electricity > 0) {
+        datasets.push({
+          label: `${category} (Electric)`,
+          data: [electricity, 0], // First bar (Electric), zero for second bar
+          backgroundColor: blueShades[blueIndex % blueShades.length],
+          borderColor: blueShades[blueIndex % blueShades.length].replace('0.8', '1'),
+          borderWidth: 1,
+          stack: 'stack0',
+        });
+        blueIndex++;
+      }
+
+      if (districtHeating > 0) {
+        datasets.push({
+          label: `${category} (Heating)`,
+          data: [0, districtHeating], // Zero for first bar, second bar (Heating)
+          backgroundColor: redPinkShades[redIndex % redPinkShades.length],
+          borderColor: redPinkShades[redIndex % redPinkShades.length].replace('0.8', '1'),
+          borderWidth: 1,
+          stack: 'stack0',
+        });
+        redIndex++;
+      }
+    });
 
     return {
-      labels: categories,
-      datasets: [
-        {
-          label: 'Electricity',
-          data: electricityData,
-          backgroundColor: 'rgba(54, 162, 235, 0.8)',
-          borderColor: 'rgba(54, 162, 235, 1)',
-          borderWidth: 1,
-          stack: 'Stack 0',
-        },
-        {
-          label: 'District Heating',
-          data: districtHeatingData,
-          backgroundColor: 'rgba(255, 99, 132, 0.8)',
-          borderColor: 'rgba(255, 99, 132, 1)',
-          borderWidth: 1,
-          stack: 'Stack 0',
-        }
-      ]
+      labels: labels,
+      datasets: datasets
     };
   };
 
@@ -118,16 +151,33 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     plugins: {
       legend: {
         position: 'top' as const,
+        display: false, // Hide legend to save space
       },
       title: {
         display: true,
-        text: 'Energy Use by End Use (kWh)',
+        text: 'Energy Use by End Use',
+        font: { size: 14 }
       },
       tooltip: {
         callbacks: {
           label: function(context: any) {
             const value = context.raw;
-            return `${context.dataset.label}: ${value.toLocaleString()} kWh`;
+            if (value === 0) return undefined; // Don't show zero values
+            return `${context.dataset.label}: ${value.toFixed(1)} kWh/m²`;
+          },
+          footer: function(tooltipItems: any[]) {
+            // Calculate totals for the hovered bar
+            const dataIndex = tooltipItems[0].dataIndex;
+            const datasets = tooltipItems[0].chart.data.datasets;
+            
+            let total = 0;
+            
+            datasets.forEach((dataset: any) => {
+              const value = dataset.data[dataIndex] || 0;
+              total += value;
+            });
+            
+            return total > 0 ? `Total: ${total.toFixed(1)} kWh/m²` : '';
           }
         }
       }
@@ -137,15 +187,15 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
         stacked: true,
         ticks: {
           autoSkip: false,
-          maxRotation: 45,
-          minRotation: 45
+          maxRotation: 0,
+          minRotation: 0
         }
       },
       y: {
         stacked: true,
         title: {
           display: true,
-          text: 'Energy Use (kWh)'
+          text: 'kWh/m²'
         }
       }
     }
@@ -203,8 +253,15 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
       intersect: false
     },
     plugins: {
-      legend: { position: 'top' as const },
-      title: { display: true, text: 'Heating vs Cooling vs Electric (kWh/m²)' },
+      legend: { 
+        position: 'top' as const,
+        display: false // Hide legend to save space
+      },
+      title: { 
+        display: true, 
+        text: 'Heating vs Cooling vs Electric',
+        font: { size: 14 }
+      },
       tooltip: {
         callbacks: {
           label: (context: any) => {
@@ -217,7 +274,8 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     scales: {
       x: {
         stacked: true,
-        title: { display: true, text: 'Simulation File' }
+        title: { display: false },
+        ticks: { display: false } // Hide x-axis labels to save space
       },
       y: {
         stacked: true,
@@ -257,7 +315,9 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     : [simulationResults];
 
   // Get chart data from the first result (if multiple files)
-  const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
+  // Extract floor area from first result (fallback to 1 if not available)
+  const floorArea = resultsArray[0]?.buildingArea ?? resultsArray[0]?.building_area ?? resultsArray[0]?.floorArea ?? 1;
+  const chartData = formatEnergyUseData(resultsArray[0]?.energy_use, floorArea);
   const energyBreakdownChartData = buildEnergyBreakdownChartData(resultsArray);
 
   // Process raw data in chunks to avoid freezing the UI
@@ -435,18 +495,25 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 </Table>
               </TableContainer>
               
-              {resultsArray.length > 0 && (
-                <Box sx={{ height: 400, mt: 4 }}>
-                  <Bar data={energyBreakdownChartData} options={energyBreakdownChartOptions} />
-                </Box>
-              )}
+              {/* Place charts side by side to save space */}
+              <Grid container spacing={2} sx={{ mt: 4 }}>
+                {resultsArray.length > 0 && (
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ height: 350 }}>
+                      <Bar data={energyBreakdownChartData} options={energyBreakdownChartOptions} />
+                    </Box>
+                  </Grid>
+                )}
 
-              {/* Only show the single IDF chart if only one result */}
-              {resultsArray.length === 1 && chartData && (
-                <Box sx={{ height: '400px', mt: 4 }}>
-                  <Bar data={chartData} options={chartOptions} />
-                </Box>
-              )}
+                {/* Only show the single IDF chart if only one result */}
+                {resultsArray.length === 1 && chartData && (
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ height: 350 }}>
+                      <Bar data={chartData} options={chartOptions} />
+                    </Box>
+                  </Grid>
+                )}
+              </Grid>
             </Box>
           )}
           
