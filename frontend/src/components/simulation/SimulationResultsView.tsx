@@ -187,14 +187,16 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                   </TableHead>
                   <TableBody>
                     {resultsWithPerArea.map((result, index) => (
-                      <TableRow key={index}>
+                      <TableRow key={index} hover>
                         <TableCell>{result.fileName}</TableCell>
                         <TableCell align="right">{fmt(result.totalEnergyPerArea)}</TableCell>
                         {/* Ensure table cell coloring matches scatter plot logic */}
                         <TableCell
                           align="right"
                           sx={{
-                            backgroundColor: getColorFromHeating(result.heatingPerArea, minHeating, maxHeating)
+                            '&:hover': {
+                              backgroundColor: getColorFromHeating(result.heatingPerArea, minHeating, maxHeating)
+                            }
                           }}
                         >
                           {fmt(result.heatingPerArea)}
