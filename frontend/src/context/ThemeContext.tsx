@@ -118,6 +118,19 @@ export const ThemeProvider = ({ children }: ThemeProviderProps) => {
           },
         },
       },
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            fontSize: '0.875rem',
+            padding: '8px 12px',
+            backgroundColor: isDarkMode ? '#424242' : '#616161',
+            color: '#ffffff',
+          },
+          arrow: {
+            color: isDarkMode ? '#424242' : '#616161',
+          },
+        },
+      },
     },
   });
 
