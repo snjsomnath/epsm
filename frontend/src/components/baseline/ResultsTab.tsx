@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Box, 
   Typography, 
@@ -18,7 +18,11 @@ import {
   Card,
   CardContent,
   CardActions,
-  CircularProgress
+  CircularProgress,
+  Pagination,
+  TextField,
+  MenuItem,
+  Stack
 } from '@mui/material';
 import { Download, FileText, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import {
@@ -51,6 +55,10 @@ interface ResultsTabProps {
 const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: ResultsTabProps) => {
   const [tabValue, setTabValue] = useState(0);
   const [rawDataRendered, setRawDataRendered] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [linesPerPage, setLinesPerPage] = useState(100);
+  const [isLoadingRawData, setIsLoadingRawData] = useState(false);
+  const [rawDataChunks, setRawDataChunks] = useState<string[]>([]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -58,6 +66,15 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
     if (newValue === 2 && !rawDataRendered) {
       setRawDataRendered(true);
     }
+  };
+
+  const handlePageChange = (_: React.ChangeEvent<unknown>, page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handleLinesPerPageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setLinesPerPage(Number(event.target.value));
+    setCurrentPage(1); // Reset to first page when changing page size
   };
 
   // Format energy use data for the chart
@@ -243,12 +260,57 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
   const chartData = formatEnergyUseData(resultsArray[0]?.energy_use);
   const energyBreakdownChartData = buildEnergyBreakdownChartData(resultsArray);
 
-  // Memoize the stringified JSON to avoid re-computing on every render
-  // Only compute when raw data tab has been selected
-  const stringifiedResults = useMemo(() => {
-    if (!rawDataRendered) return '';
-    return JSON.stringify(resultsArray, null, 2);
+  // Process raw data in chunks to avoid freezing the UI
+  useEffect(() => {
+    if (!rawDataRendered) {
+      setRawDataChunks([]);
+      setIsLoadingRawData(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingRawData(true);
+
+    // Process in the next tick to avoid blocking the render
+    const processData = async () => {
+      try {
+        const jsonString = JSON.stringify(resultsArray, null, 2);
+        
+        // Split into lines
+        const lines = jsonString.split('\n');
+        
+        if (isCancelled) return;
+        
+        setRawDataChunks(lines);
+        setIsLoadingRawData(false);
+      } catch (error) {
+        console.error('Error processing raw data:', error);
+        if (!isCancelled) {
+          setIsLoadingRawData(false);
+        }
+      }
+    };
+
+    // Delay slightly to ensure tab switch animation completes
+    const timeoutId = setTimeout(processData, 100);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [resultsArray, rawDataRendered]);
+
+  // Calculate pagination for raw data
+  const totalPages = useMemo(() => 
+    Math.ceil(rawDataChunks.length / linesPerPage),
+    [rawDataChunks.length, linesPerPage]
+  );
+
+  const paginatedRawData = useMemo(() => {
+    const startIndex = (currentPage - 1) * linesPerPage;
+    const endIndex = startIndex + linesPerPage;
+    return rawDataChunks.slice(startIndex, endIndex).join('\n');
+  }, [rawDataChunks, currentPage, linesPerPage]);
 
   return (
     <Box>
@@ -424,18 +486,84 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
           
           {tabValue === 2 && (
             <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Raw Simulation Data
-              </Typography>
-              <Paper sx={{ p: 2, maxHeight: '400px', overflow: 'auto' }}>
-                {rawDataRendered ? (
-                  <pre style={{ margin: 0 }}>{stringifiedResults}</pre>
-                ) : (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+              <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+                <Typography variant="subtitle1">
+                  Raw Simulation Data
+                </Typography>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <TextField
+                    select
+                    size="small"
+                    label="Lines per page"
+                    value={linesPerPage}
+                    onChange={handleLinesPerPageChange}
+                    sx={{ minWidth: 150 }}
+                  >
+                    <MenuItem value={50}>50 lines</MenuItem>
+                    <MenuItem value={100}>100 lines</MenuItem>
+                    <MenuItem value={200}>200 lines</MenuItem>
+                    <MenuItem value={500}>500 lines</MenuItem>
+                    <MenuItem value={1000}>1000 lines</MenuItem>
+                  </TextField>
+                  {rawDataChunks.length > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      Total lines: {rawDataChunks.length.toLocaleString()}
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+
+              {isLoadingRawData ? (
+                <Paper sx={{ p: 2, minHeight: '400px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <Box sx={{ textAlign: 'center' }}>
                     <CircularProgress />
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      Loading raw data...
+                    </Typography>
                   </Box>
-                )}
-              </Paper>
+                </Paper>
+              ) : rawDataChunks.length > 0 ? (
+                <>
+                  <Paper sx={{ p: 2, maxHeight: '500px', overflow: 'auto', bgcolor: '#f5f5f5' }}>
+                    <Typography 
+                      component="pre" 
+                      sx={{ 
+                        margin: 0, 
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                        lineHeight: 1.5,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}
+                    >
+                      {paginatedRawData}
+                    </Typography>
+                  </Paper>
+                  
+                  {totalPages > 1 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                      <Pagination 
+                        count={totalPages} 
+                        page={currentPage} 
+                        onChange={handlePageChange}
+                        color="primary"
+                        showFirstButton
+                        showLastButton
+                      />
+                    </Box>
+                  )}
+                  
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Showing lines {((currentPage - 1) * linesPerPage) + 1} to {Math.min(currentPage * linesPerPage, rawDataChunks.length)} of {rawDataChunks.length.toLocaleString()}
+                  </Alert>
+                </>
+              ) : (
+                <Paper sx={{ p: 2, minHeight: '200px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  <Typography color="text.secondary">
+                    No raw data available
+                  </Typography>
+                </Paper>
+              )}
             </Box>
           )}
         </Box>
