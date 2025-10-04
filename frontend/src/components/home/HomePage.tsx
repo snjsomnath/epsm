@@ -102,7 +102,12 @@ const HomePage = () => {
 
   useEffect(() => {
     if (showTourNextTime) {
-      setRunTour(true);
+      // Wait 5 seconds to let users see the animated banner first
+      const timer = setTimeout(() => {
+        setRunTour(true);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
     }
   }, [showTourNextTime]);
 

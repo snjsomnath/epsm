@@ -41,11 +41,11 @@ const LoginAnimation: React.FC = () => {
           // Last step - show "Ready!" for longer
           setTimeout(() => {
             // Component will unmount when login completes
-          }, 2000);
+          }, 3000);
         }
         return next;
       });
-    }, 3000);
+    }, 5000); // Increased from 3000ms to 5000ms (5 seconds per step)
 
     const progressInterval = setInterval(() => {
       setProgress((prev) => {
