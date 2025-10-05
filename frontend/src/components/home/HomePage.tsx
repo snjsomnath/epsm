@@ -35,29 +35,50 @@ import {
   ChevronDown, 
   ChevronRight
 } from 'lucide-react';
-import Joyride, { Step, CallBackProps } from 'react-joyride';
+import { driver } from 'driver.js';
+import 'driver.js/dist/driver.css';
 import { getMaterials, getConstructions } from '../../lib/database-browser';
 import { useAuth } from '../../context/AuthContext';
 import axios from 'axios';
 import EPSMExplainerAnimation from './EPSMExplainer';
 
-const steps: Step[] = [
+// Driver.js tour steps with smooth animations
+const tourSteps = [
   {
-    target: '.tour-database',
-    content: 'Start by creating materials and construction sets in the database. This is where you manage all your building components.',
-    disableBeacon: true,
+    element: '.tour-database',
+    popover: {
+      title: 'Set Up Your Database',
+      description: 'Start by creating materials and construction sets in the database. This is where you manage all your building components.',
+      side: 'right' as const,
+      align: 'start' as const,
+    },
   },
   {
-    target: '.tour-baseline',
-    content: 'Upload your baseline IDF files and run initial simulations to establish your reference case.',
+    element: '.tour-baseline',
+    popover: {
+      title: 'Define Baseline',
+      description: 'Upload your baseline IDF files and run initial simulations to establish your reference case.',
+      side: 'right' as const,
+      align: 'start' as const,
+    },
   },
   {
-    target: '.tour-scenario',
-    content: 'Create different scenarios to test various retrofit strategies and compare their performance.',
+    element: '.tour-scenario',
+    popover: {
+      title: 'Create Scenarios',
+      description: 'Create different scenarios to test various retrofit strategies and compare their performance.',
+      side: 'right' as const,
+      align: 'start' as const,
+    },
   },
   {
-    target: '.tour-simulation',
-    content: 'Run batch simulations for your scenarios and analyze the results to make informed decisions.',
+    element: '.tour-simulation',
+    popover: {
+      title: 'Run Simulations',
+      description: 'Run batch simulations for your scenarios and analyze the results to make informed decisions.',
+      side: 'right' as const,
+      align: 'start' as const,
+    },
   },
 ];
 
@@ -213,11 +234,29 @@ const HomePage = () => {
     fetchSystemResources();
   }, []);
 
-  const handleTourCallback = (data: CallBackProps) => {
-    if (data.status === 'finished' || data.status === 'skipped') {
-      setRunTour(false);
+  // Initialize driver.js tour
+  useEffect(() => {
+    if (showTourNextTime && runTour) {
+      const driverObj = driver({
+        showProgress: true,
+        steps: tourSteps,
+        nextBtnText: 'Next →',
+        prevBtnText: '← Previous',
+        doneBtnText: 'Done',
+        progressText: '{{current}} of {{total}}',
+        overlayColor: 'rgba(0, 0, 0, 0.7)',
+        smoothScroll: true,
+        animate: true,
+        popoverClass: 'driver-popover-custom',
+        onDestroyStarted: () => {
+          setRunTour(false);
+          driverObj.destroy();
+        },
+      });
+
+      driverObj.drive();
     }
-  };
+  }, [runTour, showTourNextTime]);
 
   const handleShowTourChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setShowTourNextTime(event.target.checked);
@@ -230,20 +269,50 @@ const HomePage = () => {
 
   return (
     <Box>
-      <Joyride
-        steps={steps}
-        run={runTour}
-        continuous
-        showSkipButton
-        showProgress
-        styles={{
-          options: {
-            primaryColor: '#1976d2',
-            zIndex: 10000,
-          },
-        }}
-        callback={handleTourCallback}
-      />
+      {/* Custom styles for driver.js tour */}
+      <style>
+        {`
+          .driver-popover-custom {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          }
+          .driver-popover-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1976d2;
+          }
+          .driver-popover-description {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #333;
+          }
+          .driver-popover-next-btn {
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+          }
+          .driver-popover-next-btn:hover {
+            background-color: #1565c0;
+          }
+          .driver-popover-prev-btn {
+            color: #1976d2;
+            background-color: transparent;
+            border: 1px solid #1976d2;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+          }
+          .driver-popover-prev-btn:hover {
+            background-color: #e3f2fd;
+          }
+        `}
+      </style>
 
       {/* EPSM Explainer Animation */}
       <EPSMExplainerAnimation />
