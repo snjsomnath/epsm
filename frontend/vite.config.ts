@@ -6,6 +6,9 @@ const backendHost = process.env.BACKEND_HOST || 'http://backend:8000';
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: ['driver.js'],
+  },
   server: {
     host: true,
     proxy: {
