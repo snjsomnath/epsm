@@ -12,7 +12,6 @@ import type { ParsedData } from '../../types/simulation';
 
 const BaselinePage = () => {
   const [tabIndex, setTabIndex] = useState(0);
-  const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [simulating, setSimulating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [simulationComplete, setSimulationComplete] = useState(false);
@@ -20,7 +19,7 @@ const BaselinePage = () => {
   const [parsing, setParsing] = useState(false);
   const [simulationResults, setSimulationResults] = useState<any>(null);
 
-  const { uploadedFiles, parsedData, setUploadedFiles, setParsedData, addToBaselineRun, updateBaselineRun, baselineHistory, removeBaselineRun, loadResults } = useSimulation();
+  const { uploadedFiles, parsedData, weatherFile, setUploadedFiles, setParsedData, setWeatherFile, addToBaselineRun, updateBaselineRun, baselineHistory, removeBaselineRun, loadResults } = useSimulation();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -202,7 +201,7 @@ const BaselinePage = () => {
                 <FileText size={20} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} /> IDF Files
               </Typography>
               <Typography variant="body2" color="text.secondary" paragraph>Upload one or more IDF files to analyze their components</Typography>
-              <IdfUploadArea onFilesUploaded={handleIdfFilesUploaded} />
+              <IdfUploadArea onFilesUploaded={handleIdfFilesUploaded} initialFiles={uploadedFiles} />
               {parsing && (
                 <Box sx={{ mt: 2 }}>
                   <LinearProgress />
@@ -230,7 +229,7 @@ const BaselinePage = () => {
                 <FileText size={20} style={{ verticalAlign: 'text-bottom', marginRight: 8 }} /> Weather File
               </Typography>
               <Typography variant="body2" color="text.secondary" paragraph>Upload a weather file (EPW format) for the simulation</Typography>
-              <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} />
+              <EpwUploadArea onFileUploaded={handleWeatherFileUploaded} initialFile={weatherFile} />
             </CardContent>
           </Card>
         </Grid>

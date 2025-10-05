@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Box, 
   Paper, 
@@ -13,14 +13,22 @@ import { FileText } from 'lucide-react';
 
 interface IdfUploadAreaProps {
   onFilesUploaded: (files: File[]) => void;
+  initialFiles?: File[];
 }
 
-const IdfUploadArea = ({ onFilesUploaded }: IdfUploadAreaProps) => {
-  const [idfFiles, setIdfFiles] = useState<File[]>([]);
+const IdfUploadArea = ({ onFilesUploaded, initialFiles = [] }: IdfUploadAreaProps) => {
+  const [idfFiles, setIdfFiles] = useState<File[]>(initialFiles);
   const [isDragging, setIsDragging] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync with initialFiles from parent (e.g., from context)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && idfFiles.length === 0) {
+      setIdfFiles(initialFiles);
+    }
+  }, [initialFiles, idfFiles.length]);
 
   const validateIdfFile = async (file: File): Promise<boolean> => {
     try {
