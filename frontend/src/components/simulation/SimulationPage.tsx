@@ -107,6 +107,8 @@ const SimulationPage = () => {
   const {
     uploadedFiles,
     parsedData,
+    weatherFile,
+    setWeatherFile,
     updateUploadedFiles,
     loadResults: loadResultsFromHistory,
     lastResults,
@@ -139,7 +141,6 @@ const SimulationPage = () => {
   const [lastResourceAt, setLastResourceAt] = useState<number | null>(null);
   const [monitorStale, setMonitorStale] = useState(false);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
-  const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'info' });
   const [historyLoading, setHistoryLoading] = useState<string | null>(null);
