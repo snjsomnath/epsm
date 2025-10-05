@@ -27,8 +27,10 @@ export interface ActiveSimulationRun {
 interface SimulationContextType {
   uploadedFiles: File[];
   parsedData: ParsedData | null;
+  weatherFile: File | null;
   setUploadedFiles: (files: File[]) => void;
   setParsedData: (data: ParsedData | null) => void;
+  setWeatherFile: (file: File | null) => void;
   clearSimulationData: () => void;
   // new helper to update uploaded files (keeps API stable for components)
   updateUploadedFiles?: (files: File[]) => void;
@@ -60,8 +62,10 @@ interface SimulationContextType {
 const SimulationContext = createContext<SimulationContextType>({
   uploadedFiles: [],
   parsedData: null,
+  weatherFile: null,
   setUploadedFiles: () => {},
   setParsedData: () => {},
+  setWeatherFile: () => {},
   clearSimulationData: () => {},
   activeRun: null,
   setActiveRun: () => {},
@@ -78,6 +82,7 @@ interface SimulationProviderProps {
 export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+  const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [cachedResults, setCachedResults] = useState<Record<string, any>>(() => {
     try {
       const raw = localStorage.getItem('simulation_cached_results');
@@ -115,6 +120,7 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const clearSimulationData = () => {
     setUploadedFiles([]);
     setParsedData(null);
+    setWeatherFile(null);
   };
 
   const [lastResults, setLastResults] = useState<any[]>(() => {
@@ -322,8 +328,10 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
       value={{
         uploadedFiles,
         parsedData,
+        weatherFile,
         setUploadedFiles,
         setParsedData,
+        setWeatherFile,
         clearSimulationData,
         updateUploadedFiles,
         cachedResults,

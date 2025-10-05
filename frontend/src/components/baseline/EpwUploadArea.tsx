@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Box, 
   Paper, 
@@ -14,14 +14,22 @@ import { validateWeatherFile } from '../../utils/api';
 
 interface EpwUploadAreaProps {
   onFileUploaded: (file: File | null) => void;
+  initialFile?: File | null;
 }
 
-const EpwUploadArea = ({ onFileUploaded }: EpwUploadAreaProps) => {
-  const [epwFile, setEpwFile] = useState<File | null>(null);
+const EpwUploadArea = ({ onFileUploaded, initialFile = null }: EpwUploadAreaProps) => {
+  const [epwFile, setEpwFile] = useState<File | null>(initialFile);
   const [isDragging, setIsDragging] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync with initialFile from parent (e.g., from context)
+  useEffect(() => {
+    if (initialFile && !epwFile) {
+      setEpwFile(initialFile);
+    }
+  }, [initialFile, epwFile]);
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
