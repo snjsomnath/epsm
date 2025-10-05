@@ -469,6 +469,26 @@ const SimulationPage = () => {
       return;
     }
     if (activeRun.status === 'completed' || activeRun.status === 'failed') {
+      // If simulation was already marked as completed/failed, don't resume monitoring
+      // but do restore the UI state
+      resumeAttemptedRef.current = true;
+      setCurrentSimulationId(activeRun.simulationId);
+      setIsComplete(true);
+      setIsRunning(false);
+      setIsPaused(false);
+      if (typeof activeRun.progress === 'number') {
+        setProgress(activeRun.progress);
+        progressRef.current = activeRun.progress;
+      }
+      if (typeof activeRun.completedSimulations === 'number') {
+        setCompletedSimulations(activeRun.completedSimulations);
+        resultsCountRef.current = Math.max(resultsCountRef.current, activeRun.completedSimulations);
+      }
+      if (activeRun.totalSimulations) {
+        setTotalSimulations(activeRun.totalSimulations);
+      }
+      // Fetch results one last time to ensure we have the latest
+      fetchSimulationResults(activeRun.simulationId, { force: true });
       return;
     }
     if (resumeAttemptedRef.current && currentSimulationId === activeRun.simulationId) {
@@ -479,7 +499,14 @@ const SimulationPage = () => {
       setSelectedScenario(activeRun.scenarioId);
     }
     setCurrentSimulationId(activeRun.simulationId);
-    // Check status safely - activeRun.status might not include 'completed'
+    
+    // Check if simulation might have completed while we were away
+    // If progress is 100% or completedSimulations equals totalSimulations, verify status
+    const mightBeComplete = 
+      (activeRun.progress === 100) || 
+      (activeRun.completedSimulations && activeRun.totalSimulations && 
+       activeRun.completedSimulations >= activeRun.totalSimulations);
+    
     setIsComplete(false);
     setIsRunning(activeRun.status === 'running');
     setIsPaused(activeRun.status === 'paused');
@@ -494,9 +521,37 @@ const SimulationPage = () => {
     if (activeRun.totalSimulations) {
       setTotalSimulations(activeRun.totalSimulations);
     }
-    fetchSimulationResults(activeRun.simulationId, { force: true });
-    startMonitoring(activeRun.simulationId, true);
-  }, [activeRun, fetchSimulationResults, startMonitoring, currentSimulationId, backendAvailable]);
+    
+    // Fetch results first to get current state
+    fetchSimulationResults(activeRun.simulationId, { force: true }).then(() => {
+      // If we suspected completion, verify with backend status
+      if (mightBeComplete) {
+        authenticatedFetch(`http://localhost:8000/api/simulation/${activeRun.simulationId}/status/`)
+          .then(async (statusResponse) => {
+            if (statusResponse && statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              if (statusData.status === 'completed') {
+                // Simulation completed while we were away, finalize it
+                await finalizeSimulation(activeRun.simulationId);
+                return;
+              } else if (statusData.status === 'failed') {
+                handleSimulationFailure(activeRun.simulationId, statusData.error_message);
+                return;
+              }
+            }
+            // Not complete yet, start monitoring normally
+            startMonitoring(activeRun.simulationId, true);
+          })
+          .catch(() => {
+            // If status check fails, assume still running and start monitoring
+            startMonitoring(activeRun.simulationId, true);
+          });
+      } else {
+        // Definitely still running, start monitoring
+        startMonitoring(activeRun.simulationId, true);
+      }
+    });
+  }, [activeRun, fetchSimulationResults, startMonitoring, finalizeSimulation, handleSimulationFailure, currentSimulationId, backendAvailable, authenticatedFetch]);
 
   // Check backend availability
   useEffect(() => {
