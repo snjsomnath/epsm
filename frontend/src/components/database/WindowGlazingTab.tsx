@@ -662,7 +662,7 @@ const WindowGlazingTab = () => {
         color="primary" 
         aria-label="add" 
         onClick={() => setOpenModal(true)}
-        sx={{ position: 'fixed', bottom: 16, right: 16 }}
+        sx={{ position: 'fixed', bottom: 80, right: 16 }}
       >
         <Plus />
       </Fab>
