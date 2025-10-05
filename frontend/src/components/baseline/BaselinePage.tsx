@@ -139,6 +139,7 @@ const BaselinePage = () => {
                 const resultsResponse = await authenticatedFetch(`${backendUrl}/api/simulation/${simulation_id}/results/`);
                 if (!resultsResponse.ok) {
                   setSimulationResults({ error: `Failed to fetch results: ${resultsResponse.statusText}`, simulationId: simulation_id, fileName: uploadedFiles[0]?.name || 'Unknown file', totalEnergy: 0, heating: 0, cooling: 0, runTime: 0 });
+                  setSelectedRunId(simulation_id);
                   setSimulationComplete(true); setSimulating(false); setTabIndex(0); return;
                 }
                 resultsData = await resultsResponse.json();
@@ -152,6 +153,7 @@ const BaselinePage = () => {
               }
 
               setSimulationResults(resultsData);
+              setSelectedRunId(simulation_id);
 
               const computeKpiSummary = (data: any) => {
                 if (!data) return {};
@@ -172,6 +174,7 @@ const BaselinePage = () => {
             } catch (resultError: any) {
               console.error('Error fetching results:', resultError);
               setSimulationResults({ error: `Error fetching results: ${resultError?.message || String(resultError)}`, simulationId: simulation_id });
+              setSelectedRunId(simulation_id);
               setSimulationComplete(true); setSimulating(false);
             }
           } else if (statusData.status === 'failed') {
