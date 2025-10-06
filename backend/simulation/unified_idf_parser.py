@@ -1200,11 +1200,11 @@ def calculate_gwp_and_cost_from_construction_set(
             continue
         
         try:
-            # Fetch construction from database
+            # Fetch construction from database (must use materials_db)
             if construction_id:
-                construction = Construction.objects.filter(id=construction_id).first()
+                construction = Construction.objects.using('materials_db').filter(id=construction_id).first()
             else:
-                construction = Construction.objects.filter(name=construction_name).first()
+                construction = Construction.objects.using('materials_db').filter(name=construction_name).first()
             
             if construction:
                 gwp_per_m2 = getattr(construction, 'gwp_kgco2e_per_m2', 0.0) or 0.0
@@ -1212,9 +1212,14 @@ def calculate_gwp_and_cost_from_construction_set(
                 
                 total_gwp += area * gwp_per_m2
                 total_cost += area * cost_per_m2
+                print(f"  {element_type}: area={area:.2f} m², GWP={gwp_per_m2:.2f} kg/m², Cost={cost_per_m2:.2f} SEK/m² → Total GWP={area * gwp_per_m2:.2f}, Total Cost={area * cost_per_m2:.2f}")
+            else:
+                print(f"Warning: Construction not found in database - element_type={element_type}, id={construction_id}, name={construction_name}")
         except Exception as e:
             # Non-fatal: log and continue
             print(f"Warning: Failed to fetch construction data for {element_type}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
     
     return {
