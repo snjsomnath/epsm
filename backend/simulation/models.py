@@ -72,6 +72,10 @@ class SimulationResult(models.Model):
     lighting_demand = models.FloatField(null=True, blank=True)   # kWh/m²
     equipment_demand = models.FloatField(null=True, blank=True)  # kWh/m²
     
+    # Environmental and cost metrics
+    gwp_total = models.FloatField(null=True, blank=True)         # kg CO2e (total embodied carbon)
+    cost_total = models.FloatField(null=True, blank=True)        # SEK (total construction cost)
+    
     # Building metrics
     total_area = models.FloatField(null=True, blank=True)        # m²
     run_time = models.FloatField(null=True, blank=True)          # seconds

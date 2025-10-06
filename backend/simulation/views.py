@@ -424,7 +424,7 @@ def run_simulation(request):
         construction_sets = None
         if scenario_id:
             try:
-                from database.models import ScenarioConstruction, Layer
+                from database.models import ScenarioConstruction, Layer, Scenario
                 import itertools
 
                 sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario_id=scenario_id)
@@ -445,6 +445,16 @@ def run_simulation(request):
                         'name': c.name,
                         'layers': layers
                     })
+
+                scenario_expected_total = None
+                scenario_obj = None
+                if scenario_id:
+                    try:
+                        scenario_obj = Scenario.objects.using('materials_db').filter(id=scenario_id).first()
+                        if scenario_obj and getattr(scenario_obj, 'total_simulations', None):
+                            scenario_expected_total = int(getattr(scenario_obj, 'total_simulations'))
+                    except Exception as scenario_lookup_err:
+                        print(f"Warning: failed to load scenario {scenario_id} for expected total simulations: {scenario_lookup_err}")
 
                 if groups:
                     # Two supported modes for creating construction sets:
@@ -486,6 +496,17 @@ def run_simulation(request):
 
                     # If we found construction_sets, ensure batch_mode is enabled
                     if construction_sets:
+                        if (
+                            scenario_expected_total is not None and
+                            scenario_expected_total > 0 and
+                            len(construction_sets) > scenario_expected_total
+                        ):
+                            # Trim to the number of simulations the scenario explicitly expects
+                            print(
+                                f"Scenario {scenario_id} expected {scenario_expected_total} simulations, "
+                                f"but generated {len(construction_sets)} construction sets; trimming the list."
+                            )
+                            construction_sets = construction_sets[:scenario_expected_total]
                         batch_mode = True
             except Exception as e:
                 print(f"Warning: failed to build construction_sets for scenario {scenario_id}: {e}")
@@ -1029,6 +1050,10 @@ def list_simulation_results(request):
                 'total_energy_use': getattr(r, 'total_energy_use', None),
                 'heating_demand': getattr(r, 'heating_demand', None),
                 'cooling_demand': getattr(r, 'cooling_demand', None),
+                'gwp_total': getattr(r, 'gwp_total', None),
+                'gwp': getattr(r, 'gwp_total', None),  # Alias for frontend compatibility
+                'cost_total': getattr(r, 'cost_total', None),
+                'cost': getattr(r, 'cost_total', None),  # Alias for frontend compatibility
                 'run_time': getattr(r, 'run_time', None),
                 'total_area': getattr(r, 'total_area', None),
                 'status': getattr(r, 'status', None),

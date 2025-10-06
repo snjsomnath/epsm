@@ -276,6 +276,11 @@ const ScenarioPage = () => {
                       setSelectedConstructions(merged);
                     }}
                     input={<OutlinedInput label="Construction Sets" />}
+                    MenuProps={{
+                      PaperProps: { style: { maxHeight: 400 } },
+                      anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                      transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    }}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {(selected as string[]).map((value) => {
@@ -306,6 +311,11 @@ const ScenarioPage = () => {
                       walls: e.target.value as string[] 
                     }))}
                     input={<OutlinedInput label="Wall Constructions" />}
+                    MenuProps={{
+                      PaperProps: { style: { maxHeight: 400 } },
+                      anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                      transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    }}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => {
@@ -346,6 +356,11 @@ const ScenarioPage = () => {
                       roofs: e.target.value as string[] 
                     }))}
                     input={<OutlinedInput label="Roof Constructions" />}
+                    MenuProps={{
+                      PaperProps: { style: { maxHeight: 400 } },
+                      anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                      transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    }}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => {
@@ -386,6 +401,11 @@ const ScenarioPage = () => {
                       floors: e.target.value as string[] 
                     }))}
                     input={<OutlinedInput label="Floor Constructions" />}
+                    MenuProps={{
+                      PaperProps: { style: { maxHeight: 400 } },
+                      anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                      transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    }}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => {
@@ -426,6 +446,11 @@ const ScenarioPage = () => {
                       windows: e.target.value as string[] 
                     }))}
                     input={<OutlinedInput label="Window Constructions" />}
+                    MenuProps={{
+                      PaperProps: { style: { maxHeight: 400 } },
+                      anchorOrigin: { vertical: 'bottom', horizontal: 'left' },
+                      transformOrigin: { vertical: 'top', horizontal: 'left' },
+                    }}
                     renderValue={(selected) => (
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {selected.map((value) => {

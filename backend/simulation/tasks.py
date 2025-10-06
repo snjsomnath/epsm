@@ -214,6 +214,35 @@ def run_single_variant_task(
             file_results["variant_idx"] = variant_idx
             file_results["idf_idx"] = idf_idx
             file_results["construction_set"] = construction_set
+            
+            # Calculate GWP and cost from construction set and element quantities
+            try:
+                from .unified_idf_parser import UnifiedIDFParser, calculate_gwp_and_cost_from_construction_set
+                
+                # Parse the variant IDF to get element quantities
+                with open(variant_idf_path, 'r', encoding='utf-8') as f:
+                    variant_content = f.read()
+                
+                parser = UnifiedIDFParser(variant_content, read_only=True)
+                parsed_data = parser.parse()
+                element_quantities = parsed_data.get('element_quantities', {})
+                
+                if element_quantities and construction_set:
+                    gwp_cost = calculate_gwp_and_cost_from_construction_set(
+                        element_quantities,
+                        construction_set
+                    )
+                    file_results['gwp_total'] = gwp_cost.get('gwp_total', 0.0)
+                    file_results['cost_total'] = gwp_cost.get('cost_total', 0.0)
+                    print(f"Variant {variant_idx}: GWP={gwp_cost.get('gwp_total')} kg CO2e, Cost={gwp_cost.get('cost_total')} SEK")
+                else:
+                    file_results['gwp_total'] = 0.0
+                    file_results['cost_total'] = 0.0
+            except Exception as calc_err:
+                print(f"Warning: Failed to calculate GWP/cost for variant {variant_idx}: {calc_err}")
+                file_results['gwp_total'] = 0.0
+                file_results['cost_total'] = 0.0
+            
             persisted = False
             try:
                 save_summary = simulator.save_results_to_database([file_results], job_info={
@@ -324,6 +353,13 @@ def run_single_simulation_task(
 
         if file_results:
             file_results["idf_idx"] = idf_idx
+            
+            # Note: Base IDF runs (non-parametric) don't have construction_set data,
+            # so GWP/cost can't be calculated without knowing which constructions were used.
+            # Set to 0.0 for non-parametric runs.
+            file_results.setdefault('gwp_total', 0.0)
+            file_results.setdefault('cost_total', 0.0)
+            
             persisted = False
             try:
                 save_summary = simulator.save_results_to_database([file_results], job_info={

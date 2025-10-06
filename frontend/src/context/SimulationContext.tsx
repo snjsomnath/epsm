@@ -20,7 +20,7 @@ export interface ActiveSimulationRun {
   startedAt: number;
   progress?: number;
   completedSimulations?: number;
-  totalSimulations?: number;
+  // totalSimulations removed - it should be derived from scenario, not persisted
   lastUpdated?: number;
 }
 
@@ -82,7 +82,19 @@ interface SimulationProviderProps {
 export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
-  const [weatherFile, setWeatherFile] = useState<File | null>(null);
+  const [weatherFile, setWeatherFile] = useState<File | null>(() => {
+    try {
+      const savedName = localStorage.getItem('simulation_weather_file_name');
+      if (savedName) {
+        // Create a placeholder File object - actual file will be re-uploaded if needed
+        const blob = new Blob([''], { type: 'text/plain' });
+        return new File([blob], savedName, { type: 'text/plain' });
+      }
+    } catch (e) {
+      console.warn('Failed to restore weather file from localStorage', e);
+    }
+    return null;
+  });
   const [cachedResults, setCachedResults] = useState<Record<string, any>>(() => {
     try {
       const raw = localStorage.getItem('simulation_cached_results');
@@ -121,6 +133,25 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
     setUploadedFiles([]);
     setParsedData(null);
     setWeatherFile(null);
+    try {
+      localStorage.removeItem('simulation_weather_file_name');
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  // Wrapper for setWeatherFile that persists the filename
+  const handleSetWeatherFile = (file: File | null) => {
+    setWeatherFile(file);
+    try {
+      if (file) {
+        localStorage.setItem('simulation_weather_file_name', file.name);
+      } else {
+        localStorage.removeItem('simulation_weather_file_name');
+      }
+    } catch (e) {
+      console.warn('Failed to persist weather file name', e);
+    }
   };
 
   const [lastResults, setLastResults] = useState<any[]>(() => {
@@ -275,52 +306,73 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
 
   const loadResults = async (simulationId: string) => {
     if (!simulationId) return null;
-    // Return cached if present
     if (cachedResults[simulationId]) return cachedResults[simulationId];
 
-    try {
-      const res = await authenticatedFetch(`/api/simulation/${simulationId}/results/`);
-      if (!res || !res.ok) return null;
-      const data = await res.json();
-      // normalize KPI keys for consistency across the UI
-      const normalize = (item: any) => {
-        if (!item || typeof item !== 'object') return item;
-        const asNumber = (v: any) => {
-          if (typeof v === 'number' && Number.isFinite(v)) return v;
-          if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
-          return undefined;
-        };
-        const pick = (obj: any, candidates: string[]) => {
-          for (const k of candidates) {
-            if (Object.prototype.hasOwnProperty.call(obj, k)) {
-              const n = asNumber(obj[k]);
-              if (typeof n === 'number') return n;
-            }
-          }
-          return undefined;
-        };
+    const endpoints = [
+      `/api/simulation/${simulationId}/parallel-results/`,
+      `/api/simulation/${simulationId}/results/`,
+    ];
 
-        const total = pick(item, ['totalEnergy','total_energy','totalEnergyUse','totalEnergyUse_kwh','totalSiteEnergy','total_site_energy','total_energy_kwh','energy','total','totalEnergy_kwh']);
-        const heating = pick(item, ['heating','heatingDemand','heating_demand','heating_kwh']);
-        const cooling = pick(item, ['cooling','coolingDemand','cooling_demand','cooling_kwh']);
-        const runTime = pick(item, ['runTime','run_time','elapsedSeconds','elapsed_seconds','elapsed']);
+    const fetchFromEndpoint = async (endpoint: string) => {
+      try {
+        const res = await authenticatedFetch(endpoint);
+        if (!res) return null;
+        if (res.status === 202) {
+          return null;
+        }
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) {
+        return null;
+      }
+    };
 
-        return { ...item, totalEnergy: total ?? item.totalEnergy ?? item.totalEnergyUse ?? 0, heating: heating ?? item.heating ?? item.heatingDemand ?? 0, cooling: cooling ?? item.cooling ?? item.coolingDemand ?? 0, runTime: runTime ?? item.runTime ?? 0 };
-      };
-
-      const normalizeData = (d: any) => {
-        if (Array.isArray(d)) return d.map(normalize);
-        return normalize(d);
-      };
-
-      const normalized = normalizeData(data);
-      const next = { ...cachedResults, [simulationId]: data };
-      setCachedResults({ ...cachedResults, [simulationId]: normalized });
-      persistCache(next);
-      return normalized;
-    } catch (e) {
-      return null;
+    let data: any = null;
+    for (const endpoint of endpoints) {
+      data = await fetchFromEndpoint(endpoint);
+      if (data) break;
     }
+
+    if (!data) return null;
+
+    const normalize = (item: any) => {
+      if (!item || typeof item !== 'object') return item;
+      const asNumber = (v: any) => {
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+        return undefined;
+      };
+      const pick = (obj: any, candidates: string[]) => {
+        for (const k of candidates) {
+          if (Object.prototype.hasOwnProperty.call(obj, k)) {
+            const n = asNumber(obj[k]);
+            if (typeof n === 'number') return n;
+          }
+        }
+        return undefined;
+      };
+
+      const total = pick(item, ['totalEnergy','total_energy','totalEnergyUse','totalEnergyUse_kwh','totalSiteEnergy','total_site_energy','total_energy_kwh','energy','total','totalEnergy_kwh']);
+      const heating = pick(item, ['heating','heatingDemand','heating_demand','heating_kwh']);
+      const cooling = pick(item, ['cooling','coolingDemand','cooling_demand','cooling_kwh']);
+      const runTime = pick(item, ['runTime','run_time','elapsedSeconds','elapsed_seconds','elapsed']);
+
+      return {
+        ...item,
+        totalEnergy: total ?? item.totalEnergy ?? item.totalEnergyUse ?? 0,
+        heating: heating ?? item.heating ?? item.heatingDemand ?? 0,
+        cooling: cooling ?? item.cooling ?? item.coolingDemand ?? 0,
+        runTime: runTime ?? item.runTime ?? 0,
+      };
+    };
+
+    const normalizeData = (d: any) => (Array.isArray(d) ? d.map(normalize) : normalize(d));
+
+    const normalized = normalizeData(data);
+    const nextCache = { ...cachedResults, [simulationId]: normalized };
+    setCachedResults(nextCache);
+    persistCache(nextCache);
+    return normalized;
   };
 
   return (
@@ -331,7 +383,7 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
         weatherFile,
         setUploadedFiles,
         setParsedData,
-        setWeatherFile,
+        setWeatherFile: handleSetWeatherFile,
         clearSimulationData,
         updateUploadedFiles,
         cachedResults,

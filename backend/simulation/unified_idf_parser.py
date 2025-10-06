@@ -226,6 +226,9 @@ class UnifiedIDFParser:
     def _parse_zones_eppy(self) -> None:  # pragma: no cover - stub
         pass
 
+    def _calculate_element_quantities(self) -> Dict[str, float]:  # pragma: no cover - stub
+        return {}
+
     def _ensure_opaque_material(self, name: str) -> None:  # pragma: no cover - stub
         pass
 
@@ -257,7 +260,8 @@ class UnifiedIDFParser:
     def parse(self) -> Dict[str, Any]:
         """Parse materials, constructions, and zones.
 
-        Returns a dict with lists for `materials`, `constructions`, and `zones`.
+        Returns a dict with lists for `materials`, `constructions`, and `zones`,
+        plus `element_quantities` dict with wall/roof/floor/window areas.
         In read-only fallback mode (no eppy), a best-effort simple parse is
         returned using regex heuristics.
         """
@@ -265,9 +269,11 @@ class UnifiedIDFParser:
             self._parse_materials_eppy()
             self._parse_constructions_eppy()
             self._parse_zones_eppy()
+            element_quantities = self._calculate_element_quantities()
         else:
             # Fallback lightweight parsing
             self._parse_lightweight()
+            element_quantities = {}
 
         return {
             "materials": [
@@ -310,6 +316,7 @@ class UnifiedIDFParser:
                 }
                 for name, z in self.zones.items()
             ],
+            "element_quantities": element_quantities,
         }
 
     # Editing helpers (require eppy)
@@ -636,6 +643,82 @@ def _parse_zones_eppy(self) -> None:
             self.zones[name] = Zone(name=name, area=area, volume=volume, ceiling_height=ceiling_height)
         except Exception:
             continue
+
+def _calculate_element_quantities(self) -> Dict[str, float]:
+    """Calculate total areas for wall, roof, floor, and window elements.
+    
+    Returns a dict with keys: 'wall_area', 'roof_area', 'floor_area', 'window_area'
+    All values in square meters (m²).
+    """
+    quantities = {
+        'wall_area': 0.0,
+        'roof_area': 0.0,
+        'floor_area': 0.0,
+        'window_area': 0.0
+    }
+    
+    if not self._eppy_ready or self._idf is None:
+        return quantities
+    
+    # Map surface types to quantity keys
+    surface_type_map = {
+        'WALL': 'wall_area',
+        'ROOF': 'roof_area',
+        'ROOFCEILING': 'roof_area',
+        'CEILING': 'roof_area',
+        'FLOOR': 'floor_area'
+    }
+    
+    # Calculate areas for opaque surfaces
+    for surface in self._idf.idfobjects.get("BUILDINGSURFACE:DETAILED", []):
+        try:
+            surface_type = getattr(surface, "Surface_Type", "").upper()
+            
+            # Extract vertices
+            vertices = []
+            for i in range(1, 100):
+                x = _safe_float(getattr(surface, f"Vertex_{i}_Xcoordinate", None))
+                y = _safe_float(getattr(surface, f"Vertex_{i}_Ycoordinate", None))
+                z = _safe_float(getattr(surface, f"Vertex_{i}_Zcoordinate", None))
+                
+                if x is None or y is None or z is None:
+                    break
+                
+                vertices.append((x, y, z))
+            
+            # Calculate area
+            if len(vertices) >= 3:
+                area = _calculate_polygon_area(vertices)
+                
+                # Add to appropriate quantity
+                if surface_type in surface_type_map:
+                    quantities[surface_type_map[surface_type]] += area
+        except Exception:
+            continue
+    
+    # Calculate window/fenestration areas
+    for fenestration in self._idf.idfobjects.get("FENESTRATIONSURFACE:DETAILED", []):
+        try:
+            # Extract vertices
+            vertices = []
+            for i in range(1, 100):
+                x = _safe_float(getattr(fenestration, f"Vertex_{i}_Xcoordinate", None))
+                y = _safe_float(getattr(fenestration, f"Vertex_{i}_Ycoordinate", None))
+                z = _safe_float(getattr(fenestration, f"Vertex_{i}_Zcoordinate", None))
+                
+                if x is None or y is None or z is None:
+                    break
+                
+                vertices.append((x, y, z))
+            
+            # Calculate area
+            if len(vertices) >= 3:
+                area = _calculate_polygon_area(vertices)
+                quantities['window_area'] += area
+        except Exception:
+            continue
+    
+    return quantities
 
 def _ensure_opaque_material(self, name: str) -> None:
     mats = self._idf.idfobjects.get("MATERIAL", [])
@@ -980,6 +1063,76 @@ def _determine_construction_type(self, name: str, layers: List[str]) -> str:
     return "wall"
 
 
+# ----------------------- GWP and Cost Calculation ------------------------
+def calculate_gwp_and_cost_from_construction_set(
+    element_quantities: Dict[str, float],
+    construction_set: Dict[str, Any]
+) -> Dict[str, float]:
+    """Calculate total GWP (kg CO2e) and cost (SEK) from element quantities and construction set.
+    
+    This function fetches construction data from the database and multiplies
+    area × gwp_per_m2 and area × cost_per_m2 for each element type.
+    
+    Args:
+        element_quantities: Dict with keys wall_area, roof_area, floor_area, window_area (m²)
+        construction_set: Dict with construction data (from parametric generation or database)
+        
+    Returns:
+        Dict with keys 'gwp_total' (kg CO2e) and 'cost_total' (SEK)
+    """
+    from database.models import Construction
+    
+    total_gwp = 0.0
+    total_cost = 0.0
+    
+    # Map element types to quantity keys
+    element_map = {
+        'wall': 'wall_area',
+        'roof': 'roof_area',
+        'floor': 'floor_area',
+        'window': 'window_area'
+    }
+    
+    for element_type, area_key in element_map.items():
+        area = element_quantities.get(area_key, 0.0)
+        if area <= 0:
+            continue
+            
+        # Get construction data from the construction_set
+        construction_data = construction_set.get(element_type)
+        if not construction_data:
+            continue
+        
+        # Try to get construction ID or name
+        construction_id = construction_data.get('id')
+        construction_name = construction_data.get('name')
+        
+        if not construction_id and not construction_name:
+            continue
+        
+        try:
+            # Fetch construction from database
+            if construction_id:
+                construction = Construction.objects.filter(id=construction_id).first()
+            else:
+                construction = Construction.objects.filter(name=construction_name).first()
+            
+            if construction:
+                gwp_per_m2 = getattr(construction, 'gwp_kgco2e_per_m2', 0.0) or 0.0
+                cost_per_m2 = getattr(construction, 'cost_sek_per_m2', 0.0) or 0.0
+                
+                total_gwp += area * gwp_per_m2
+                total_cost += area * cost_per_m2
+        except Exception as e:
+            # Non-fatal: log and continue
+            print(f"Warning: Failed to fetch construction data for {element_type}: {e}")
+            continue
+    
+    return {
+        'gwp_total': round(total_gwp, 2),
+        'cost_total': round(total_cost, 2)
+    }
+
 
 # Attach the helper functions to UnifiedIDFParser so they act as methods.
 for _fn in (
@@ -989,6 +1142,7 @@ for _fn in (
     "_parse_materials_eppy",
     "_parse_constructions_eppy",
     "_parse_zones_eppy",
+    "_calculate_element_quantities",
     "_ensure_opaque_material",
     "_window_material_exists",
     "_ensure_simple_glazing",
