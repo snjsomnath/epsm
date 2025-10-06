@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -18,9 +18,14 @@ import {
   Grid,
   IconButton,
   Collapse,
-  Tooltip
+  Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  SelectChangeEvent
 } from '@mui/material';
-import { FileDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileDown, ChevronDown, ChevronUp, ArrowLeftRight, Camera } from 'lucide-react';
 import {
   ResponsiveContainer,
   ScatterChart,
@@ -75,15 +80,109 @@ interface SimulationResultsViewProps {
   results: any[];
 }
 
+type MetricKey = 'totalEnergy' | 'heating' | 'cooling' | 'gwp' | 'cost' | 'runtime';
+
 const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [tabValue, setTabValue] = useState(0);
   const [openCS, setOpenCS] = useState<Record<string, boolean>>({});
   const [openResult, setOpenResult] = useState<Record<string, boolean>>({});
   const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
+  const [xAxis, setXAxis] = useState<MetricKey>('totalEnergy');
+  const [yAxis, setYAxis] = useState<MetricKey>('runtime');
+  const chartRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
+  };
+
+  const metricConfig: Record<MetricKey, { label: string; unit: string; getValue: (r: any) => number; getMin: () => number; getMax: () => number }> = {
+    totalEnergy: {
+      label: 'Total Energy',
+      unit: 'kWh/m²',
+      getValue: (r) => r.totalEnergyPerArea,
+      getMin: () => minTotalEnergy,
+      getMax: () => maxTotalEnergy
+    },
+    heating: {
+      label: 'Heating',
+      unit: 'kWh/m²',
+      getValue: (r) => r.heatingPerArea,
+      getMin: () => minHeating,
+      getMax: () => maxHeating
+    },
+    cooling: {
+      label: 'Cooling',
+      unit: 'kWh/m²',
+      getValue: (r) => r.coolingPerArea,
+      getMin: () => minCooling,
+      getMax: () => maxCooling
+    },
+    gwp: {
+      label: 'GWP',
+      unit: 'kg CO₂e',
+      getValue: (r) => r.gwpTotal,
+      getMin: () => minGwp,
+      getMax: () => maxGwp
+    },
+    cost: {
+      label: 'Cost',
+      unit: 'SEK',
+      getValue: (r) => r.costTotal,
+      getMin: () => minCost,
+      getMax: () => maxCost
+    },
+    runtime: {
+      label: 'Runtime',
+      unit: 'seconds',
+      getValue: (r) => r.runTime,
+      getMin: () => minRuntime,
+      getMax: () => maxRuntime
+    }
+  };
+
+  const handleXAxisChange = (event: SelectChangeEvent<MetricKey>) => {
+    const newValue = event.target.value as MetricKey;
+    setXAxis(newValue);
+    // If Y axis is the same, swap them
+    if (newValue === yAxis) {
+      setYAxis(xAxis);
+    }
+  };
+
+  const handleYAxisChange = (event: SelectChangeEvent<MetricKey>) => {
+    const newValue = event.target.value as MetricKey;
+    setYAxis(newValue);
+    // If X axis is the same, swap them
+    if (newValue === xAxis) {
+      setXAxis(yAxis);
+    }
+  };
+
+  const handleSwapAxes = () => {
+    setXAxis(yAxis);
+    setYAxis(xAxis);
+  };
+
+  const handleSaveScreenshot = async () => {
+    if (!chartRef.current) return;
+    
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(chartRef.current, {
+        backgroundColor: theme.palette.background.paper,
+        scale: 2
+      });
+      
+      const link = document.createElement('a');
+      link.download = `chart-${xAxis}-vs-${yAxis}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    } catch (error) {
+      console.error('Failed to save screenshot:', error);
+      // Fallback: just alert the user
+      alert('Screenshot feature requires html2canvas library. Please install it: npm install html2canvas');
+    }
   };
 
   // Normalize incoming results to support both snake_case and camelCase
@@ -183,21 +282,26 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   }, [getColorFromValue]);
 
   // Format data for chart (use normalized results)
-  // Scatter plot data: x = totalEnergyPerArea, y = runTime
+  // Scatter plot data: x and y based on selected metrics
   // Precompute colors for scatterData based on heating energy
   // Adjust color scaling logic for heating energy to fit the dataset range
-  const scatterData = useMemo(() => resultsWithPerArea.map((r: any, i: number) => {
-    const color = getColorFromHeating(r.heatingPerArea, minHeating, maxHeating);
-    return {
-      x: Number(r.totalEnergyPerArea) || 0, // kWh/m², now correct
-      y: Number(r.runTime) || 0,
-      fileName: r.fileName,
-      heating: r.heatingPerArea,
-      cooling: r.coolingPerArea,
-      index: i,
-      color
-    };
-  }), [getColorFromHeating, resultsWithPerArea, minHeating, maxHeating]);
+  const scatterData = useMemo(() => {
+    const xConfig = metricConfig[xAxis];
+    const yConfig = metricConfig[yAxis];
+    
+    return resultsWithPerArea.map((r: any, i: number) => {
+      const color = getColorFromHeating(r.heatingPerArea, minHeating, maxHeating);
+      return {
+        x: Number(xConfig.getValue(r)) || 0,
+        y: Number(yConfig.getValue(r)) || 0,
+        fileName: r.fileName,
+        heating: r.heatingPerArea,
+        cooling: r.coolingPerArea,
+        index: i,
+        color
+      };
+    });
+  }, [getColorFromHeating, resultsWithPerArea, minHeating, maxHeating, xAxis, yAxis, metricConfig]);
 
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
@@ -222,21 +326,116 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
               {!resultsWithPerArea || resultsWithPerArea.length === 0 ? (
                 <Alert severity="info">No simulation results to display.</Alert>
               ) : (
-                <Box sx={{ height: '400px', mb: 4 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" dataKey="x" name="Energy (kWh/m²)" />
-                      <YAxis type="number" dataKey="y" name="Runtime (s)" />
-                      <RechartsTooltip formatter={(value: any, name: any) => {
-                        return [value, name];
-                      }} labelFormatter={(label: any) => `Value: ${label}`} />
-                      {scatterData.map((point, index) => (
-                        <Scatter key={index} data={[point]} fill={point.color} />
-                      ))}
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                </Box>
+                <>
+                  {/* Chart Controls */}
+                  <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <InputLabel>X-Axis</InputLabel>
+                      <Select
+                        value={xAxis}
+                        label="X-Axis"
+                        onChange={handleXAxisChange}
+                      >
+                        {(Object.keys(metricConfig) as MetricKey[]).map((key) => (
+                          <MenuItem 
+                            key={key} 
+                            value={key}
+                            disabled={key === yAxis}
+                          >
+                            {metricConfig[key].label} ({metricConfig[key].unit})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 180 }}>
+                      <InputLabel>Y-Axis</InputLabel>
+                      <Select
+                        value={yAxis}
+                        label="Y-Axis"
+                        onChange={handleYAxisChange}
+                      >
+                        {(Object.keys(metricConfig) as MetricKey[]).map((key) => (
+                          <MenuItem 
+                            key={key} 
+                            value={key}
+                            disabled={key === xAxis}
+                          >
+                            {metricConfig[key].label} ({metricConfig[key].unit})
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <Tooltip title="Swap X and Y axes">
+                      <IconButton 
+                        onClick={handleSwapAxes}
+                        size="small"
+                        sx={{ 
+                          border: 1, 
+                          borderColor: 'divider',
+                          '&:hover': { 
+                            backgroundColor: 'action.hover' 
+                          }
+                        }}
+                      >
+                        <ArrowLeftRight size={20} />
+                      </IconButton>
+                    </Tooltip>
+
+                    <Tooltip title="Save chart as image">
+                      <IconButton 
+                        onClick={handleSaveScreenshot}
+                        size="small"
+                        sx={{ 
+                          border: 1, 
+                          borderColor: 'divider',
+                          '&:hover': { 
+                            backgroundColor: 'action.hover' 
+                          }
+                        }}
+                      >
+                        <Camera size={20} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+
+                  {/* Chart */}
+                  <Box ref={chartRef} sx={{ height: '400px', mb: 4 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          type="number" 
+                          dataKey="x" 
+                          name={metricConfig[xAxis].label}
+                          label={{ 
+                            value: `${metricConfig[xAxis].label} (${metricConfig[xAxis].unit})`, 
+                            position: 'insideBottom', 
+                            offset: -5 
+                          }}
+                        />
+                        <YAxis 
+                          type="number" 
+                          dataKey="y" 
+                          name={metricConfig[yAxis].label}
+                          label={{ 
+                            value: `${metricConfig[yAxis].label} (${metricConfig[yAxis].unit})`, 
+                            angle: -90, 
+                            position: 'insideLeft' 
+                          }}
+                        />
+                        <RechartsTooltip 
+                          formatter={(value: any, name: any) => [value, name]}
+                          labelFormatter={(label: any) => `Value: ${label}`} 
+                        />
+                        {scatterData.map((point, index) => (
+                          <Scatter key={index} data={[point]} fill={point.color} />
+                        ))}
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </>
               )}
 
               {/* Quick debug summary so users can see data present without opening Raw Data */}
