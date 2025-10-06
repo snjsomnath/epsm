@@ -476,6 +476,7 @@ def run_simulation(request):
                             layers.append(L.window.name)
 
                     groups.setdefault(sc.element_type, []).append({
+                        'id': str(c.id),  # Include construction ID for GWP/cost lookups
                         'name': c.name,
                         'layers': layers
                     })
@@ -507,7 +508,13 @@ def run_simulation(request):
                                     layers.append(L.material.name)
                                 elif getattr(L, 'window', None):
                                     layers.append(L.window.name)
-                            construction_sets.append({sc.element_type: {'name': c.name, 'layers': layers}})
+                            construction_sets.append({
+                                sc.element_type: {
+                                    'id': str(c.id),  # Include construction ID for GWP/cost lookups
+                                    'name': c.name,
+                                    'layers': layers
+                                }
+                            })
                     else:
                         # build cartesian product across element types to create construction_sets
                         # NOTE: frontend combinatorics counts (1 + count_per_type) - 1 to allow
@@ -522,7 +529,11 @@ def run_simulation(request):
                             for k, chosen in zip(keys, combo):
                                 if chosen is None:
                                     continue
-                                cs[k] = {'name': chosen['name'], 'layers': chosen['layers']}
+                                cs[k] = {
+                                    'id': chosen.get('id'),  # Include construction ID for GWP/cost lookups
+                                    'name': chosen['name'],
+                                    'layers': chosen['layers']
+                                }
                             # skip the empty combination (all None) which represents baseline/no-change
                             if not cs:
                                 continue
