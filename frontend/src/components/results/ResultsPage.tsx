@@ -860,6 +860,13 @@ const ResultsPage: React.FC = () => {
     return num.toFixed(digits);
   }, []);
 
+  const formatNumberWithSeparator = useCallback((value: any, digits = 1) => {
+    if (value === undefined || value === null || value === '') return '-';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '-';
+    return num.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }, []);
+
   const createCleanTimeseriesLabel = useCallback((key: string): string => {
     let cleaned = key
       .replace(/_Energy_J$/g, '')
@@ -1401,10 +1408,10 @@ const ResultsPage: React.FC = () => {
     }
   },
   { field: 'cost', headerName: 'Cost', type: 'number', width: 75, valueGetter: (params: any) => params?.row ? params.row.cost : undefined,
-    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
+    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : formatNumberWithSeparator(params.value)}</Typography>
   },
   { field: 'gwp', headerName: 'GWP', type: 'number', width: 75, valueGetter: (params: any) => params?.row ? params.row.gwp : undefined,
-    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
+    renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : formatNumberWithSeparator(params.value)}</Typography>
   },
   { field: 'variant', headerName: 'Var', width: 60, valueGetter: (params: any) => params?.row ? (params.row.variant_idx ?? params.row.variant) : undefined,
     renderCell: (params: any) => <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>{params?.value === undefined ? '-' : params.value}</Typography>
@@ -1720,8 +1727,8 @@ const ResultsPage: React.FC = () => {
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   <Chip label={`Items: ${summaryStats.count}`} />
                   {summaryStats.avgEnergy !== null && <Chip label={`Avg energy: ${formatNumber(summaryStats.avgEnergy)} kWh/m²`} />}
-                  {summaryStats.avgCost !== null && <Chip label={`Avg cost: ${formatNumber(summaryStats.avgCost)} SEK/m²`} />}
-                  {summaryStats.avgGwp !== null && <Chip label={`Avg GWP: ${formatNumber(summaryStats.avgGwp)} kgCO₂e/m²`} />}
+                  {summaryStats.avgCost !== null && <Chip label={`Avg cost: ${formatNumberWithSeparator(summaryStats.avgCost)} SEK/m²`} />}
+                  {summaryStats.avgGwp !== null && <Chip label={`Avg GWP: ${formatNumberWithSeparator(summaryStats.avgGwp)} kgCO₂e/m²`} />}
                   {summaryStats.avgRuntime !== null && <Chip label={`Avg runtime: ${formatNumber(summaryStats.avgRuntime, 0)} s`} />}
                 </Stack>
               </Paper>
@@ -2074,8 +2081,8 @@ const ResultsPage: React.FC = () => {
                   <Chip label={`Energy: ${selectedResult.energyUse ?? selectedResult.totalEnergy ?? getMetric(selectedResult, ['total_energy_use','totalEnergy','totalEnergyUse','total_energy','energy','energy_kwh']) ?? '-'}`} />
                   <Chip label={`Heating: ${selectedResult.heatingDemand ?? getMetric(selectedResult, ['heating_demand','heatingDemand','heating']) ?? '-'}`} />
                   <Chip label={`Cooling: ${selectedResult.coolingDemand ?? getMetric(selectedResult, ['cooling_demand','coolingDemand','cooling']) ?? '-'}`} />
-                  <Chip label={`Cost: ${selectedResult.cost ?? '-'}`} />
-                  <Chip label={`GWP: ${selectedResult.gwp ?? '-'}`} />
+                  <Chip label={`Cost: ${formatNumberWithSeparator(selectedResult.cost)}`} />
+                  <Chip label={`GWP: ${formatNumberWithSeparator(selectedResult.gwp)}`} />
                   <Chip label={`Runtime: ${selectedResult.runTime ?? selectedResult.elapsed ?? getMetric(selectedResult, ['run_time','runTime','runtime','elapsed','duration']) ?? '-'}`} />
                 </Stack>
 
