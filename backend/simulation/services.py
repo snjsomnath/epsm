@@ -490,6 +490,8 @@ class EnergyPlusSimulator:
                     cooling_demand=result.get("coolingDemand"),
                     lighting_demand=result.get("lightingDemand"),
                     equipment_demand=result.get("equipmentDemand"),
+                    gwp_total=result.get("gwp_total"),
+                    cost_total=result.get("cost_total"),
                     total_area=result.get("totalArea"),
                     run_time=result.get("runTime"),
                     status=result.get("status", "success"),

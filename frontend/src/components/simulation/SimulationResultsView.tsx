@@ -102,6 +102,8 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
     const runTime = Number(r.runTime ?? r.run_time ?? raw.runTime ?? raw.run_time ?? r.run_time) || 0;
     const totalArea = Number(r.totalArea ?? r.total_area ?? raw.totalArea ?? raw.total_area ?? r.total_area) || 0;
     const constructionSet = r.construction_set ?? r.constructionSet ?? raw.construction_set ?? raw.constructionSet ?? null;
+    const gwpTotal = Number(r.gwp_total ?? r.gwpTotal ?? r.gwp ?? raw.gwp_total ?? raw.gwpTotal ?? raw.gwp) || 0;
+    const costTotal = Number(r.cost_total ?? r.costTotal ?? r.cost ?? raw.cost_total ?? raw.costTotal ?? raw.cost) || 0;
     return {
       ...r,
       fileName,
@@ -110,7 +112,9 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
       coolingDemand,
       runTime,
       totalArea,
-      constructionSet
+      constructionSet,
+      gwpTotal,
+      costTotal
     };
   }), [results]);
 
@@ -144,6 +148,10 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const maxTotalEnergy = Math.max(...resultsWithPerArea.map(r => r.totalEnergyPerArea));
   const minRuntime = Math.min(...resultsWithPerArea.map(r => r.runTime));
   const maxRuntime = Math.max(...resultsWithPerArea.map(r => r.runTime));
+  const minGwp = Math.min(...resultsWithPerArea.map(r => r.gwpTotal));
+  const maxGwp = Math.max(...resultsWithPerArea.map(r => r.gwpTotal));
+  const minCost = Math.min(...resultsWithPerArea.map(r => r.costTotal));
+  const maxCost = Math.max(...resultsWithPerArea.map(r => r.costTotal));
 
   const baseLowColor = theme.palette.success.main;
   const baseMidColor = theme.palette.warning.main;
@@ -247,33 +255,91 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                         align="right"
                         onMouseEnter={() => setHoveredColumn('totalEnergy')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        Total Energy (kWh/m²)
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            Total Energy
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            kWh/m²
+                          </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
                         onMouseEnter={() => setHoveredColumn('heating')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        Heating (kWh/m²)
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            Heating
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            kWh/m²
+                          </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
                         onMouseEnter={() => setHoveredColumn('cooling')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        Cooling (kWh/m²)
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            Cooling
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            kWh/m²
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('gwp')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            GWP
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            kg CO₂e
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell 
+                        align="right"
+                        onMouseEnter={() => setHoveredColumn('cost')}
+                        onMouseLeave={() => setHoveredColumn(null)}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            Cost
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            SEK
+                          </Typography>
+                        </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
                         onMouseEnter={() => setHoveredColumn('runtime')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
                       >
-                        Runtime (s)
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                            Runtime
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            seconds
+                          </Typography>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   </TableHead>
@@ -322,6 +388,34 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                           }}
                         >
                           {fmt(result.coolingPerArea)}
+                        </TableCell>
+                        <TableCell 
+                          align="right"
+                          onMouseEnter={() => setHoveredColumn('gwp')}
+                          onMouseLeave={() => setHoveredColumn(null)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'gwp'
+                              ? getColorFromValue(result.gwpTotal, minGwp, maxGwp)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
+                          }}
+                        >
+                          {fmt(result.gwpTotal, 0)}
+                        </TableCell>
+                        <TableCell 
+                          align="right"
+                          onMouseEnter={() => setHoveredColumn('cost')}
+                          onMouseLeave={() => setHoveredColumn(null)}
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: hoveredColumn === 'cost'
+                              ? getColorFromValue(result.costTotal, minCost, maxCost)
+                              : 'transparent',
+                            transition: 'background-color 0.2s ease'
+                          }}
+                        >
+                          {fmt(result.costTotal, 0)}
                         </TableCell>
                         <TableCell 
                           align="right"
@@ -386,6 +480,12 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
                                 Total Area: {fmt(result.totalArea)} m²
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                GWP: {fmt(result.gwpTotal, 0)} kg CO₂e
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Cost: {fmt(result.costTotal, 0)} SEK
                               </Typography>
                             </Grid>
                             <Grid item xs={12} sm={6}>

@@ -201,7 +201,7 @@ const CoreLaneView: React.FC<CoreLaneProps> = ({
             boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
             fontSize: 12,
             pointerEvents: 'none',
-            zIndex: 40,
+            zIndex: 10,
             whiteSpace: 'nowrap'
           }}
         >
