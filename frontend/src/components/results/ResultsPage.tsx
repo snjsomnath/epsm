@@ -2014,7 +2014,9 @@ const ResultsPage: React.FC = () => {
                   rowCount={rowCount}
                   loading={gridLoading}
                   paginationMode="server"
+                  paginationModel={paginationModel}
                   sortingMode="server"
+                  sortModel={sortModel}
                   filterMode="server"
                   onPaginationModelChange={(m: any) => setPaginationModel(m)}
                   onSortModelChange={(m: any) => setSortModel(m)}
@@ -2022,6 +2024,7 @@ const ResultsPage: React.FC = () => {
                   slotProps={{ toolbar: { showQuickFilter: true, quickFilterProps: { debounceMs: 400 } } as any }}
                   getRowId={(r: any) => String(r?.id)}
                   disableRowSelectionOnClick
+                  disableColumnFilter={false}
                   density="compact"
                 />
               </Box>

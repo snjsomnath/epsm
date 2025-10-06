@@ -87,8 +87,10 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const [openCS, setOpenCS] = useState<Record<string, boolean>>({});
   const [openResult, setOpenResult] = useState<Record<string, boolean>>({});
   const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
-  const [xAxis, setXAxis] = useState<MetricKey>('totalEnergy');
-  const [yAxis, setYAxis] = useState<MetricKey>('runtime');
+  const [xAxis, setXAxis] = useState<MetricKey>('gwp');
+  const [yAxis, setYAxis] = useState<MetricKey>('heating');
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const chartRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
 
@@ -182,6 +184,15 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
       console.error('Failed to save screenshot:', error);
       // Fallback: just alert the user
       alert('Screenshot feature requires html2canvas library. Please install it: npm install html2canvas');
+    }
+  };
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
     }
   };
 
@@ -283,6 +294,55 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
 
   // Format data for chart (use normalized results)
   // Scatter plot data: x and y based on selected metrics
+  // Sort results based on current sort column and direction
+  const sortedResults = useMemo(() => {
+    if (!sortColumn) return resultsWithPerArea;
+    
+    const sorted = [...resultsWithPerArea].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+      
+      switch (sortColumn) {
+        case 'fileName':
+          aVal = a.fileName || '';
+          bVal = b.fileName || '';
+          return sortDirection === 'asc' 
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        case 'totalEnergy':
+          aVal = a.totalEnergyPerArea || 0;
+          bVal = b.totalEnergyPerArea || 0;
+          break;
+        case 'heating':
+          aVal = a.heatingPerArea || 0;
+          bVal = b.heatingPerArea || 0;
+          break;
+        case 'cooling':
+          aVal = a.coolingPerArea || 0;
+          bVal = b.coolingPerArea || 0;
+          break;
+        case 'gwp':
+          aVal = a.gwpTotal || 0;
+          bVal = b.gwpTotal || 0;
+          break;
+        case 'cost':
+          aVal = a.costTotal || 0;
+          bVal = b.costTotal || 0;
+          break;
+        case 'runtime':
+          aVal = a.runTime || 0;
+          bVal = b.runTime || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    });
+    
+    return sorted;
+  }, [resultsWithPerArea, sortColumn, sortDirection]);
+
   // Precompute colors for scatterData based on heating energy
   // Adjust color scaling logic for heating energy to fit the dataset range
   const scatterData = useMemo(() => {
@@ -306,6 +366,11 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
   const fmt = (v: any, digits = 1) => {
     if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
     return Number(v).toFixed(digits);
+  };
+
+  const fmtWithComma = (v: any, digits = 1) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return '-';
+    return Number(v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
   };
 
   return (
@@ -403,26 +468,31 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                   {/* Chart */}
                   <Box ref={chartRef} sx={{ height: '400px', mb: 4 }}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <ScatterChart>
+                      <ScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 60 }}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis 
                           type="number" 
                           dataKey="x" 
                           name={metricConfig[xAxis].label}
+                          tick={{ fontSize: 11 }}
                           label={{ 
                             value: `${metricConfig[xAxis].label} (${metricConfig[xAxis].unit})`, 
                             position: 'insideBottom', 
-                            offset: -5 
+                            offset: -10,
+                            style: { fontSize: 12 }
                           }}
                         />
                         <YAxis 
                           type="number" 
                           dataKey="y" 
                           name={metricConfig[yAxis].label}
+                          tick={{ fontSize: 11 }}
                           label={{ 
                             value: `${metricConfig[yAxis].label} (${metricConfig[yAxis].unit})`, 
                             angle: -90, 
-                            position: 'insideLeft' 
+                            position: 'insideLeft',
+                            offset: 10,
+                            style: { fontSize: 12, textAnchor: 'middle' }
                           }}
                         />
                         <RechartsTooltip 
@@ -449,101 +519,147 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>File</TableCell>
+                      <TableCell 
+                        onClick={() => handleSort('fileName')}
+                        sx={{ cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          File
+                          {sortColumn === 'fileName' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </Box>
+                      </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('totalEnergy')}
                         onMouseEnter={() => setHoveredColumn('totalEnergy')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            Total Energy
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            kWh/m²
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              Total Energy
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              kWh/m²
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'totalEnergy' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('heating')}
                         onMouseEnter={() => setHoveredColumn('heating')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            Heating
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            kWh/m²
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              Heating
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              kWh/m²
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'heating' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('cooling')}
                         onMouseEnter={() => setHoveredColumn('cooling')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            Cooling
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            kWh/m²
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              Cooling
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              kWh/m²
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'cooling' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('gwp')}
                         onMouseEnter={() => setHoveredColumn('gwp')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            GWP
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            kg CO₂e
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              GWP
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              kg CO₂e
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'gwp' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('cost')}
                         onMouseEnter={() => setHoveredColumn('cost')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            Cost
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            SEK
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              Cost
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              SEK
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'cost' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                       <TableCell 
                         align="right"
+                        onClick={() => handleSort('runtime')}
                         onMouseEnter={() => setHoveredColumn('runtime')}
                         onMouseLeave={() => setHoveredColumn(null)}
-                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        sx={{ cursor: 'pointer', whiteSpace: 'nowrap', userSelect: 'none' }}
                       >
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                            Runtime
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                            seconds
-                          </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                              Runtime
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                              seconds
+                            </Typography>
+                          </Box>
+                          {sortColumn === 'runtime' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {resultsWithPerArea.map((result, index) => (
+                    {sortedResults.map((result, index) => (
                       <TableRow key={index}>
                         <TableCell>{result.fileName}</TableCell>
                         <TableCell 
@@ -600,7 +716,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                             transition: 'background-color 0.2s ease'
                           }}
                         >
-                          {fmt(result.gwpTotal, 0)}
+                          {fmtWithComma(result.gwpTotal, 0)}
                         </TableCell>
                         <TableCell 
                           align="right"
@@ -614,7 +730,7 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                             transition: 'background-color 0.2s ease'
                           }}
                         >
-                          {fmt(result.costTotal, 0)}
+                          {fmtWithComma(result.costTotal, 0)}
                         </TableCell>
                         <TableCell 
                           align="right"
@@ -681,10 +797,10 @@ const SimulationResultsView = ({ results }: SimulationResultsViewProps) => {
                                 Total Area: {fmt(result.totalArea)} m²
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                GWP: {fmt(result.gwpTotal, 0)} kg CO₂e
+                                GWP: {fmtWithComma(result.gwpTotal, 0)} kg CO₂e
                               </Typography>
                               <Typography variant="body2" color="text.secondary">
-                                Cost: {fmt(result.costTotal, 0)} SEK
+                                Cost: {fmtWithComma(result.costTotal, 0)} SEK
                               </Typography>
                             </Grid>
                             <Grid item xs={12} sm={6}>
