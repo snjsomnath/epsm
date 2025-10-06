@@ -229,6 +229,9 @@ class UnifiedIDFParser:
     def _calculate_element_quantities(self) -> Dict[str, float]:  # pragma: no cover - stub
         return {}
 
+    def _calculate_construction_surfaces(self) -> Dict[str, Dict[str, Any]]:  # pragma: no cover - stub
+        return {}
+
     def _ensure_opaque_material(self, name: str) -> None:  # pragma: no cover - stub
         pass
 
@@ -270,10 +273,12 @@ class UnifiedIDFParser:
             self._parse_constructions_eppy()
             self._parse_zones_eppy()
             element_quantities = self._calculate_element_quantities()
+            construction_surfaces = self._calculate_construction_surfaces()
         else:
             # Fallback lightweight parsing
             self._parse_lightweight()
             element_quantities = {}
+            construction_surfaces = {}
 
         return {
             "materials": [
@@ -299,7 +304,11 @@ class UnifiedIDFParser:
                     "id": name,
                     "name": name,
                     "type": const.element_type,
-                    "properties": {"layers": const.layers},
+                    "properties": {
+                        "layers": const.layers,
+                        "surfaceCount": construction_surfaces.get(name, {}).get('count', 0),
+                        "totalArea": construction_surfaces.get(name, {}).get('area', 0.0)
+                    },
                 }
                 for name, const in self.constructions.items()
             ],
@@ -719,6 +728,86 @@ def _calculate_element_quantities(self) -> Dict[str, float]:
             continue
     
     return quantities
+
+def _calculate_construction_surfaces(self) -> Dict[str, Dict[str, Any]]:
+    """Calculate surface count and total area for each construction.
+    
+    Returns a dict mapping construction names to {count: int, area: float}
+    """
+    construction_data = {}  # type: Dict[str, Dict[str, Any]]
+    
+    if not self._eppy_ready or self._idf is None:
+        return construction_data
+    
+    # Process opaque surfaces
+    for surface in self._idf.idfobjects.get("BUILDINGSURFACE:DETAILED", []):
+        try:
+            construction_name = getattr(surface, "Construction_Name", None)
+            if not construction_name:
+                continue
+            
+            # Extract vertices
+            vertices = []
+            for i in range(1, 100):
+                x = _safe_float(getattr(surface, f"Vertex_{i}_Xcoordinate", None))
+                y = _safe_float(getattr(surface, f"Vertex_{i}_Ycoordinate", None))
+                z = _safe_float(getattr(surface, f"Vertex_{i}_Zcoordinate", None))
+                
+                if x is None or y is None or z is None:
+                    break
+                
+                vertices.append((x, y, z))
+            
+            # Calculate area
+            if len(vertices) >= 3:
+                area = _calculate_polygon_area(vertices)
+                
+                if construction_name not in construction_data:
+                    construction_data[construction_name] = {'count': 0, 'area': 0.0}
+                
+                construction_data[construction_name]['count'] += 1
+                construction_data[construction_name]['area'] += area
+        except Exception:
+            continue
+    
+    # Process fenestration surfaces (windows)
+    for fenestration in self._idf.idfobjects.get("FENESTRATIONSURFACE:DETAILED", []):
+        try:
+            # Try multiple field names for construction
+            construction_name = None
+            for field in ("Construction_Name", "Window_Construction_Name", "Construction"):
+                construction_name = getattr(fenestration, field, None)
+                if construction_name:
+                    break
+            
+            if not construction_name:
+                continue
+            
+            # Extract vertices
+            vertices = []
+            for i in range(1, 100):
+                x = _safe_float(getattr(fenestration, f"Vertex_{i}_Xcoordinate", None))
+                y = _safe_float(getattr(fenestration, f"Vertex_{i}_Ycoordinate", None))
+                z = _safe_float(getattr(fenestration, f"Vertex_{i}_Zcoordinate", None))
+                
+                if x is None or y is None or z is None:
+                    break
+                
+                vertices.append((x, y, z))
+            
+            # Calculate area
+            if len(vertices) >= 3:
+                area = _calculate_polygon_area(vertices)
+                
+                if construction_name not in construction_data:
+                    construction_data[construction_name] = {'count': 0, 'area': 0.0}
+                
+                construction_data[construction_name]['count'] += 1
+                construction_data[construction_name]['area'] += area
+        except Exception:
+            continue
+    
+    return construction_data
 
 def _ensure_opaque_material(self, name: str) -> None:
     mats = self._idf.idfobjects.get("MATERIAL", [])
@@ -1143,6 +1232,7 @@ for _fn in (
     "_parse_constructions_eppy",
     "_parse_zones_eppy",
     "_calculate_element_quantities",
+    "_calculate_construction_surfaces",
     "_ensure_opaque_material",
     "_window_material_exists",
     "_ensure_simple_glazing",
