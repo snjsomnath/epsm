@@ -6,10 +6,18 @@ export interface ComponentItem {
   existsInDatabase: boolean;
 }
 
+export interface ElementQuantities {
+  wall_area: number;
+  roof_area: number;
+  floor_area: number;
+  window_area: number;
+}
+
 export interface ParsedData {
   materials: ComponentItem[];
   constructions: ComponentItem[];
   zones: ComponentItem[];
+  element_quantities?: ElementQuantities;
 }
 
 export interface SimulationResult {

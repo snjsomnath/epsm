@@ -949,6 +949,8 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                   <TableCell>Name</TableCell>
                   <TableCell>Type</TableCell>
                   <TableCell>Layers</TableCell>
+                  <TableCell align="right">Surfaces</TableCell>
+                  <TableCell align="right">Total Area (m²)</TableCell>
                   <TableCell>Status</TableCell>
                 </TableRow>
               </TableHead>
@@ -977,6 +979,14 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                           sx={{ mr: 0.5, mb: 0.5 }}
                         />
                       ))}
+                    </TableCell>
+                    <TableCell align="right">
+                      {construction?.properties?.surfaceCount ?? '-'}
+                    </TableCell>
+                    <TableCell align="right">
+                      {construction?.properties?.totalArea 
+                        ? construction.properties.totalArea.toFixed(2)
+                        : '-'}
                     </TableCell>
                     <TableCell>
                       {construction.existsInDatabase ? (

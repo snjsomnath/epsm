@@ -62,13 +62,25 @@ def parse_idf(request):
         parsed_data = {
             'materials': [],
             'constructions': [],
-            'zones': []
+            'zones': [],
+            'element_quantities': {}
         }
         
         # Use dictionaries to track unique items by name to avoid duplicates
         materials_dict = {}
         constructions_dict = {}
         zones_dict = {}
+        
+        # Track element quantities across all files
+        total_element_quantities = {
+            'wall_area': 0.0,
+            'roof_area': 0.0,
+            'floor_area': 0.0,
+            'window_area': 0.0
+        }
+        
+        # Track construction surface data across all files
+        all_construction_surfaces = {}
         
         for file_index, file in enumerate(files):
             print("Processing file:", file.name)
@@ -77,6 +89,21 @@ def parse_idf(request):
             # Call parse() with no arguments to get the parsed dict.
             parser = EnergyPlusIDFParser(content)
             file_data = parser.parse()
+            
+            # Aggregate element quantities
+            file_element_quantities = file_data.get('element_quantities', {})
+            for key in total_element_quantities:
+                total_element_quantities[key] += file_element_quantities.get(key, 0.0)
+            
+            # Get construction surface data from this file
+            construction_surfaces = parser._calculate_construction_surfaces()
+            
+            # Aggregate construction surface data
+            for const_name, surf_data in construction_surfaces.items():
+                if const_name not in all_construction_surfaces:
+                    all_construction_surfaces[const_name] = {'count': 0, 'area': 0.0}
+                all_construction_surfaces[const_name]['count'] += surf_data.get('count', 0)
+                all_construction_surfaces[const_name]['area'] += surf_data.get('area', 0.0)
             
             # Add database comparison for materials
             for material in file_data.get('materials', []):
@@ -187,10 +214,17 @@ def parse_idf(request):
                 if zone_name not in zones_dict:
                     zones_dict[zone_name] = zone
         
+        # Add surface data to constructions
+        for const_name, const_data in constructions_dict.items():
+            surf_info = all_construction_surfaces.get(const_name, {'count': 0, 'area': 0.0})
+            const_data['properties']['surfaceCount'] = surf_info['count']
+            const_data['properties']['totalArea'] = surf_info['area']
+        
         # Convert dictionaries to lists for the response
         parsed_data['materials'] = list(materials_dict.values())
         parsed_data['constructions'] = list(constructions_dict.values())
         parsed_data['zones'] = list(zones_dict.values())
+        parsed_data['element_quantities'] = total_element_quantities
 
         return JsonResponse(parsed_data)
 
