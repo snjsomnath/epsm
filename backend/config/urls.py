@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from simulation import views as simulation_views
 from simulation import auth_views
+from simulation import privacy_views
 import json
 import os
 import mimetypes
@@ -177,6 +178,10 @@ urlpatterns = [
     
     # Add database connectivity test endpoint
     path('api/db-test/', lambda request: JsonResponse(db_test_view())),
+    
+    # Privacy Policy (required for REFEDS Personalized Access compliance)
+    path('privacy/', privacy_views.privacy_policy_view, name='privacy_policy'),
+    path('privacy.md', privacy_views.privacy_policy_markdown, name='privacy_policy_markdown'),
 ]
 
 # Add SAML SSO endpoints in production
