@@ -22,7 +22,7 @@ import AuthTest from './AuthTest';
 import LoginPageExplainer from './LoginPageExplainer';
 
 const LoginPage = () => {
-  const { signIn, error, clearError } = useAuth();
+  const { signIn, signInWithSAML, loginInfo, error, clearError } = useAuth();
   const { isDarkMode, toggleTheme } = useTheme();
   const muiTheme = useMuiTheme();
   const [isSignUp, setIsSignUp] = useState(false);
@@ -239,27 +239,64 @@ const LoginPage = () => {
                   </Button>
                 </form>
 
-                <Divider sx={{ my: 3 }} />
+                {/* SAML Login Button - Only show in production */}
+                {loginInfo?.saml_enabled && (
+                  <>
+                    <Divider sx={{ my: 3 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        OR
+                      </Typography>
+                    </Divider>
 
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  size="large"
-                  onClick={handleDemoLogin}
-                  disabled={loading}
-                  sx={{ 
-                    mb: 2,
-                    py: 1.5,
-                    borderColor: muiTheme.palette.primary.main,
-                    color: muiTheme.palette.primary.main,
-                    '&:hover': {
-                      borderColor: muiTheme.palette.primary.dark,
-                      backgroundColor: muiTheme.palette.primary.main + '08',
-                    }
-                  }}
-                >
-                  Demo Login (demo@chalmers.se)
-                </Button>
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      size="large"
+                      onClick={signInWithSAML}
+                      disabled={loading}
+                      sx={{ 
+                        mb: 2,
+                        py: 1.5,
+                        bgcolor: '#00d0be',
+                        color: '#fff',
+                        '&:hover': {
+                          bgcolor: '#00b8a9',
+                        }
+                      }}
+                    >
+                      Login with Chalmers CID
+                    </Button>
+                  </>
+                )}
+
+                {/* Development-only features */}
+                {(!loginInfo || !loginInfo.saml_enabled) && (
+                  <>
+                    <Divider sx={{ my: 3 }} />
+
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      size="large"
+                      onClick={handleDemoLogin}
+                      disabled={loading}
+                      sx={{ 
+                        mb: 2,
+                        py: 1.5,
+                        borderColor: muiTheme.palette.primary.main,
+                        color: muiTheme.palette.primary.main,
+                        '&:hover': {
+                          borderColor: muiTheme.palette.primary.dark,
+                          backgroundColor: muiTheme.palette.primary.main + '08',
+                        }
+                      }}
+                    >
+                      Demo Login (demo@chalmers.se)
+                    </Button>
+                  </>
+                )}
+
+                <Divider sx={{ my: 2 }} />
 
                 <Typography variant="body2" align="center">
                   {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}

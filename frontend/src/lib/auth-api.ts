@@ -43,6 +43,13 @@ export interface AuthError {
   status?: number;
 }
 
+export interface LoginInfo {
+  method: 'local' | 'saml';
+  saml_login_url?: string;
+  saml_enabled: boolean;
+  environment: 'development' | 'production';
+}
+
 // CSRF token helper
 const getCSRFToken = async (): Promise<string> => {
   try {
@@ -59,6 +66,115 @@ const getCSRFToken = async (): Promise<string> => {
     console.warn('Failed to get CSRF token:', error);
     return '';
   }
+};
+
+/**
+ * Get login information (SAML or local authentication)
+ */
+export const getLoginInfo = async (): Promise<{ data: LoginInfo | null; error: AuthError | null }> => {
+  try {
+    const response = await fetch(buildUrl('/api/auth/login-info/'), {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      return {
+        data: null,
+        error: {
+          message: 'Failed to get login information',
+          status: response.status
+        }
+      };
+    }
+
+    const data = await response.json();
+    return {
+      data: {
+        method: data.method || 'local',
+        saml_login_url: data.saml_login_url,
+        saml_enabled: data.saml_enabled || false,
+        environment: data.environment || 'development'
+      },
+      error: null
+    };
+  } catch (error) {
+    console.error('Failed to get login info:', error);
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to get login information',
+        status: 500
+      }
+    };
+  }
+};
+
+/**
+ * Get current authenticated user from backend
+ */
+export const getCurrentUser = async (): Promise<{ data: AuthUser | null; error: AuthError | null }> => {
+  try {
+    const response = await fetch(buildUrl('/api/auth/current-user/'), {
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        return {
+          data: null,
+          error: null // Not an error, just not authenticated
+        };
+      }
+      return {
+        data: null,
+        error: {
+          message: 'Failed to get current user',
+          status: response.status
+        }
+      };
+    }
+
+    const data = await response.json();
+    
+    if (!data.user) {
+      return {
+        data: null,
+        error: null
+      };
+    }
+
+    return {
+      data: {
+        id: data.user.id.toString(),
+        email: data.user.email,
+        first_name: data.user.first_name,
+        last_name: data.user.last_name,
+        is_active: data.user.is_active,
+        is_staff: data.user.is_staff,
+        is_superuser: data.user.is_superuser,
+        date_joined: data.user.date_joined
+      },
+      error: null
+    };
+  } catch (error) {
+    console.error('Failed to get current user:', error);
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to get current user',
+        status: 500
+      }
+    };
+  }
+};
+
+/**
+ * Redirect to SAML login
+ */
+export const redirectToSAMLLogin = (returnUrl?: string) => {
+  const baseUrl = buildUrl('/saml/login/');
+  const url = returnUrl ? `${baseUrl}?next=${encodeURIComponent(returnUrl)}` : baseUrl;
+  window.location.href = url;
 };
 
 /**
