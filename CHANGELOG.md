@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
+- Features and improvements planned for next release
+
+---
+
+## [0.1.1] - 2025-10-07
+
+### Release version 0.1.1
+
+
+### Planned
 - Enhanced data export capabilities
 - Advanced filtering and search in results
 - Multi-user collaboration features
