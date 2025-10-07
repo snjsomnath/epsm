@@ -15,9 +15,13 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libxmlsec1-dev \
     libxmlsec1-openssl \
+    libxslt1-dev \
+    libtool \
     pkg-config \
     xmlsec1 \
     git \
+    python3-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user and add to docker group for Docker socket access
@@ -30,8 +34,10 @@ WORKDIR /app
 # Upgrade pip and install wheel
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-# Copy and install production requirements
+# Copy requirements files
 COPY requirements.txt requirements.prod.txt /app/
+
+# Install all production requirements
 RUN pip install --no-cache-dir -r requirements.prod.txt
 
 # Copy project

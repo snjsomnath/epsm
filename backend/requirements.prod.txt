@@ -21,12 +21,10 @@ django-health-check==3.17.0
 python-decouple==3.8
 
 # SAML SSO for Chalmers authentication
+# Note: xmlsec must be installed before python3-saml
+xmlsec==1.3.13
 python3-saml==1.16.0
 djangosaml2==1.9.3
-xmlsec==1.3.13
-
-# System dependencies for SAML (install via apt/dnf)
-# libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config
 
 # Optional: Error tracking
 sentry-sdk==1.40.0
