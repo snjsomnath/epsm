@@ -234,3 +234,137 @@ def api_user_detail(request, id):
             return JsonResponse({'success': True})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+
+# ============================================================================
+# SAML SSO Support Functions (for production deployment)
+# ============================================================================
+
+from django.conf import settings
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@api_view(['GET'])
+def login_info(request):
+    """
+    Provides login information based on environment
+    In production: directs to SAML SSO
+    In development: allows local authentication
+    """
+    if settings.DEBUG:
+        # Development mode - use local auth
+        return Response({
+            'method': 'local',
+            'login_url': '/api/auth/login/',
+            'sso_enabled': False,
+            'message': 'Development mode: Use local authentication'
+        })
+    else:
+        # Production mode - use Chalmers SSO
+        return Response({
+            'method': 'saml',
+            'login_url': '/saml/login/',
+            'sso_enabled': True,
+            'provider': 'Chalmers University',
+            'message': 'Login with your Chalmers CID (e.g., ssanjay@chalmers.se)'
+        })
+
+
+@api_view(['GET'])
+def current_user(request):
+    """
+    Returns current authenticated user information
+    """
+    if request.user.is_authenticated:
+        return Response({
+            'authenticated': True,
+            'username': request.user.username,
+            'email': request.user.email,
+            'first_name': request.user.first_name,
+            'last_name': request.user.last_name,
+            'is_staff': request.user.is_staff,
+            'is_superuser': request.user.is_superuser,
+            'full_name': request.user.get_full_name() or request.user.username,
+        })
+    else:
+        return Response({
+            'authenticated': False,
+        })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def local_login(request):
+    """
+    Local authentication endpoint (development only)
+    In production, redirects to SAML SSO
+    """
+    if not settings.DEBUG:
+        return JsonResponse({
+            'error': 'Local login disabled in production',
+            'message': 'Please use Chalmers SSO',
+            'saml_login_url': '/saml/login/'
+        }, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return JsonResponse({
+                'error': 'Username and password required'
+            }, status=400)
+        
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            login(request, user)
+            logger.info(f"User logged in: {username}")
+            return JsonResponse({
+                'success': True,
+                'user': {
+                    'username': user.username,
+                    'email': user.email,
+                    'full_name': user.get_full_name() or user.username,
+                }
+            })
+        else:
+            logger.warning(f"Failed login attempt: {username}")
+            return JsonResponse({
+                'error': 'Invalid credentials'
+            }, status=401)
+            
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'error': 'Invalid JSON'
+        }, status=400)
+
+
+@require_http_methods(["POST", "GET"])
+def logout_view(request):
+    """
+    Logout endpoint
+    Handles both local logout and SAML SLO (Single Logout)
+    """
+    if request.user.is_authenticated:
+        username = request.user.username
+        logout(request)
+        logger.info(f"User logged out: {username}")
+        
+        # In production with SAML, redirect to SAML SLO
+        if not settings.DEBUG:
+            return JsonResponse({
+                'success': True,
+                'message': 'Logged out',
+                'redirect': '/saml/logout/'
+            })
+    
+    return JsonResponse({
+        'success': True,
+        'message': 'Logged out'
+    })

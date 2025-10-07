@@ -3,6 +3,7 @@
 
 # Production WSGI server
 gunicorn==21.2.0
+gevent==24.2.1
 
 # Performance monitoring
 psutil==5.9.5
@@ -18,3 +19,14 @@ django-health-check==3.17.0
 
 # Environment management
 python-decouple==3.8
+
+# SAML SSO for Chalmers authentication
+python3-saml==1.16.0
+djangosaml2==1.9.3
+xmlsec==1.3.13
+
+# System dependencies for SAML (install via apt/dnf)
+# libxml2-dev libxmlsec1-dev libxmlsec1-openssl pkg-config
+
+# Optional: Error tracking
+sentry-sdk==1.40.0
