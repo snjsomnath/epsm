@@ -12,6 +12,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2025-10-07
+
+### Added
+- **Production Deployment Configuration** for Chalmers University infrastructure
+  - Complete docker-compose.production.yml with all services
+  - Nginx reverse proxy configuration template
+  - Comprehensive deployment guide (DEPLOYMENT_CHALMERS.md)
+  - Production environment configuration (.env.production.example)
+
+- **SAML SSO Authentication** for Chalmers login
+  - djangosaml2 integration for Chalmers Identity Provider
+  - Custom SAML attribute mapping (uid, mail, givenName, sn)
+  - Automatic user creation from CID credentials (e.g., ssanjay@chalmers.se)
+  - Staff/superuser assignment based on eduPersonAffiliation
+  - SAML hooks for user attribute updates (backend/config/saml_hooks.py)
+
+- **Production Django Settings**
+  - Environment-specific settings (base, development, production)
+  - Security headers (HSTS, CSP, X-Frame-Options)
+  - CORS configuration for production domains
+  - Logging configuration with file rotation
+  - Optional Sentry integration for error tracking
+
+- **Authentication Enhancements**
+  - Login info API endpoint (determines local vs SAML)
+  - Current user API endpoint
+  - Logout with SAML Single Logout support
+  - Dual authentication support (local dev, SAML production)
+
+### Changed
+- Updated backend Dockerfile.prod with SAML system libraries
+  - Added libxml2-dev, libxmlsec1-dev, xmlsec1
+- Updated requirements.prod.txt with SAML dependencies
+  - python3-saml==1.16.0
+  - djangosaml2==1.9.3
+  - xmlsec==1.3.13
+  - gevent==24.2.1
+  - sentry-sdk==1.40.0
+
+### Infrastructure
+- **Ready for deployment to epsm.chalmers.se**
+- Docker images published to ghcr.io/snjsomnath/epsm-backend:0.2.0
+- Docker images published to ghcr.io/snjsomnath/epsm-frontend:0.2.0
+- Persistent volumes for production data
+- Health checks for all services
+- Auto-restart policies
+
+### Documentation
+- Comprehensive Chalmers deployment guide
+- SAML SSO setup instructions
+- VM provisioning steps
+- SSL certificate configuration
+- Environment variable documentation
+
+### Planned
+- Features and improvements planned for next release
+
+---
+
 ## [0.1.4] - 2025-10-07
 
 ### Release version 0.1.4
