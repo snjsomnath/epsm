@@ -46,26 +46,45 @@ The release script automatically synchronizes all these files.
 ### Prerequisites
 
 - Clean working directory (commit or stash changes)
-- On the `main` or `development` branch
+- **On the `main` branch** (releases should always come from main)
 - All tests passing
 - Updated CHANGELOG.md with changes
+- Development changes merged to main
 
 ### Steps
 
-1. **Run the release script:**
+1. **Ensure you're on main and up-to-date:**
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
+
+2. **Merge development changes (if needed):**
+   ```bash
+   git merge development
+   ```
+
+3. **Run the release script:**
    ```bash
    ./scripts/release.sh [major|minor|patch] ["Optional message"]
    ```
 
-2. **Review the changes:**
+4. **Review the changes:**
    ```bash
    git log -1 --stat
    ```
 
-3. **Push to GitHub:**
+5. **Push to GitHub:**
    ```bash
    git push origin main
    git push origin v<VERSION>
+   ```
+
+6. **Merge release commit back to development:**
+   ```bash
+   git checkout development
+   git merge main
+   git push origin development
    ```
 
 4. **GitHub Actions automatically:**
