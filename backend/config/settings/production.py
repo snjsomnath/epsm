@@ -8,9 +8,9 @@ import os
 
 DEBUG = False
 
+# Chalmers IT confirmed: only epsm.chalmers.se (no www subdomain) - 7 Oct 2025
 ALLOWED_HOSTS = [
     'epsm.chalmers.se',
-    'www.epsm.chalmers.se',
     'localhost',  # For internal Docker communication
 ]
 
@@ -28,7 +28,6 @@ SECURE_HSTS_PRELOAD = True
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
     "https://epsm.chalmers.se",
-    "https://www.epsm.chalmers.se",
 ]
 
 # Static and Media Files
