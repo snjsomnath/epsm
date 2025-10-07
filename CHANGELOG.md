@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2025-10-07
+
+### Fixed
+- Production Docker build failing due to missing vite dependency
+  - Changed `npm ci --only=production` to `npm ci` in frontend/Dockerfile.prod
+  - Vite is required during build step but was in devDependencies
+
+### Planned
+- Features and improvements planned for next release
+
+---
+
 ## [0.1.1] - 2025-10-07
 
 ### Release version 0.1.1
