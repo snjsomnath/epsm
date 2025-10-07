@@ -142,6 +142,12 @@ urlpatterns = [
     path('api/auth/users/<int:id>/', auth_views.api_user_detail, name='api_user_detail'),
     path('api/auth/csrf/', auth_views.csrf_token, name='csrf_token'),
     
+    # SAML SSO endpoints (production)
+    path('api/auth/login-info/', auth_views.login_info, name='login_info'),
+    path('api/auth/current-user/', auth_views.current_user, name='current_user'),
+    path('api/auth/local-login/', auth_views.local_login, name='local_login'),
+    path('api/auth/logout-view/', auth_views.logout_view, name='logout_view'),
+    
     # Database API endpoints
     path('api/materials/', simulation_views.api_materials, name='api_materials'),
         path('api/constructions/', simulation_views.api_constructions_create, name='api_constructions_create'),
@@ -172,6 +178,12 @@ urlpatterns = [
     # Add database connectivity test endpoint
     path('api/db-test/', lambda request: JsonResponse(db_test_view())),
 ]
+
+# Add SAML SSO endpoints in production
+if not settings.DEBUG:
+    urlpatterns += [
+        path('saml/', include('djangosaml2.urls')),
+    ]
 
 # Add this if not already present
 if settings.DEBUG:
