@@ -15,13 +15,8 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libxmlsec1-dev \
     libxmlsec1-openssl \
-    libxslt1-dev \
-    libtool \
     pkg-config \
-    xmlsec1 \
     git \
-    python3-dev \
-    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user and add to docker group for Docker socket access
