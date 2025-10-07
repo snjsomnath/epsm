@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Backend production Docker build failing due to missing requirements.txt
+  - Added requirements.txt to COPY command in backend/Dockerfile.prod
+  - requirements.prod.txt references requirements.txt with `-r` flag
+
 ### Planned
 - Features and improvements planned for next release
 
