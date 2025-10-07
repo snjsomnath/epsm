@@ -68,6 +68,10 @@ const AppLayout = () => {
     sets: 0,
     lastUpdate: null as string | null
   });
+  const [versionInfo, setVersionInfo] = useState<{
+    version: string;
+    app_name?: string;
+  }>({ version: '0.1.0' });
 
   useEffect(() => {
     // Add a small delay to prevent flash of content
@@ -92,6 +96,26 @@ const AppLayout = () => {
       });
     }
   }, [materials, constructions, constructionSets]);
+
+  // Fetch version information from backend
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const response = await fetch('/api/version/');
+        if (response.ok) {
+          const data = await response.json();
+          setVersionInfo({
+            version: data.version || '0.1.0',
+            app_name: data.app_acronym || 'EPSM'
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch version info:', error);
+        // Keep default values
+      }
+    };
+    fetchVersion();
+  }, []);
 
   if (isLoading) {
     return (
@@ -385,7 +409,7 @@ const AppLayout = () => {
           }}
         >
           <Typography variant="body2" color="text.secondary">
-            EPSM v0.1 Beta
+            {versionInfo.app_name} v{versionInfo.version} Beta
           </Typography>
           <Typography variant="body2" color="text.secondary">
             © 2025 Chalmers University of Technology. All rights reserved.
