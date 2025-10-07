@@ -5,7 +5,6 @@ FROM python:3.11-slim as production
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
-ENV DJANGO_SETTINGS_MODULE=config.settings.production
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -29,8 +28,9 @@ RUN pip install --no-cache-dir -r requirements.prod.txt
 # Copy project
 COPY . /app/
 
-# Collect static files
-RUN python manage.py collectstatic --noinput
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Create media directories and set permissions
 RUN mkdir -p /app/media/simulation_files \
@@ -46,6 +46,9 @@ EXPOSE 8000
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
+
+# Use entrypoint script
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # Start gunicorn server
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--worker-class", "gevent", "config.wsgi:application"]
