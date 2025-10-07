@@ -33,10 +33,13 @@
 ### 📋 Remaining Tasks (Before First Deployment)
 
 **VM Provisioning & Infrastructure:**
-1. **Order VM from Chalmers IT** ⏳ IN PROGRESS (Björn is reviewing)  
-   - Note: VM hostname (e.g., `epsm-vm.ita.chalmers.se`) can differ from service name (`epsm.chalmers.se`)
-   - URL: https://intranet.chalmers.se/en/tools-support/general-support/it/it-services/order-virtual-machine/
-   - **Action:** Wait for VM provisioning confirmation from IT
+1. **Order VM from Chalmers IT** ✅ CONFIRMED (7 Oct 2025)  
+   - **VM Hostname:** `epsm.ita.chalmers.se`
+   - **Service Domain:** `epsm.chalmers.se` (no www subdomain)
+   - **Host IP:** 129.16.69.25
+   - **OS:** Red Hat Enterprise Linux 9
+   - **Platform:** VMware
+   - **Action:** Wait for final VM provisioning and SSH access credentials
 
 2. **Receive VM Access** ⏳ PENDING  
    - SSH credentials and VM hostname
@@ -174,10 +177,10 @@ sentry-sdk==1.40.0  # Optional error tracking
 ### Step 1: VM Setup (After IT Provisions)
 
 ```bash
-# SSH into VM (VM hostname will be different from service name)
-# Example: ssh your-cid@epsm-vm.ita.chalmers.se
-# Service will be accessible at: epsm.chalmers.se
-ssh your-cid@[vm-hostname].ita.chalmers.se
+# SSH into VM (confirmed hostname: epsm.ita.chalmers.se)
+# Service URL will be: https://epsm.chalmers.se (no www)
+# Replace 'your-cid' with your Chalmers CID (e.g., ssanjay)
+ssh your-cid@epsm.ita.chalmers.se
 
 # Install Docker
 curl -fsSL https://get.docker.com | sh
@@ -239,7 +242,7 @@ python3 -c 'from django.core.management.utils import get_random_secret_key; prin
 **Option A: Let's Encrypt** (Recommended by Björn)
 ```bash
 sudo apt install certbot
-sudo certbot certonly --standalone -d epsm.chalmers.se -d www.epsm.chalmers.se
+sudo certbot certonly --standalone -d epsm.chalmers.se
 
 # Copy certificates
 mkdir -p nginx/ssl
@@ -251,6 +254,8 @@ sudo chown -R $USER:$USER nginx/ssl
 sudo crontab -e
 # Add: 0 0 1 * * certbot renew --quiet && docker-compose -f /opt/epsm/docker-compose.production.yml restart nginx
 ```
+
+**Note:** Only `epsm.chalmers.se` is configured (no www subdomain) as confirmed by Chalmers IT.
 
 **Note:** Björn mentions Apache module `mod_md` works well with minimal configuration for Let's Encrypt automation.
 
@@ -278,14 +283,14 @@ http {
     # HTTP redirect to HTTPS
     server {
         listen 80;
-        server_name epsm.chalmers.se www.epsm.chalmers.se;
+        server_name epsm.chalmers.se;
         return 301 https://$server_name$request_uri;
     }
 
     # HTTPS server
     server {
         listen 443 ssl http2;
-        server_name epsm.chalmers.se www.epsm.chalmers.se;
+        server_name epsm.chalmers.se;
 
         ssl_certificate /etc/nginx/ssl/fullchain.pem;
         ssl_certificate_key /etc/nginx/ssl/privkey.pem;
@@ -419,8 +424,11 @@ Sanjay
 
 ## 🎉 Next Steps
 
-1. ✅ Order VM from Chalmers IT
-2. ⏳ Wait for VM provisioning (1-2 weeks)
+1. ✅ Order VM from Chalmers IT (Confirmed: 7 Oct 2025)
+   - VM: `epsm.ita.chalmers.se` (129.16.69.25)
+   - Service: `epsm.chalmers.se` (no www)
+   - OS: Red Hat Enterprise Linux 9
+2. ⏳ Receive SSH credentials and access (waiting for IT)
 3. ⏳ Deploy using this guide
 4. ⏳ Configure SAML with Björn
 5. ⏳ Test login with your CID
