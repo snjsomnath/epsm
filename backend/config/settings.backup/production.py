@@ -1,9 +1,8 @@
 """
 Production settings for EPSM
 Extends base settings with production-specific configuration for Chalmers deployment
-Implements REFEDS Personalized Access Entity Category for SAML SSO
 """
-from ..settings import *
+from .base import *
 import os
 
 DEBUG = False
@@ -57,8 +56,6 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # SAML Settings for Chalmers Identity Provider
-# Implements REFEDS Personalized Access Entity Category
-# https://refeds.org/category/personalized
 SAML_CONFIG = {
     'xmlsec_binary': '/usr/bin/xmlsec1',
     'entityid': 'https://epsm.chalmers.se/saml/metadata/',
@@ -77,22 +74,9 @@ SAML_CONFIG = {
                 ],
             },
             
-            # REFEDS Personalized Access required attributes
-            'required_attributes': [
-                'eduPersonPrincipalName',  # or samlSubjectID
-                'mail',
-                'givenName',
-                'sn',
-            ],
-            
-            # REFEDS Personalized Access optional attributes
-            'optional_attributes': [
-                'displayName',
-                'eduPersonScopedAffiliation',
-                'schacHomeOrganization',
-                'eduPersonAssurance',
-                'samlSubjectID',
-            ],
+            # Attributes required from Chalmers IdP
+            'required_attributes': ['uid', 'mail', 'givenName', 'sn'],
+            'optional_attributes': ['eduPersonAffiliation', 'displayName'],
             
             # Allow unsolicited responses (IdP-initiated login)
             'allow_unsolicited': True,
@@ -103,11 +87,8 @@ SAML_CONFIG = {
     'metadata': {
         'remote': [
             {
-                # Chalmers IdP metadata URL (provided by Björn)
-                'url': os.environ.get(
-                    'SAML_IDP_METADATA_URL',
-                    'https://www.ita.chalmers.se/idp.chalmers.se.xml'
-                ),
+                # This URL will be provided by Chalmers IT (Björn)
+                'url': os.environ.get('SAML_IDP_METADATA_URL', 'https://idp.chalmers.se/idp/shibboleth'),
             },
         ],
     },
@@ -137,40 +118,29 @@ SAML_CONFIG = {
     },
 }
 
-# Map REFEDS Personalized Access SAML attributes to Django User model
-# See: https://wiki.sunet.se/display/SWAMID/4.1+Entity+Categories+for+Service+Providers
+# Map Chalmers SAML attributes to Django User model
 SAML_ATTRIBUTE_MAPPING = {
-    # Primary unique identifier (REFEDS standard)
-    # urn:oasis:names:tc:SAML:attribute:subject-id or eduPersonPrincipalName
-    'eduPersonPrincipalName': ('username',),  # ssanjay@chalmers.se -> ssanjay
-    'samlSubjectID': ('username',),  # Alternative persistent identifier
+    # Chalmers CID (e.g., 'ssanjay') -> Django username
+    'uid': ('username',),
     
-    # Email address (urn:oid:0.9.2342.19200300.100.1.3)
+    # Email (e.g., 'ssanjay@chalmers.se') -> Django email
     'mail': ('email',),
     
-    # Display name (urn:oid:2.16.840.1.113730.3.1.241)
-    'displayName': ('first_name', 'last_name'),  # Split by custom_update_user
-    
-    # Given name (urn:oid:2.5.4.42)
+    # Given name (e.g., 'Sanjay') -> Django first_name
     'givenName': ('first_name',),
     
-    # Surname (urn:oid:2.5.4.4)
+    # Surname (e.g., 'Somanath') -> Django last_name
     'sn': ('last_name',),
-    
-    # Note: The following are handled in custom_update_user but not directly mapped:
-    # - eduPersonScopedAffiliation (urn:oid:1.3.6.1.4.1.5923.1.1.1.9)
-    # - schacHomeOrganization (urn:oid:1.3.6.1.4.1.25178.1.2.9)
-    # - eduPersonAssurance (urn:oid:1.3.6.1.4.1.5923.1.1.1.11)
 }
 
 # Automatically create user account on first SSO login
 SAML_CREATE_UNKNOWN_USER = True
 
-# Use eduPersonPrincipalName/samlSubjectID as the username (extracted by custom hook)
+# Use CID as the username (not email or name ID)
 SAML_DJANGO_USER_MAIN_ATTRIBUTE = 'username'
 SAML_USE_NAME_ID_AS_USERNAME = False
 
-# Custom user creation/update function (handles REFEDS attribute extraction)
+# Custom user creation/update function
 SAML_ATTRIBUTE_MAPPING_CALLBACK = 'config.saml_hooks.custom_update_user'
 
 # Session configuration for SAML
@@ -216,11 +186,6 @@ LOGGING = {
         'djangosaml2': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',  # Detailed SAML debugging
-            'propagate': False,
-        },
-        'config.saml_hooks': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',  # Detailed attribute mapping debugging
             'propagate': False,
         },
     },

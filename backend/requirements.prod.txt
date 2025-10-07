@@ -25,5 +25,8 @@ python-decouple==3.8
 pysaml2==7.5.0
 djangosaml2==1.9.3
 
+# Privacy policy rendering
+markdown==3.5.1
+
 # Optional: Error tracking
 sentry-sdk==1.40.0

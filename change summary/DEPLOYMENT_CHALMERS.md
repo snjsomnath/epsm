@@ -3,26 +3,112 @@
 ## 🎯 Deployment Readiness Status
 
 ### ✅ Completed
+
+**Backend Infrastructure:**
 - [x] Production Django settings with SAML SSO support
-- [x] SAML authentication backend (djangosaml2)
-- [x] Custom SAML attribute mapping for Chalmers CID
+- [x] SAML authentication backend (djangosaml2 with pysaml2)
+- [x] Custom SAML attribute mapping for REFEDS Personalized Access
 - [x] Production requirements with SAML dependencies
 - [x] Updated Dockerfile with SAML system libraries
 - [x] Docker Compose production configuration
 - [x] Authentication API endpoints (local + SAML)
 - [x] Backend prepared for ghcr.io Docker images
 
+**SAML & Privacy Compliance:**
+- [x] REFEDS Personalized Access entity category implementation
+- [x] SAML attribute mapping (eduPersonPrincipalName, samlSubjectID, etc.)
+- [x] Privacy Policy document (GDPR + REFEDS compliant)
+- [x] Privacy Policy web view at `/privacy/` endpoint
+- [x] Privacy Policy HTML template with professional styling
+- [x] IdP metadata URL confirmed: `https://www.ita.chalmers.se/idp.chalmers.se.xml`
+- [x] Contact information for SAML SP registration
+
+**Documentation:**
+- [x] Comprehensive deployment guide (this document)
+- [x] SAML quick reference guide
+- [x] Step-by-step deployment checklist
+- [x] Email templates for IT communication
+- [x] Technical implementation summary
+
 ### 📋 Remaining Tasks (Before First Deployment)
 
-1. **Order VM from Chalmers IT** ⏳ IN PROGRESS  
-   URL: https://intranet.chalmers.se/en/tools-support/general-support-services/it/it-services/order-virtual-machine/
+**VM Provisioning & Infrastructure:**
+1. **Order VM from Chalmers IT** ⏳ IN PROGRESS (Björn is reviewing)  
+   - Note: VM hostname (e.g., `epsm-vm.ita.chalmers.se`) can differ from service name (`epsm.chalmers.se`)
+   - URL: https://intranet.chalmers.se/en/tools-support/general-support/it/it-services/order-virtual-machine/
+   - **Action:** Wait for VM provisioning confirmation from IT
 
-2. **Create Nginx configuration** (see templates below)
-3. **Create deployment scripts** (see scripts below)
-4. **Update frontend for SAML** (LoginPage.tsx changes)
-5. **Create environment file** (.env.production)
-6. **Obtain SSL certificates** (Let's Encrypt or Harica)
-7. **Configure SAML with IT** (get IdP metadata URL)
+2. **Receive VM Access** ⏳ PENDING  
+   - SSH credentials and VM hostname
+   - Network configuration details
+   - DNS verification for `epsm.chalmers.se`
+
+**Deployment Tasks (After VM Provisioning):**
+
+3. **Install Docker & Prerequisites** ⏳ NOT STARTED  
+   - Install Docker and Docker Compose on VM
+   - Install certbot for SSL certificates
+   - System updates and security patches
+
+4. **Obtain SSL Certificates** ⏳ NOT STARTED  
+   - Let's Encrypt recommended by Björn
+   - Alternative: Harica (1-year certificates, manual process)
+   - Configure auto-renewal for Let's Encrypt
+
+5. **Create Nginx Configuration** ⏳ NOT STARTED  
+   - Configure reverse proxy (template provided below)
+   - Set up SSL certificate paths
+   - Configure SAML endpoint routing
+
+6. **Create Environment File** ⏳ NOT STARTED  
+   - Generate SECRET_KEY (50+ characters)
+   - Set database credentials
+   - Configure SAML_IDP_METADATA_URL
+   - Set email configuration (optional)
+
+7. **Deploy Application** ⏳ NOT STARTED  
+   - Clone repository to `/opt/epsm`
+   - Start Docker services
+   - Run database migrations
+   - Collect static files
+   - Create superuser account
+
+**SAML Configuration (After Deployment):**
+
+8. **Generate SP Metadata** ⏳ NOT STARTED  
+   - Run `python manage.py saml_metadata`
+   - Verify Entity ID and ACS URL
+
+9. **Register with Chalmers IdP** ⏳ NOT STARTED  
+   - Send SP metadata to Björn
+   - Include privacy policy URL
+   - Specify REFEDS Personalized Access entity category
+   - Wait for SAML registration confirmation
+
+10. **Test SAML Integration** ⏳ NOT STARTED  
+    - Test login with Chalmers CID
+    - Verify attribute mapping
+    - Test Single Logout (SLO)
+    - Verify user permissions
+
+**Optional (Nice to Have):**
+
+11. **Update Frontend for SAML** ⏳ OPTIONAL  
+    - Update LoginPage.tsx with "Login with Chalmers CID" button
+    - Add SAML-specific UI elements
+    - Improve user experience for SSO
+
+12. **Configure Monitoring** ⏳ OPTIONAL  
+    - Set up log monitoring
+    - Configure error alerts
+    - Disk space monitoring
+    - Performance metrics
+
+13. **Set Up Automated Backups** ⏳ OPTIONAL  
+    - Database backup script
+    - Media files backup
+    - Backup retention policy (30 days)
+    - Test restore procedure
 
 ---
 
@@ -31,33 +117,42 @@
 ### Backend Changes
 
 **1. Production Settings** (`backend/config/settings/production.py`)
-- SAML SSO configuration
+- SAML SSO configuration with REFEDS Personalized Access
 - Chalmers Identity Provider integration
+- IdP Metadata URL: `https://www.ita.chalmers.se/idp.chalmers.se.xml`
 - Security headers (HSTS, CSP, etc.)
 - Session management
 - Logging configuration
 
 **2. SAML Integration** (`backend/config/saml_hooks.py`)
-- Maps Chalmers attributes (uid, mail, givenName, sn) to Django User
+- Maps REFEDS Personalized Access attributes to Django User
+- Supports: eduPersonPrincipalName, samlSubjectID, displayName, givenName, sn
+- Handles eduPersonScopedAffiliation for role assignment
 - Automatic user creation on first login
 - Staff/superuser assignment based on affiliation
 - CID becomes username (e.g., 'ssanjay')
 
-**3. Authentication Views** (`backend/simulation/auth_views.py`)
+**3. Privacy Policy** (`docs/PRIVACY_POLICY.md` + web view)
+- GDPR and REFEDS Personalized Access compliant
+- Accessible at `/privacy/` endpoint
+- Details data collection, usage, retention, and user rights
+- Required for REFEDS entity category registration
+
+**4. Authentication Views** (`backend/simulation/auth_views.py`)
 - `/api/auth/login-info/` - Determines auth method (local vs SAML)
 - `/api/auth/current-user/` - Returns logged-in user info
 - `/api/auth/local-login/` - Development-only local auth
 - `/api/auth/logout-view/` - Handles SAML Single Logout
 
-**4. Updated Dependencies** (`backend/requirements.prod.txt`)
+**5. Updated Dependencies** (`backend/requirements.prod.txt`)
 ```
-python3-saml==1.16.0
+pysaml2==7.5.0
 djangosaml2==1.9.3
-xmlsec==1.3.13
+markdown==3.5.1  # For privacy policy rendering
 sentry-sdk==1.40.0  # Optional error tracking
 ```
 
-**5. Updated Dockerfile** (`backend/Dockerfile.prod`)
+**6. Updated Dockerfile** (`backend/Dockerfile.prod`)
 - Added SAML system libraries (libxml2-dev, libxmlsec1-dev, xmlsec1)
 - Configured for production gunicorn deployment
 
@@ -79,8 +174,10 @@ sentry-sdk==1.40.0  # Optional error tracking
 ### Step 1: VM Setup (After IT Provisions)
 
 ```bash
-# SSH into VM
-ssh your-cid@epsm.chalmers.se
+# SSH into VM (VM hostname will be different from service name)
+# Example: ssh your-cid@epsm-vm.ita.chalmers.se
+# Service will be accessible at: epsm.chalmers.se
+ssh your-cid@[vm-hostname].ita.chalmers.se
 
 # Install Docker
 curl -fsSL https://get.docker.com | sh
@@ -117,8 +214,8 @@ POSTGRES_DB=epsm_db
 POSTGRES_USER=epsm_user
 POSTGRES_PASSWORD=your-secure-password
 
-# SAML (get from Björn)
-SAML_IDP_METADATA_URL=https://idp.chalmers.se/idp/shibboleth
+# SAML
+SAML_IDP_METADATA_URL=https://www.ita.chalmers.se/idp.chalmers.se.xml
 
 # Docker Images
 VERSION=0.2.0
@@ -139,7 +236,7 @@ python3 -c 'from django.core.management.utils import get_random_secret_key; prin
 
 ### Step 3: SSL Certificates
 
-**Option A: Let's Encrypt** (Recommended)
+**Option A: Let's Encrypt** (Recommended by Björn)
 ```bash
 sudo apt install certbot
 sudo certbot certonly --standalone -d epsm.chalmers.se -d www.epsm.chalmers.se
@@ -155,8 +252,10 @@ sudo crontab -e
 # Add: 0 0 1 * * certbot renew --quiet && docker-compose -f /opt/epsm/docker-compose.production.yml restart nginx
 ```
 
-**Option B: Harica** (Chalmers-provided)
-Contact Björn to obtain Harica certificates and place them in `nginx/ssl/`.
+**Note:** Björn mentions Apache module `mod_md` works well with minimal configuration for Let's Encrypt automation.
+
+**Option B: Harica** (1-year certificates)
+Chalmers provides Harica certificates that last 1 year but require manual request/retrieval steps. Contact Björn for Swedish instructions if you prefer this option.
 
 ### Step 4: Create Nginx Configuration
 
@@ -255,7 +354,7 @@ docker-compose -f docker-compose.production.yml exec backend python manage.py sa
 # Send sp_metadata.xml to Björn (it-support@chalmers.se)
 ```
 
-**Email to Björn:**
+**Email to Björn (After Deployment):**
 ```
 Subject: SAML SP Registration for EPSM
 
@@ -267,7 +366,18 @@ Please register our Service Provider with the Chalmers IdP:
 - Attached: sp_metadata.xml
 - Entity ID: https://epsm.chalmers.se/saml/metadata/
 - ACS URL: https://epsm.chalmers.se/saml/acs/
-- Required attributes: uid, mail, givenName, sn, eduPersonAffiliation
+- Entity Category: REFEDS Personalized Access (https://refeds.org/category/personalized)
+- Required attributes from REFEDS Personalized Access bundle:
+  * samlSubjectID (urn:oasis:names:tc:SAML:attribute:subject-id)
+  * mail (urn:oid:0.9.2342.19200300.100.1.3)
+  * displayName (urn:oid:2.16.840.1.113730.3.1.241)
+  * givenName (urn:oid:2.5.4.42)
+  * sn (urn:oid:2.5.4.4)
+  * eduPersonScopedAffiliation (urn:oid:1.3.6.1.4.1.5923.1.1.1.9)
+  * schacHomeOrganization (urn:oid:1.3.6.1.4.1.25178.1.2.9)
+- Privacy Policy: https://epsm.chalmers.se/privacy (will be published)
+
+Purpose: Building energy simulation management for research and education at Chalmers.
 
 Thanks!
 Sanjay
