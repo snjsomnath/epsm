@@ -12,6 +12,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.1] - 2025-10-07
+
+### Added
+- **Frontend SAML SSO Support**
+  - Added `getLoginInfo()` API call to detect SAML vs local authentication
+  - Added `getCurrentUser()` API call to fetch authenticated user from backend
+  - Added `redirectToSAMLLogin()` function for SAML authentication flow
+  - "Login with Chalmers CID" button in production environment
+  - Automatic session initialization from SAML backend authentication
+  - Conditional UI rendering based on authentication method
+
+### Changed
+- **LoginPage Component**
+  - Conditional display of SAML login button (production only)
+  - Demo login only available in development environment
+  - Enhanced UI with environment-aware authentication options
+
+- **AuthContext**
+  - Added `signInWithSAML()` method for SAML login
+  - Added `refreshAuth()` method to sync with backend session
+  - Added `loginInfo` state to track authentication configuration
+  - Automatic SAML session detection on page load
+
+### Fixed
+- Authentication state synchronization between frontend and backend
+- Session persistence for SAML-authenticated users
+
+---
+
 ## [0.2.0] - 2025-10-07
 
 ### Added
