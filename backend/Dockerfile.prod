@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libxmlsec1-openssl \
     pkg-config \
     xmlsec1 \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user and add to docker group for Docker socket access
@@ -25,6 +26,9 @@ RUN adduser --disabled-password --gecos '' appuser \
 
 # Set work directory
 WORKDIR /app
+
+# Upgrade pip and install wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy and install production requirements
 COPY requirements.txt requirements.prod.txt /app/
