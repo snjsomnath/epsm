@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Backend production Docker build failing on collectstatic command
+  - Moved collectstatic from Dockerfile build to runtime entrypoint
+  - Created docker-entrypoint.sh for container startup tasks
+  - Entrypoint handles database wait, migrations, and static file collection
+  - Removed invalid DJANGO_SETTINGS_MODULE environment variable
+
 ### Planned
 - Features and improvements planned for next release
 
