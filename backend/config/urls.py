@@ -106,9 +106,32 @@ def health_view(request):
         'database': db_status
     })
 
+def version_view(request):
+    """Return version and application information."""
+    from django.http import JsonResponse
+    from __version__ import (
+        __version__, VERSION_INFO, APP_NAME, APP_ACRONYM, 
+        APP_DESCRIPTION, APP_AUTHOR, APP_AUTHOR_EMAIL,
+        APP_INSTITUTION, APP_LICENSE, APP_URL
+    )
+    
+    return JsonResponse({
+        'version': __version__,
+        'version_info': VERSION_INFO,
+        'app_name': APP_NAME,
+        'app_acronym': APP_ACRONYM,
+        'description': APP_DESCRIPTION,
+        'author': APP_AUTHOR,
+        'author_email': APP_AUTHOR_EMAIL,
+        'institution': APP_INSTITUTION,
+        'license': APP_LICENSE,
+        'url': APP_URL,
+    })
+
 urlpatterns = [
     path('', root_view),
     path('health/', health_view, name='health'),
+    path('api/version/', version_view, name='version'),
     path('admin/', admin.site.urls),
     
     # Authentication endpoints
