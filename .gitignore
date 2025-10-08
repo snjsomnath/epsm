@@ -52,8 +52,8 @@ media/
 backend/staticfiles/
 backend/media/
 
-!backend/media/chalmers_logo_light_theme.png 
-!backend/media/chalmers_logo_dark_theme.png
+!frontend/public/media/chalmers_logo_light_theme.png 
+!frontend/public/media/chalmers_logo_dark_theme.png
 
 # Django migrations (optional - uncomment if you want to ignore migrations)
 # */migrations/*
