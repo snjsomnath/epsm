@@ -91,7 +91,7 @@ const LoginPage = () => {
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <img 
-            src={isDarkMode ? '/src/media/chalmers_logo_dark_theme.png' : '/src/media/chalmers_logo_light_theme.png'} 
+            src={isDarkMode ? '/media/chalmers_logo_dark_theme.png' : '/media/chalmers_logo_light_theme.png'} 
             alt="Chalmers Logo" 
             style={{ height: 40 }}
           />
