@@ -17,11 +17,11 @@ import psycopg2
 import os
 
 db_config = {
-    'dbname': os.getenv('POSTGRES_DB', 'epsm_db'),
-    'user': os.getenv('POSTGRES_USER', 'epsm_user'),
-    'password': os.getenv('POSTGRES_PASSWORD', 'epsm_secure_password'),
-    'host': os.getenv('POSTGRES_HOST', 'database'),
-    'port': os.getenv('POSTGRES_PORT', '5432'),
+    'dbname': os.getenv('DB_NAME', os.getenv('POSTGRES_DB', 'epsm_db')),
+    'user': os.getenv('DB_USER', os.getenv('POSTGRES_USER', 'epsm_user')),
+    'password': os.getenv('DB_PASSWORD', os.getenv('POSTGRES_PASSWORD', 'epsm_secure_password')),
+    'host': os.getenv('DB_HOST', os.getenv('POSTGRES_HOST', 'database')),
+    'port': os.getenv('DB_PORT', os.getenv('POSTGRES_PORT', '5432')),
 }
 
 max_retries = 30
