@@ -18,6 +18,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate required secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.PROD_HOST }}" ]; then
+            echo "ERROR: PROD_HOST secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
+            missing=1
+          fi
+          if [ -z "${{ secrets.PROD_USER }}" ]; then
+            echo "ERROR: PROD_USER secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
+            missing=1
+          fi
+          if [ -z "${{ secrets.PROD_SSH_KEY }}" ]; then
+            echo "ERROR: PROD_SSH_KEY secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required secrets are missing. Aborting deployment." >&2
+            exit 1
+          fi
+
+
       - name: Deploy to Production VM
         uses: appleboy/ssh-action@v1.2.0
         with:
