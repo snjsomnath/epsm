@@ -42,7 +42,7 @@ services:
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_HOST: database
-      MATERIALS_DB_NAME: ${POSTGRES_DB:-epsm_db}
+      MATERIALS_DB_NAME: epsm_materials
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
@@ -89,7 +89,7 @@ services:
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_HOST: database
-      MATERIALS_DB_NAME: ${POSTGRES_DB:-epsm_db}
+      MATERIALS_DB_NAME: epsm_materials
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
@@ -115,7 +115,7 @@ services:
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_HOST: database
-      MATERIALS_DB_NAME: ${POSTGRES_DB:-epsm_db}
+      MATERIALS_DB_NAME: epsm_materials
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
