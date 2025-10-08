@@ -3,6 +3,11 @@ set -e
 
 echo "Starting EPSM Backend..."
 
+# Create required directories with proper permissions
+echo "Creating required directories..."
+mkdir -p /app/logs /app/media /app/staticfiles
+chmod -R 777 /app/logs /app/media /app/staticfiles
+
 # Wait for database to be ready
 echo "Waiting for database..."
 python << END
