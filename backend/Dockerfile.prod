@@ -45,6 +45,9 @@ RUN chmod +x /docker-entrypoint.sh
 # Create media directories and set permissions
 RUN mkdir -p /app/media/simulation_files \
     && mkdir -p /app/media/simulation_results \
+    && mkdir -p /app/logs \
+    && mkdir -p /app/staticfiles \
+    && chmod -R 777 /app/logs /app/media /app/staticfiles \
     && chown -R appuser:appuser /app
 
 # Switch to app user
