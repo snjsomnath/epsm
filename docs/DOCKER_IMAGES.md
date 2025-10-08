@@ -26,7 +26,7 @@ cd /Users/ssanjay/GitHub/epsm
 # Build with both latest and version tags
 docker build -f backend/Dockerfile.prod \
   -t ghcr.io/snjsomnath/epsm-backend:latest \
-  -t ghcr.io/snjsomnath/epsm-backend:v0.2.3 \
+  -t ghcr.io/snjsomnath/epsm-backend:v0.2.4 \
   backend/
 ```
 
@@ -37,7 +37,7 @@ docker build -f backend/Dockerfile.prod \
 docker push ghcr.io/snjsomnath/epsm-backend:latest
 
 # Push version tag
-docker push ghcr.io/snjsomnath/epsm-backend:v0.2.3
+docker push ghcr.io/snjsomnath/epsm-backend:v0.2.4
 ```
 
 ## Build and Push Frontend Image
@@ -50,7 +50,7 @@ cd /Users/ssanjay/GitHub/epsm
 # Build with both latest and version tags
 docker build -f frontend/Dockerfile.prod \
   -t ghcr.io/snjsomnath/epsm-frontend:latest \
-  -t ghcr.io/snjsomnath/epsm-frontend:v0.2.3 \
+  -t ghcr.io/snjsomnath/epsm-frontend:v0.2.4 \
   frontend/
 ```
 
@@ -61,7 +61,7 @@ docker build -f frontend/Dockerfile.prod \
 docker push ghcr.io/snjsomnath/epsm-frontend:latest
 
 # Push version tag
-docker push ghcr.io/snjsomnath/epsm-frontend:v0.2.3
+docker push ghcr.io/snjsomnath/epsm-frontend:v0.2.4
 ```
 
 ## Update docker-compose.production.yml
@@ -70,10 +70,10 @@ After pushing new images, update the version in `docker-compose.production.yml`:
 
 ```yaml
 backend:
-  image: ghcr.io/snjsomnath/epsm-backend:v0.2.3  # or :latest
+  image: ghcr.io/snjsomnath/epsm-backend:v0.2.4  # or :latest
   
 frontend:
-  image: ghcr.io/snjsomnath/epsm-frontend:v0.2.3  # or :latest
+  image: ghcr.io/snjsomnath/epsm-frontend:v0.2.4  # or :latest
 ```
 
 ## Make Images Public (Optional)
