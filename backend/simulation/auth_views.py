@@ -263,7 +263,8 @@ def login_info(request):
         return Response({
             'method': 'local',
             'login_url': '/api/auth/login/',
-            'sso_enabled': False,
+            'saml_enabled': False,
+            'environment': 'development',
             'message': 'Development mode: Use local authentication'
         })
     else:
@@ -271,7 +272,8 @@ def login_info(request):
         return Response({
             'method': 'saml',
             'login_url': '/saml/login/',
-            'sso_enabled': True,
+            'saml_enabled': True,
+            'environment': 'production',
             'provider': 'Chalmers University',
             'message': 'Login with your Chalmers CID (e.g., ssanjay@chalmers.se)'
         })
