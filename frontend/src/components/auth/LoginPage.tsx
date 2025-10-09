@@ -225,32 +225,35 @@ const LoginPage = () => {
 
                   <Button
                     type="submit"
-                    variant="contained"
+                    variant={loginInfo?.saml_enabled ? "outlined" : "contained"}
                     fullWidth
-                    size="large"
+                    size={loginInfo?.saml_enabled ? "medium" : "large"}
                     disabled={loading}
                     sx={{ 
                       mt: 3,
-                      py: 1.5,
-                      bgcolor: muiTheme.palette.primary.main,
-                      '&:hover': {
-                        bgcolor: muiTheme.palette.primary.dark,
-                      }
+                      py: loginInfo?.saml_enabled ? 1 : 1.5,
+                      ...(loginInfo?.saml_enabled ? {
+                        borderColor: muiTheme.palette.primary.main,
+                        color: muiTheme.palette.primary.main,
+                        '&:hover': {
+                          borderColor: muiTheme.palette.primary.dark,
+                          backgroundColor: muiTheme.palette.primary.main + '08',
+                        }
+                      } : {
+                        bgcolor: muiTheme.palette.primary.main,
+                        '&:hover': {
+                          bgcolor: muiTheme.palette.primary.dark,
+                        }
+                      })
                     }}
                   >
-                    {isSignUp ? 'Create Account' : 'Sign In'}
+                    {isSignUp ? 'Create Account' : (loginInfo?.saml_enabled ? 'Admin Sign In' : 'Sign In')}
                   </Button>
                 </form>
 
-                {/* SAML Login Button - Only show in production */}
+                {/* SAML Login Button - Primary login method in production */}
                 {loginInfo?.saml_enabled && (
                   <>
-                    <Divider sx={{ my: 3 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        OR
-                      </Typography>
-                    </Divider>
-
                     <Button
                       variant="contained"
                       fullWidth
@@ -258,10 +261,12 @@ const LoginPage = () => {
                       onClick={signInWithSAML}
                       disabled={loading}
                       sx={{ 
-                        mb: 2,
+                        mb: 3,
                         py: 1.5,
                         bgcolor: '#00d0be',
                         color: '#fff',
+                        fontSize: '1.1rem',
+                        fontWeight: 600,
                         '&:hover': {
                           bgcolor: '#00b8a9',
                         }
@@ -269,6 +274,12 @@ const LoginPage = () => {
                     >
                       Login with Chalmers CID
                     </Button>
+
+                    <Divider sx={{ my: 3 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Administrator Access
+                      </Typography>
+                    </Divider>
                   </>
                 )}
 
@@ -299,25 +310,30 @@ const LoginPage = () => {
                   </>
                 )}
 
-                <Divider sx={{ my: 2 }} />
+                {/* Account creation toggle - Only show in development */}
+                {(!loginInfo || !loginInfo.saml_enabled) && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
 
-                <Typography variant="body2" align="center">
-                  {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                  <Link
-                    component="button"
-                    variant="body2"
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    sx={{ 
-                      textDecoration: 'none',
-                      color: 'primary.main',
-                      '&:hover': {
-                        color: 'primary.dark',
-                      }
-                    }}
-                  >
-                    {isSignUp ? 'Sign In' : 'Create Account'}
-                  </Link>
-                </Typography>
+                    <Typography variant="body2" align="center">
+                      {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                      <Link
+                        component="button"
+                        variant="body2"
+                        onClick={() => setIsSignUp(!isSignUp)}
+                        sx={{ 
+                          textDecoration: 'none',
+                          color: 'primary.main',
+                          '&:hover': {
+                            color: 'primary.dark',
+                          }
+                        }}
+                      >
+                        {isSignUp ? 'Sign In' : 'Create Account'}
+                      </Link>
+                    </Typography>
+                  </>
+                )}
 
                 <AuthTest />
               </CardContent>
