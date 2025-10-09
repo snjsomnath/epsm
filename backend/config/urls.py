@@ -192,21 +192,18 @@ if not settings.DEBUG:
 
 # Add this if not already present
 if settings.DEBUG:
-    # Serve simulation result HTML requests that may be generated as .htm
+    # Serve all media files in production
+    # Also handles simulation result HTML requests that may be generated as .htm
     # (EnergyPlus outputs `output.htm` but frontend may request `output.html`).
-    # This fallback will return the .htm file when an .html path is requested.
-    def media_html_fallback(request, path):
-        # Only handle simulation_results paths; otherwise let static handler manage.
-        if not path.startswith('simulation_results/'):
-            raise Http404
-
+    def media_file_handler(request, path):
         full_path = os.path.join(settings.MEDIA_ROOT, path)
         if os.path.exists(full_path):
             content_type = mimetypes.guess_type(full_path)[0] or 'application/octet-stream'
             return FileResponse(open(full_path, 'rb'), content_type=content_type)
 
-        # If an HTML was requested but only .htm exists, serve the .htm
-        if path.endswith('.html'):
+        # Special handling: If an HTML was requested but only .htm exists, serve the .htm
+        # (This is specific to simulation_results where EnergyPlus generates .htm files)
+        if path.startswith('simulation_results/') and path.endswith('.html'):
             alt = path[:-5] + '.htm'
             alt_full = os.path.join(settings.MEDIA_ROOT, alt)
             if os.path.exists(alt_full):
@@ -215,7 +212,5 @@ if settings.DEBUG:
         raise Http404
 
     urlpatterns += [
-        path('media/<path:path>', media_html_fallback),
+        path('media/<path:path>', media_file_handler),
     ]
-
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
