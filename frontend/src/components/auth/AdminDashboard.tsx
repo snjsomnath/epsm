@@ -254,8 +254,8 @@ const AdminDashboard = () => {
       <Dialog open={openCreate} onClose={() => setOpenCreate(false)}>
         <DialogTitle>Create user</DialogTitle>
         <DialogContent>
-          <TextField autoFocus fullWidth label="Email" aria-label="New user email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} sx={{ my: 1 }} />
-          <TextField fullWidth label="Password" aria-label="New user password" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} sx={{ my: 1 }} />
+          <TextField autoFocus fullWidth label="Email" aria-label="New user email" type="email" autoComplete="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} sx={{ my: 1 }} />
+          <TextField fullWidth label="Password" aria-label="New user password" type="password" autoComplete="new-password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} sx={{ my: 1 }} />
           <FormControlLabel control={<Switch checked={newUser.is_staff} onChange={(e) => setNewUser({ ...newUser, is_staff: e.target.checked })} />} label="Staff" />
           <FormControlLabel control={<Switch checked={newUser.is_superuser} onChange={(e) => setNewUser({ ...newUser, is_superuser: e.target.checked })} />} label="Superuser" />
         </DialogContent>
@@ -272,15 +272,15 @@ const AdminDashboard = () => {
           {editUser && (
             <Box sx={{ minWidth: 420 }}>
               <TextField fullWidth label="ID" value={editUser.id} InputProps={{ readOnly: true }} sx={{ my: 1 }} />
-              <TextField autoFocus fullWidth label="Email" aria-label="Edit user email" value={editUser.email} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} sx={{ my: 1 }} />
-              <TextField fullWidth label="Username" aria-label="Edit username" value={editUser.username || ''} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} sx={{ my: 1 }} />
-              <TextField fullWidth label="First name" aria-label="Edit user first name" value={editUser.first_name || ''} onChange={(e) => setEditUser({ ...editUser, first_name: e.target.value })} sx={{ my: 1 }} />
-              <TextField fullWidth label="Last name" aria-label="Edit user last name" value={editUser.last_name || ''} onChange={(e) => setEditUser({ ...editUser, last_name: e.target.value })} sx={{ my: 1 }} />
+              <TextField autoFocus fullWidth label="Email" aria-label="Edit user email" type="email" autoComplete="email" value={editUser.email} onChange={(e) => setEditUser({ ...editUser, email: e.target.value })} sx={{ my: 1 }} />
+              <TextField fullWidth label="Username" aria-label="Edit username" autoComplete="username" value={editUser.username || ''} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} sx={{ my: 1 }} />
+              <TextField fullWidth label="First name" aria-label="Edit user first name" autoComplete="given-name" value={editUser.first_name || ''} onChange={(e) => setEditUser({ ...editUser, first_name: e.target.value })} sx={{ my: 1 }} />
+              <TextField fullWidth label="Last name" aria-label="Edit user last name" autoComplete="family-name" value={editUser.last_name || ''} onChange={(e) => setEditUser({ ...editUser, last_name: e.target.value })} sx={{ my: 1 }} />
               <TextField fullWidth label="Created at" value={editUser.created_at ? new Date(editUser.created_at).toLocaleString() : ''} InputProps={{ readOnly: true }} sx={{ my: 1 }} />
-              <TextField fullWidth label="Password (leave empty to keep)" aria-label="Edit user password" type="password" value={editUser.password || ''} onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} sx={{ my: 1 }} />
+              <TextField fullWidth label="Password (leave empty to keep)" aria-label="Edit user password" type="password" autoComplete="new-password" value={editUser.password || ''} onChange={(e) => setEditUser({ ...editUser, password: e.target.value })} sx={{ my: 1 }} />
               {/* When editing your own account and changing elevated flags, allow entering current password to confirm */}
               {editUser.id === user?.id && (
-                <TextField fullWidth label="Confirm current password (required for flag changes)" aria-label="Confirm current password" type="password" value={editUser.confirm_password || ''} onChange={(e) => setEditUser({ ...editUser, confirm_password: e.target.value })} sx={{ my: 1 }} />
+                <TextField fullWidth label="Confirm current password (required for flag changes)" aria-label="Confirm current password" type="password" autoComplete="current-password" value={editUser.confirm_password || ''} onChange={(e) => setEditUser({ ...editUser, confirm_password: e.target.value })} sx={{ my: 1 }} />
               )}
               <FormControlLabel control={<Switch checked={!!editUser.is_staff} onChange={(e) => setEditUser({ ...editUser, is_staff: e.target.checked })} />} label="Staff" />
               <FormControlLabel control={<Switch checked={!!editUser.is_superuser} onChange={(e) => setEditUser({ ...editUser, is_superuser: e.target.checked })} />} label="Superuser" />
@@ -323,6 +323,7 @@ const AdminDashboard = () => {
             margin="dense"
             label="Password"
             type="password"
+            autoComplete="current-password"
             fullWidth
             value={reauthPassword}
             onChange={e => setReauthPassword(e.target.value)}

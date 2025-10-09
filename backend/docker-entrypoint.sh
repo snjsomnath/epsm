@@ -44,7 +44,7 @@ END
 
 # Run database migrations
 echo "Running database migrations..."
-python manage.py migrate --noinput
+python manage.py migrate --noinput --fake-initial
 
 # Collect static files
 echo "Collecting static files..."
