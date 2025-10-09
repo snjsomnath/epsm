@@ -43,7 +43,7 @@ services:
     container_name: epsm_backend_prod
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
-      SECRET_KEY: ${SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DB_NAME: ${POSTGRES_DB:-epsm_db}
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -52,7 +52,13 @@ services:
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
+      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
+      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
+      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
+      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
+      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       ALLOWED_HOSTS: epsm.chalmers.se,www.epsm.chalmers.se,epsm.ita.chalmers.se,www.epsm.ita.chalmers.se,localhost,backend
       CORS_ALLOWED_ORIGINS: "https://epsm.chalmers.se"
       SAML_IDP_METADATA_URL: ${SAML_IDP_METADATA_URL}
@@ -85,7 +91,7 @@ services:
     command: celery -A config worker --loglevel=info
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
-      SECRET_KEY: ${SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DB_NAME: ${POSTGRES_DB:-epsm_db}
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -94,7 +100,13 @@ services:
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
+      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
+      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
+      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
+      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
+      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - media_data_prod:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
@@ -111,7 +123,7 @@ services:
     command: celery -A config beat --loglevel=info
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
-      SECRET_KEY: ${SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DB_NAME: ${POSTGRES_DB:-epsm_db}
       DB_USER: ${POSTGRES_USER:-epsm_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -120,7 +132,13 @@ services:
       MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
       MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
       MATERIALS_DB_HOST: database
+      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
+      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
+      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
+      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
+      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - media_data_prod:/app/media
     networks:
