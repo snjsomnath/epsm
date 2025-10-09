@@ -115,33 +115,23 @@ CSRF_TRUSTED_ORIGINS=https://epsm.chalmers.se,https://epsm.ita.chalmers.se
 CORS_ALLOWED_ORIGINS=https://epsm.chalmers.se,https://epsm.ita.chalmers.se
 ```
 
-### Option 2: Use Updated Defaults (Current Implementation)
+### Option 2: Use Updated Defaults (Recommended)
 
-The code changes include sensible defaults for production domains. Simply:
+The code changes include sensible defaults for production domains and automatic logo file copying. Simply:
 
 1. **Pull the latest code** with these changes
-2. **Copy logo files** to backend media directory:
    ```bash
-   # Logo files are in backend/static/images/ (version controlled)
-   # They need to be copied to backend/media/ (runtime directory) in production
-   docker-compose exec backend bash -c "cp /app/static/images/chalmers_logo_*.png /app/media/"
-   ```
-   
-   **Alternative**: Add this to your deployment script or Dockerfile:
-   ```bash
-   # In deployment script
-   docker-compose -f docker-compose.prod.yml exec backend cp /app/static/images/chalmers_logo_*.png /app/media/
-   
-   # Or in Dockerfile
-   COPY backend/static/images/chalmers_logo_*.png /app/media/
+   git pull origin main
    ```
 
-3. **Rebuild and restart containers**:
+2. **Rebuild and restart containers**:
    ```bash
    docker-compose -f docker-compose.prod.yml down
    docker-compose -f docker-compose.prod.yml build --no-cache backend
    docker-compose -f docker-compose.prod.yml up -d
    ```
+
+**Note:** Logo files are now automatically copied from `static/images/` to `media/` during the Docker build process, so no manual copy step is needed.
 
 ## Verification Steps
 
