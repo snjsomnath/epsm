@@ -9,9 +9,10 @@ import os
 DEBUG = False
 
 # Chalmers IT confirmed: only epsm.chalmers.se (no www subdomain) - 7 Oct 2025
+# Allow environment variable override for ALLOWED_HOSTS, otherwise use defaults
 ALLOWED_HOSTS = [
-    'epsm.chalmers.se',
-    'localhost',  # For internal Docker communication
+    h.strip() for h in os.environ.get('ALLOWED_HOSTS', 'epsm.chalmers.se,epsm.ita.chalmers.se,localhost,backend').split(',')
+    if h.strip()
 ]
 
 # Security Settings
