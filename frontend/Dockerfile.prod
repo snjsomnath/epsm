@@ -1,6 +1,12 @@
 # Multi-stage Production Dockerfile for React Frontend
 FROM node:18-alpine as build
 
+# Build-time configuration for API/WebSocket endpoints
+ARG VITE_API_BASE_URL
+ARG VITE_WS_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_WS_URL=${VITE_WS_URL}
+
 # Set working directory
 WORKDIR /app
 
@@ -13,7 +19,7 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application with the injected environment configuration
 RUN npm run build
 
 # Production stage with Nginx
