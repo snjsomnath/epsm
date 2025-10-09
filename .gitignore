@@ -68,6 +68,19 @@ backend/media/
 postgres_data/
 docker-compose.override.yml
 
+# Docker infrastructure files
+.docker/nginx/ssl/
+nginx/
+
+# GitHub runner directory
+.github-runner/
+
+# Production backup files
+*.backup
+
+# SAML metadata files
+sp_metadata.xml
+
 # ==============================================
 # DEVELOPMENT & TESTING
 # ==============================================
