@@ -8,19 +8,15 @@ The Chalmers University logos are used on the login page and throughout the appl
 
 ### Production Deployment Note
 
-In production, these logo files need to be copied to the `backend/media/` directory during deployment, as the frontend references them via `/media/` URLs.
+In production, these logo files are **automatically copied** to the `backend/media/` directory during the Docker build process (see `backend/Dockerfile.prod`).
 
-Add this step to your deployment script:
-
-```bash
-docker-compose exec backend bash -c "cp /app/static/images/chalmers_logo_*.png /app/media/"
-```
-
-Or update your Dockerfile to copy them during build:
-
+The Dockerfile includes:
 ```dockerfile
-COPY backend/static/images/chalmers_logo_*.png /app/media/
+COPY static/images/ /app/static/images/
+RUN cp /app/static/images/chalmers_logo_*.png /app/media/
 ```
+
+No manual deployment step is required - just rebuild the Docker image and the logos will be available at `/media/` URLs.
 
 ### Files
 
