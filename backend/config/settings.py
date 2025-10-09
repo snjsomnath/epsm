@@ -10,7 +10,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-secret-key-here')
 
 DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'backend', 'frontend']
+ALLOWED_HOSTS = [h for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,frontend').split(',') if h]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -173,13 +173,21 @@ os.makedirs(SIMULATION_RESULTS_DIR, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings - updated for Docker
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server
-    "http://localhost:3000",  # Alternative React dev server
-    "http://frontend:5173",   # Docker service name
-]
+# CORS settings - allow configuration via environment variable (comma-separated)
+# Example in production: CORS_ALLOWED_ORIGINS=https://epsm.chalmers.se
+env_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if env_cors:
+    # split comma-separated env var and strip whitespace
+    CORS_ALLOWED_ORIGINS = [u.strip() for u in env_cors.split(',') if u.strip()]
+else:
+    # sensible defaults for development / docker
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # Alternative React dev server
+        "http://frontend:5173",   # Docker service name
+    ]
 
+# Allow credentials by default (the project uses session auth / cookies)
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_METHODS = [
