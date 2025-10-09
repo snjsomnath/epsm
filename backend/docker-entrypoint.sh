@@ -3,6 +3,29 @@ set -e
 
 echo "Starting EPSM Backend..."
 
+# Configure Docker group for EnergyPlus container access
+if [ -S /var/run/docker.sock ] && [ "$DOCKER_GID" ]; then
+    echo "Configuring Docker group access (GID: $DOCKER_GID)..."
+    
+    # Get the current Docker socket GID
+    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
+    echo "Docker socket GID: $DOCKER_SOCK_GID"
+    
+    # Create/modify docker group to match the socket GID
+    if getent group docker > /dev/null 2>&1; then
+        groupmod -g "$DOCKER_SOCK_GID" docker 2>/dev/null || echo "Group modification failed, trying alternative approach"
+    else
+        groupadd -g "$DOCKER_SOCK_GID" docker 2>/dev/null || echo "Group creation failed"
+    fi
+    
+    # Ensure appuser is in docker group
+    usermod -a -G docker appuser 2>/dev/null || echo "User modification failed"
+    
+    # Set socket permissions to allow appuser access (production-ready approach)
+    chmod 666 /var/run/docker.sock 2>/dev/null || echo "Socket permission change failed"
+    echo "Docker socket permissions configured for EnergyPlus access"
+fi
+
 # Create required directories with proper permissions
 echo "Creating required directories..."
 mkdir -p /app/logs /app/media /app/staticfiles

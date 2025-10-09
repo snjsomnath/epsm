@@ -9,6 +9,12 @@ export default defineConfig({
   optimizeDeps: {
     include: ['driver.js'],
   },
+  build: {
+    // Ensure assets are copied properly
+    assetsDir: 'assets',
+    copyPublicDir: true,
+  },
+  publicDir: 'public',
   server: {
     host: true,
     watch: {
