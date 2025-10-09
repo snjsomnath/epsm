@@ -66,10 +66,24 @@ SAML_CONFIG = {
     'xmlsec_binary': '/usr/bin/xmlsec1',
     'entityid': 'https://epsm.chalmers.se/saml/metadata/',
     
+    # Security: Certificate configuration for signing and encryption
+    'key_file': '/app/saml_certs/sp_private_key.pem',
+    'cert_file': '/app/saml_certs/sp_certificate.pem',
+    
+    # Security: Algorithm configuration (remove SHA1, use stronger algorithms)
+    'signing_algorithm': 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+    'digest_algorithm': 'http://www.w3.org/2001/04/xmlenc#sha256',
+    
     'service': {
         'sp': {
             'name': 'EPSM - Energy Performance Simulation Manager',
             'name_id_format': 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent',
+            
+            # Security: Enable signing and encryption
+            'want_assertions_signed': True,
+            'want_response_signed': True,
+            'authn_requests_signed': True,
+            'logout_requests_signed': True,
             
             'endpoints': {
                 'assertion_consumer_service': [

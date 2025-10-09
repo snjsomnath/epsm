@@ -42,6 +42,11 @@ COPY . /app/
 # Explicitly copy static/images directory (in case .dockerignore excluded it)
 COPY static/images/ /app/static/images/
 
+# Copy SAML certificates
+COPY saml_certs/ /app/saml_certs/
+RUN chmod 600 /app/saml_certs/sp_private_key.pem && \
+    chmod 644 /app/saml_certs/sp_certificate.pem
+
 # Copy Chalmers logos to media directory for serving
 # Frontend references these at /media/ URLs, and they're in our static/images
 RUN mkdir -p /app/media && \
