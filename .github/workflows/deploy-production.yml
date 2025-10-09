@@ -46,8 +46,8 @@ jobs:
           nslookup ${{ secrets.PROD_HOST }} || host ${{ secrets.PROD_HOST }} || true
           echo; echo "getent hosts ->"
           getent hosts ${{ secrets.PROD_HOST }} || true
-          echo; echo "Try /dev/tcp connect (open/closed):"
-          (echo > /dev/tcp/${{ secrets.PROD_HOST }}/22) && echo 'port 22 open' || echo 'port 22 not reachable'
+          echo; echo "Try TCP connect to port 22 (open/closed) with 5s timeout:"
+          timeout 5 bash -c "cat < /dev/tcp/${{ secrets.PROD_HOST }}/22" >/dev/null 2>&1 && echo 'port 22 open' || echo 'port 22 not reachable or timed out'
           echo; echo "Note: if port 22 not reachable, consider self-hosted runner or allow runner IPs in firewall"
 
 
