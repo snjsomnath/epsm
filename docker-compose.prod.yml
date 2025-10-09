@@ -47,10 +47,14 @@ services:
       - MATERIALS_DB_HOST=database
       - MATERIALS_DB_PORT=5432
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-epsm.chalmers.se,epsm.ita.chalmers.se}
       - ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
       - SIMULATION_TIMEOUT=600
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SAML_IDP_METADATA_URL=${SAML_IDP_METADATA_URL:-}
     volumes:
       - simulation_files_prod:/app/media/simulation_files
       - simulation_results_prod:/app/media/simulation_results
@@ -91,8 +95,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates
+      - ./.docker/nginx/ssl:/etc/nginx/ssl:ro  # SSL certificates
       - static_files:/var/www/static:ro
+      - simulation_files_prod:/app/media:ro  # Media files
     depends_on:
       - frontend
       - backend
@@ -109,6 +114,76 @@ services:
     networks:
       - epsm_network
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    restart: unless-stopped
+
+  # Celery Worker for async task processing
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: epsm_celery_worker_prod
+    command: celery -A config worker --loglevel=info --concurrency=4
+    environment:
+      - DEBUG=False
+      - DB_NAME=epsm_db
+      - DB_USER=epsm_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=database
+      - DB_PORT=5432
+      - MATERIALS_DB_NAME=epsm_materials
+      - MATERIALS_DB_USER=epsm_user
+      - MATERIALS_DB_PASSWORD=${DB_PASSWORD}
+      - MATERIALS_DB_HOST=database
+      - MATERIALS_DB_PORT=5432
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
+      - ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
+      - SIMULATION_TIMEOUT=600
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+    volumes:
+      - simulation_files_prod:/app/media/simulation_files
+      - simulation_results_prod:/app/media/simulation_results
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - epsm_network
+    restart: unless-stopped
+
+  # Celery Beat for periodic tasks
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: epsm_celery_beat_prod
+    command: celery -A config beat --loglevel=info
+    environment:
+      - DEBUG=False
+      - DB_NAME=epsm_db
+      - DB_USER=epsm_user
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=database
+      - DB_PORT=5432
+      - MATERIALS_DB_NAME=epsm_materials
+      - MATERIALS_DB_USER=epsm_user
+      - MATERIALS_DB_PASSWORD=${DB_PASSWORD}
+      - MATERIALS_DB_HOST=database
+      - MATERIALS_DB_PORT=5432
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - epsm_network
     restart: unless-stopped
 
   # Monitoring (optional)
