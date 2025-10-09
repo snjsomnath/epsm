@@ -46,6 +46,11 @@ services:
       - MATERIALS_DB_PASSWORD=${DB_PASSWORD}
       - MATERIALS_DB_HOST=database
       - MATERIALS_DB_PORT=5432
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME:-epsm_db}
+      - RESULTS_DB_USER=${RESULTS_DB_USER:-epsm_user}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD:-epsm_secure_password}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST:-database}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT:-5432}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-epsm.chalmers.se,epsm.ita.chalmers.se,localhost,backend}
@@ -76,6 +81,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://epsm.chalmers.se}
+        VITE_WS_URL: ${VITE_WS_URL:-wss://epsm.chalmers.se/ws}
     container_name: epsm_frontend_prod
     expose:
       - "80"
@@ -135,6 +143,11 @@ services:
       - MATERIALS_DB_PASSWORD=${DB_PASSWORD}
       - MATERIALS_DB_HOST=database
       - MATERIALS_DB_PORT=5432
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME:-epsm_db}
+      - RESULTS_DB_USER=${RESULTS_DB_USER:-epsm_user}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD:-epsm_secure_password}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST:-database}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT:-5432}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
@@ -173,6 +186,11 @@ services:
       - MATERIALS_DB_PASSWORD=${DB_PASSWORD}
       - MATERIALS_DB_HOST=database
       - MATERIALS_DB_PORT=5432
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME:-epsm_db}
+      - RESULTS_DB_USER=${RESULTS_DB_USER:-epsm_user}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD:-epsm_secure_password}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST:-database}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT:-5432}
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
