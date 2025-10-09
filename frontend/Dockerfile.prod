@@ -22,6 +22,15 @@ COPY . .
 # Build the application with the injected environment configuration
 RUN npm run build
 
+# Ensure media directory exists and copy logos explicitly (backup safety measure)
+RUN mkdir -p /app/dist/media && \
+    if [ -f /app/public/media/chalmers_logo_light_theme.png ]; then \
+        cp /app/public/media/chalmers_logo_light_theme.png /app/dist/media/; \
+    fi && \
+    if [ -f /app/public/media/chalmers_logo_dark_theme.png ]; then \
+        cp /app/public/media/chalmers_logo_dark_theme.png /app/dist/media/; \
+    fi
+
 # Production stage with Nginx
 FROM nginx:alpine as production
 

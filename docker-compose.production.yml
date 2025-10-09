@@ -39,7 +39,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/snjsomnath/epsm-backend:${VERSION:-latest}
+    image: epsm-backend:latest
     container_name: epsm_backend_prod
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
@@ -66,6 +66,7 @@ services:
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      DOCKER_GID: ${DOCKER_GID:-299}
     volumes:
       - media_data_prod:/app/media
       - static_data_prod:/app/staticfiles
@@ -86,7 +87,7 @@ services:
       retries: 3
 
   celery-worker:
-    image: ghcr.io/snjsomnath/epsm-backend:${VERSION:-latest}
+    image: epsm-backend:latest
     container_name: epsm_celery_worker_prod
     command: celery -A config worker --loglevel=info
     environment:
@@ -107,6 +108,7 @@ services:
       RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      DOCKER_GID: ${DOCKER_GID:-299}
     volumes:
       - media_data_prod:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
@@ -118,7 +120,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: ghcr.io/snjsomnath/epsm-backend:${VERSION:-latest}
+    image: epsm-backend:latest
     container_name: epsm_celery_beat_prod
     command: celery -A config beat --loglevel=info
     environment:
@@ -149,7 +151,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: ghcr.io/snjsomnath/epsm-frontend:${VERSION:-latest}
+    image: epsm-frontend:latest
     container_name: epsm_frontend_prod
     networks:
       - epsm_network
