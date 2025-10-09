@@ -204,6 +204,17 @@ services:
       - epsm_network
     restart: unless-stopped
 
+  # EnergyPlus service to ensure image is always available
+  energyplus:
+    image: nrel/energyplus:23.2.0
+    container_name: epsm_energyplus_prod
+    command: /bin/true  # Do nothing, just ensure image is available
+    restart: "no"  # Only needed to pull the image
+    networks:
+      - epsm_network
+    profiles:
+      - tools  # Optional profile, can be started manually
+
   # Monitoring (optional)
   monitoring:
     image: prom/prometheus:latest

@@ -73,7 +73,22 @@ For a completely fresh deployment:
 ```bash
 # Clean deployment (removes all data!)
 docker-compose -f docker-compose.production.yml down -v
+
+# Pull required external images
+./scripts/setup-external-images.sh
+
+# Start services
 docker-compose -f docker-compose.production.yml up -d
+```
+
+**Alternative using prod compose:**
+```bash
+# Clean deployment
+docker-compose -f docker-compose.prod.yml down -v
+
+# Pull external dependencies and build
+./scripts/setup-external-images.sh
+docker-compose -f docker-compose.prod.yml up -d --build
 ```
 
 The initialization scripts will now automatically:
