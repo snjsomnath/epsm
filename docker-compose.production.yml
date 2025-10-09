@@ -14,6 +14,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-epsm_db}
       POSTGRES_USER: ${POSTGRES_USER:-epsm_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_results_password}"
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d
@@ -21,7 +22,7 @@ services:
       - epsm_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-epsm_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-epsm_user} -d ${POSTGRES_DB:-epsm_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -87,7 +88,7 @@ services:
       retries: 3
 
   celery-worker:
-    image: epsm-backend:latest
+    image: epsm-celery-worker:latest
     container_name: epsm_celery_worker_prod
     command: celery -A config worker --loglevel=info
     environment:
@@ -120,7 +121,7 @@ services:
     restart: unless-stopped
 
   celery-beat:
-    image: epsm-backend:latest
+    image: epsm-celery-beat:latest
     container_name: epsm_celery_beat_prod
     command: celery -A config beat --loglevel=info
     environment:
