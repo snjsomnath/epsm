@@ -50,6 +50,9 @@ staticfiles/
 static/*
 !static/images/
 media/
+!frontend/public/media/
+!frontend/public/media/chalmers_logo_dark_theme.png
+!frontend/public/media/chalmers_logo_light_theme.png
 backend/staticfiles/
 backend/static/*
 !backend/static/images/

@@ -98,6 +98,8 @@ nano .env  # Set production values
 
 # Deploy to production
 ./scripts/deploy.sh
+
+> **Note:** On first run, the script will generate a secure `DJANGO_SECRET_KEY` automatically if it detects a placeholder value.
 ```
 
 ### 3. Environment Configuration

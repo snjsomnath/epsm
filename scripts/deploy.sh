@@ -7,6 +7,47 @@ set -e
 
 echo "🚀 Deploying EPSM to Production..."
 
+PYTHON_BIN="$(command -v python3 || command -v python)"
+if [ -z "$PYTHON_BIN" ]; then
+    echo "❌ Python is required to run this deployment script. Please install python3."
+    exit 1
+fi
+
+# Helper to upsert .env values without relying on sed variations
+update_env_var() {
+    local key="$1"
+    local value="$2"
+    "$PYTHON_BIN" - "$key" "$value" <<'PY'
+import sys
+from pathlib import Path
+
+key, value = sys.argv[1:3]
+env_path = Path('.env')
+lines = env_path.read_text().splitlines()
+updated = False
+
+for idx, line in enumerate(lines):
+    if line.split('=', 1)[0] == key:
+        lines[idx] = f"{key}={value}"
+        updated = True
+        break
+
+if not updated:
+    lines.append(f"{key}={value}")
+
+env_path.write_text('\n'.join(lines) + '\n')
+PY
+}
+
+# Helper to generate a secure Django secret key
+generate_secret_key() {
+    "$PYTHON_BIN" - <<'PY'
+import secrets
+
+print(secrets.token_urlsafe(64))
+PY
+}
+
 # Check if .env file exists
 if [ ! -f .env ]; then
     echo "❌ No .env file found. Please create one with production values."
@@ -17,9 +58,19 @@ fi
 echo "🔍 Validating environment configuration..."
 required_vars=("DB_PASSWORD" "DJANGO_SECRET_KEY" "ALLOWED_HOSTS")
 for var in "${required_vars[@]}"; do
-    if ! grep -q "^${var}=" .env || grep -q "^${var}=.*your.*" .env; then
-        echo "❌ Please set ${var} in .env file with a production value"
-        exit 1
+    env_line="$(grep -E "^${var}=" .env || true)"
+    env_value="${env_line#*=}"
+
+    if [ -z "$env_line" ] || [[ "$env_value" == *"your"* ]]; then
+        if [ "$var" = "DJANGO_SECRET_KEY" ]; then
+            echo "🛠️  Generating secure DJANGO_SECRET_KEY..."
+            new_secret="$(generate_secret_key)"
+            update_env_var "$var" "$new_secret"
+            echo "✅ Updated DJANGO_SECRET_KEY in .env"
+        else
+            echo "❌ Please set ${var} in .env file with a production value"
+            exit 1
+        fi
     fi
 done
 
