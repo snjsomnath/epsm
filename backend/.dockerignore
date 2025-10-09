@@ -56,6 +56,11 @@ host_simulation_results/
 *.rdd
 *.mdd
 
+# But keep the logo files in static/images
+!static/images/
+!static/images/*.png
+!static/images/README.md
+
 # Test files
 test_*.py
 *_test.py
