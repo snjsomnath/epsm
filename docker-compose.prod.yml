@@ -48,7 +48,7 @@ services:
       - MATERIALS_DB_PORT=5432
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
       - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings.production}
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-epsm.chalmers.se,epsm.ita.chalmers.se}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-epsm.chalmers.se,epsm.ita.chalmers.se,localhost,backend}
       - ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
       - SIMULATION_TIMEOUT=600
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
