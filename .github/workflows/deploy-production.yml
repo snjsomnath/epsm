@@ -38,6 +38,18 @@ jobs:
             exit 1
           fi
 
+      - name: Runner network debug
+        shell: bash
+        run: |
+          echo "Runner: $RUNNER_OS / $RUNNER_TEMP"
+          echo; echo "Resolve DNS:"
+          nslookup ${{ secrets.PROD_HOST }} || host ${{ secrets.PROD_HOST }} || true
+          echo; echo "getent hosts ->"
+          getent hosts ${{ secrets.PROD_HOST }} || true
+          echo; echo "Try /dev/tcp connect (open/closed):"
+          (echo > /dev/tcp/${{ secrets.PROD_HOST }}/22) && echo 'port 22 open' || echo 'port 22 not reachable'
+          echo; echo "Note: if port 22 not reachable, consider self-hosted runner or allow runner IPs in firewall"
+
 
       - name: Deploy to Production VM
         uses: appleboy/ssh-action@v1.2.0
