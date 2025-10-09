@@ -241,7 +241,8 @@ def api_user_detail(request, id):
 # ============================================================================
 
 from django.conf import settings
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 import logging
 
@@ -249,11 +250,13 @@ logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def login_info(request):
     """
     Provides login information based on environment
     In production: directs to SAML SSO
     In development: allows local authentication
+    PUBLIC ENDPOINT - No authentication required
     """
     if settings.DEBUG:
         # Development mode - use local auth
@@ -275,6 +278,7 @@ def login_info(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def current_user(request):
     """
     Returns current authenticated user information
