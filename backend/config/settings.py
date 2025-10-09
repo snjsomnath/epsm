@@ -10,7 +10,14 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-secret-key-here')
 
 DEBUG = os.getenv('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = [h for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,frontend').split(',') if h]
+ALLOWED_HOSTS = [h for h in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,backend,frontend,epsm.chalmers.se,epsm.ita.chalmers.se').split(',') if h]
+
+# CSRF trusted origins for production
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() 
+    for origin in os.getenv('CSRF_TRUSTED_ORIGINS', 'https://epsm.chalmers.se,https://epsm.ita.chalmers.se').split(',') 
+    if origin.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -180,11 +187,13 @@ if env_cors:
     # split comma-separated env var and strip whitespace
     CORS_ALLOWED_ORIGINS = [u.strip() for u in env_cors.split(',') if u.strip()]
 else:
-    # sensible defaults for development / docker
+    # sensible defaults for development / docker and production
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173",  # Vite dev server
         "http://localhost:3000",  # Alternative React dev server
         "http://frontend:5173",   # Docker service name
+        "https://epsm.chalmers.se",  # Production domain
+        "https://epsm.ita.chalmers.se",  # Production domain (alternative)
     ]
 
 # Allow credentials by default (the project uses session auth / cookies)
