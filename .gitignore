@@ -47,9 +47,12 @@ settings_local.py
 
 # Django static files and media
 staticfiles/
-static/
+static/*
+!static/images/
 media/
 backend/staticfiles/
+backend/static/*
+!backend/static/images/
 backend/media/
 
 
