@@ -70,7 +70,38 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd /opt/epsm
+            
+            # Pull latest code
+            echo "📥 Pulling latest code..."
             git pull origin main
-            docker-compose -f docker-compose.production.yml pull
-            docker-compose -f docker-compose.production.yml up -d
+            
+            # Load environment variables
+            echo "🔧 Loading environment variables..."
+            set -a
+            source .env.production
+            set +a
+            
+            # Rebuild and deploy
+            echo "🚀 Rebuilding and deploying services..."
+            docker-compose -f docker-compose.prod.yml build --no-cache
+            docker-compose -f docker-compose.prod.yml up -d
+            
+            # Wait for services to be ready
+            echo "⏳ Waiting for services to start..."
+            sleep 30
+            
+            # Run migrations
+            echo "📊 Running database migrations..."
+            docker-compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+            
+            # Collect static files
+            echo "📁 Collecting static files..."
+            docker-compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
+            
+            # Clean up
+            echo "🧹 Cleaning up..."
             docker system prune -f
+            
+            # Show status
+            echo "✅ Deployment complete!"
+            docker-compose -f docker-compose.prod.yml ps
