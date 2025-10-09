@@ -80,16 +80,24 @@ CORS_ALLOWED_ORIGINS = [
 
 **Impact:** Frontend can communicate with backend API from production domains without CORS errors.
 
-### 4. Copied Logo Files to Backend Static Directory
+### 4. Added Logo Files and Automated Docker Build
 
+**Added logo files to version control:**
 ```bash
-cp frontend/src/media/chalmers_logo_light_theme.png backend/static/images/
-cp frontend/src/media/chalmers_logo_dark_theme.png backend/static/images/
+backend/static/images/chalmers_logo_light_theme.png
+backend/static/images/chalmers_logo_dark_theme.png
+backend/static/images/README.md
 ```
 
-**Note:** Logo files are stored in `backend/static/images/` (version controlled) but need to be copied to `backend/media/` during deployment since the frontend references `/media/` URLs.
+**Updated `backend/Dockerfile.prod`:**
+- Explicitly copies `static/images/` directory during build
+- Automatically copies logos from `static/images/` to `media/` during build
+- Eliminates need for manual deployment step
 
-**Impact:** Logo images will be accessible at `/media/chalmers_logo_*.png` in production after deployment script copies them.
+**Updated `backend/.dockerignore`:**
+- Added exception to ensure `static/images/` directory is included in Docker build
+
+**Impact:** Logo images are automatically available at `/media/chalmers_logo_*.png` after Docker build. No manual copy step required in production deployment.
 
 ### 5. Created Production Environment Variables Documentation
 
@@ -161,8 +169,11 @@ After deployment, verify the fixes:
 2. `backend/static/images/chalmers_logo_light_theme.png` - Added logo file (version controlled)
 3. `backend/static/images/chalmers_logo_dark_theme.png` - Added logo file (version controlled)
 4. `backend/static/images/README.md` - Documentation for static images
-5. `docs/PRODUCTION_ENV_VARS.md` - Created comprehensive environment variables documentation
-6. `change summary/PRODUCTION_403_404_FIX.md` - This summary document
+5. `backend/Dockerfile.prod` - Added automatic logo file copying during build
+6. `backend/.dockerignore` - Updated to include static/images directory
+7. `.gitignore` - Added exception to allow static/images directory
+8. `docs/PRODUCTION_ENV_VARS.md` - Created comprehensive environment variables documentation
+9. `change summary/PRODUCTION_403_404_FIX.md` - This summary document
 
 ## Additional Notes
 
