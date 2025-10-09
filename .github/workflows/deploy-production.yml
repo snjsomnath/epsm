@@ -1,5 +1,16 @@
 name: Deploy to Production
 
+# NOTE: This workflow is configured for AUTOMATED deployment using pre-built Docker images
+# For INITIAL/MANUAL deployment to Chalmers VM, use docker-compose.prod.yml instead
+# See DEPLOYMENT_STEPS.md for manual deployment instructions
+# 
+# This workflow requires:
+# - GitHub Secrets: PROD_HOST, PROD_USER, PROD_SSH_KEY
+# - Network access from GitHub runners to production VM
+# - Pre-built images in GitHub Container Registry (ghcr.io)
+#
+# Once manual deployment is successful, you can enable this for automated deployments.
+
 on:
   push:
     branches:

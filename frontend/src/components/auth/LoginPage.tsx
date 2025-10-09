@@ -188,6 +188,7 @@ const LoginPage = () => {
                     onChange={handleChange}
                     margin="normal"
                     required
+                    autoComplete="email"
                     InputProps={{
                       endAdornment: (
                         <InputAdornment position="end">
@@ -206,12 +207,14 @@ const LoginPage = () => {
                     onChange={handleChange}
                     margin="normal"
                     required
+                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
                     InputProps={{
                       endAdornment: (
                         <InputAdornment position="end">
                           <IconButton
                             onClick={() => setShowPassword(!showPassword)}
                             edge="end"
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
                           >
                             {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                           </IconButton>
