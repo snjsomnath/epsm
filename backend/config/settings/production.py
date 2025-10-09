@@ -54,6 +54,11 @@ INSTALLED_APPS += [
     'djangosaml2',
 ]
 
+# Add SAML session middleware for production
+MIDDLEWARE += [
+    'djangosaml2.middleware.SamlSessionMiddleware',
+]
+
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',  # Fallback for local superuser
     'djangosaml2.backends.Saml2Backend',  # Primary: Chalmers SSO
