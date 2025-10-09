@@ -39,6 +39,19 @@ RUN pip install --no-cache-dir -r requirements.prod.txt
 # Copy project
 COPY . /app/
 
+# Explicitly copy static/images directory (in case .dockerignore excluded it)
+COPY static/images/ /app/static/images/
+
+# Copy Chalmers logos to media directory for serving
+# Frontend references these at /media/ URLs, and they're in our static/images
+RUN mkdir -p /app/media && \
+    if [ -f /app/static/images/chalmers_logo_light_theme.png ]; then \
+        cp /app/static/images/chalmers_logo_light_theme.png /app/media/; \
+    fi && \
+    if [ -f /app/static/images/chalmers_logo_dark_theme.png ]; then \
+        cp /app/static/images/chalmers_logo_dark_theme.png /app/media/; \
+    fi
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
