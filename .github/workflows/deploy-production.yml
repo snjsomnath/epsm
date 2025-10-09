@@ -1,15 +1,9 @@
 name: Deploy to Production
 
-# NOTE: This workflow is configured for AUTOMATED deployment using pre-built Docker images
-# For INITIAL/MANUAL deployment to Chalmers VM, use docker-compose.prod.yml instead
-# See DEPLOYMENT_STEPS.md for manual deployment instructions
+# NOTE: This workflow uses a SELF-HOSTED runner on the VM
+# The runner must be set up first - see SELF_HOSTED_RUNNER_SETUP.md
 # 
-# This workflow requires:
-# - GitHub Secrets: PROD_HOST, PROD_USER, PROD_SSH_KEY
-# - Network access from GitHub runners to production VM
-# - Pre-built images in GitHub Container Registry (ghcr.io)
-#
-# Once manual deployment is successful, you can enable this for automated deployments.
+# This workflow runs directly on the VM, so no SSH or firewall issues!
 
 on:
   push:
@@ -24,84 +18,46 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # Uses runner on VM, not GitHub-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate required secrets
+      - name: Deploy application
         run: |
-          missing=0
-          if [ -z "${{ secrets.PROD_HOST }}" ]; then
-            echo "ERROR: PROD_HOST secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
-            missing=1
-          fi
-          if [ -z "${{ secrets.PROD_USER }}" ]; then
-            echo "ERROR: PROD_USER secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
-            missing=1
-          fi
-          if [ -z "${{ secrets.PROD_SSH_KEY }}" ]; then
-            echo "ERROR: PROD_SSH_KEY secret is not set. Set it in repository Settings -> Secrets and variables -> Actions." >&2
-            missing=1
-          fi
-          if [ "$missing" -ne 0 ]; then
-            echo "One or more required secrets are missing. Aborting deployment." >&2
-            exit 1
-          fi
-
-      - name: Runner network debug
-        shell: bash
-        run: |
-          echo "Runner: $RUNNER_OS / $RUNNER_TEMP"
-          echo; echo "Resolve DNS:"
-          nslookup ${{ secrets.PROD_HOST }} || host ${{ secrets.PROD_HOST }} || true
-          echo; echo "getent hosts ->"
-          getent hosts ${{ secrets.PROD_HOST }} || true
-          echo; echo "Try TCP connect to port 22 (open/closed) with 5s timeout:"
-          timeout 5 bash -c "cat < /dev/tcp/${{ secrets.PROD_HOST }}/22" >/dev/null 2>&1 && echo 'port 22 open' || echo 'port 22 not reachable or timed out'
-          echo; echo "Note: if port 22 not reachable, consider self-hosted runner or allow runner IPs in firewall"
-
-
-      - name: Deploy to Production VM
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/epsm
-            
-            # Pull latest code
-            echo "📥 Pulling latest code..."
-            git pull origin main
-            
-            # Load environment variables
-            echo "🔧 Loading environment variables..."
-            set -a
-            source .env.production
-            set +a
-            
-            # Rebuild and deploy
-            echo "🚀 Rebuilding and deploying services..."
-            docker-compose -f docker-compose.prod.yml build --no-cache
-            docker-compose -f docker-compose.prod.yml up -d
-            
-            # Wait for services to be ready
-            echo "⏳ Waiting for services to start..."
-            sleep 30
-            
-            # Run migrations
-            echo "📊 Running database migrations..."
-            docker-compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
-            
-            # Collect static files
-            echo "📁 Collecting static files..."
-            docker-compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
-            
-            # Clean up
-            echo "🧹 Cleaning up..."
-            docker system prune -f
-            
-            # Show status
-            echo "✅ Deployment complete!"
-            docker-compose -f docker-compose.prod.yml ps
+          cd /opt/epsm
+          
+          # Pull latest code
+          echo "📥 Pulling latest code..."
+          git pull origin main
+          
+          # Load environment variables
+          echo "🔧 Loading environment variables..."
+          set -a
+          source .env.production
+          set +a
+          
+          # Rebuild and deploy
+          echo "🚀 Rebuilding and deploying services..."
+          docker-compose -f docker-compose.prod.yml build --no-cache
+          docker-compose -f docker-compose.prod.yml up -d
+          
+          # Wait for services
+          echo "⏳ Waiting for services to start..."
+          sleep 30
+          
+          # Run migrations
+          echo "📊 Running database migrations..."
+          docker-compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+          
+          # Collect static files
+          echo "📁 Collecting static files..."
+          docker-compose -f docker-compose.prod.yml exec -T backend python manage.py collectstatic --noinput
+          
+          # Clean up
+          echo "🧹 Cleaning up..."
+          docker system prune -f
+          
+          # Show status
+          echo "✅ Deployment complete!"
+          docker-compose -f docker-compose.prod.yml ps
