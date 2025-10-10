@@ -6,15 +6,16 @@ name: Deploy to Production
 # This workflow runs directly on the VM, so no SSH or firewall issues!
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
+  # Disabled automatic deployment on push to prevent conflicts
+  # push:
+  #   branches:
+  #     - main
+  #   paths-ignore:
+  #     - '**.md'
+  #     - 'docs/**'
+  #     - '.gitignore'
 
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:  # Manual triggering only
 
 jobs:
   deploy:
