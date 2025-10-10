@@ -82,8 +82,8 @@ class BrowserDatabaseService {
 
   constructor() {
     // Point to our local API server that serves real PostgreSQL data
-    const envUrl = (import.meta as any).env?.VITE_BACKEND_URL;
-    this.baseUrl = envUrl ? envUrl.replace(/\/$/, '') : 'http://localhost:8000/api';
+    const envUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+    this.baseUrl = envUrl ? `${envUrl.replace(/\/$/, '')}/api` : 'http://localhost:8000/api';
   }
 
   // Materials
