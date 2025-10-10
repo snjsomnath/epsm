@@ -116,6 +116,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_BASE_URL=https://epsm.chalmers.se
+            VITE_WS_URL=wss://epsm.chalmers.se/ws
 
   deploy-notification:
     runs-on: ubuntu-latest

@@ -39,7 +39,9 @@ jobs:
           
           # Rebuild and deploy
           echo "🚀 Rebuilding and deploying services..."
-          docker-compose -f docker-compose.prod.yml build --no-cache
+          docker-compose -f docker-compose.prod.yml build --no-cache \
+            --build-arg VITE_API_BASE_URL=https://epsm.chalmers.se \
+            --build-arg VITE_WS_URL=wss://epsm.chalmers.se/ws
           docker-compose -f docker-compose.prod.yml up -d
           
           # Wait for services
@@ -49,6 +51,10 @@ jobs:
           # Run migrations
           echo "📊 Running database migrations..."
           docker-compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
+          
+          # Seed database if needed
+          echo "🌱 Seeding database with initial data..."
+          bash scripts/seed-database.sh
           
           # Collect static files
           echo "📁 Collecting static files..."
