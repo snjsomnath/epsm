@@ -1,17 +1,19 @@
 name: Build and Push Docker Images
 
 on:
-  push:
-    branches:
-      - main
-      - development
-    tags:
-      - 'v*.*.*'
-  pull_request:
-    branches:
-      - main
-      - development
-  workflow_dispatch:  # Allow manual triggering
+  # Disabled automatic builds on push to prevent conflicts
+  # Build images manually or on release tags only
+  # push:
+  #   branches:
+  #     - main
+  #     - development
+  tags:
+    - 'v*.*.*'
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - development
+  workflow_dispatch:  # Manual triggering
 
 env:
   REGISTRY: ghcr.io
