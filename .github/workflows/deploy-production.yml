@@ -37,6 +37,10 @@ jobs:
           source .env.production
           set +a
           
+          # Pull EnergyPlus image
+          echo "📥 Pulling EnergyPlus Docker image..."
+          docker pull nrel/energyplus:23.2.0
+          
           # Rebuild and deploy
           echo "🚀 Rebuilding and deploying services..."
           docker-compose -f docker-compose.prod.yml build --no-cache \
