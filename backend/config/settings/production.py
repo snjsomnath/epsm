@@ -71,13 +71,27 @@ SAML_CONFIG = {
     'xmlsec_binary': '/usr/bin/xmlsec1',
     'entityid': 'https://epsm.chalmers.se/saml/metadata/',
     
-    # Security: Certificate configuration for signing and encryption
+    # Certificate configuration for both signing and encryption
     'key_file': '/app/saml_certs/sp_private_key.pem',
     'cert_file': '/app/saml_certs/sp_certificate.pem',
     
-    # Security: Algorithm configuration (remove SHA1, use stronger algorithms)
+    # Security: Force stronger algorithms at the global level
     'signing_algorithm': 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
     'digest_algorithm': 'http://www.w3.org/2001/04/xmlenc#sha256',
+    
+    # Additional security settings to enforce strong algorithms
+    'preferred_binding': {
+        'single_sign_on_service': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',
+        'single_logout_service': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-REDIRECT',
+    },
+    
+    # Force the signing and digest algorithms
+    'policy': {
+        'default': {
+            'sign_alg': 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+            'digest_alg': 'http://www.w3.org/2001/04/xmlenc#sha256',
+        }
+    },
     
     'service': {
         'sp': {
@@ -89,6 +103,11 @@ SAML_CONFIG = {
             'want_response_signed': True,
             'authn_requests_signed': True,
             'logout_requests_signed': True,
+            
+            # Certificate configuration: No 'use' attribute so cert can be used for both signing and encryption
+            # Björn's feedback: "If you can remove 'use="signing"' it will be used for both signing and encryption"
+            # Note: pysaml2 doesn't support 'key_descriptor' without 'use', so we rely on global cert config
+            # The custom metadata view will strip 'use' attributes from the generated metadata
             
             'endpoints': {
                 'assertion_consumer_service': [

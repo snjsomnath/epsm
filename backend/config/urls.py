@@ -186,9 +186,24 @@ urlpatterns = [
 
 # Add SAML SSO endpoints in production
 if not settings.DEBUG:
-    urlpatterns += [
-        path('saml/', include('djangosaml2.urls')),
+    from simulation.saml_metadata_view import custom_metadata
+    from djangosaml2 import views as saml2_views
+    
+    # Custom SAML URLs with our metadata view override
+    saml_urlpatterns = [
+        # Custom metadata endpoint (must be BEFORE include to override)
+        path('saml/metadata/', custom_metadata, name='saml2_metadata'),
+        # ACS (Assertion Consumer Service)
+        path('saml/acs/', saml2_views.AssertionConsumerServiceView.as_view(), name='saml2_acs'),
+        # SLS (Single Logout Service)  
+        path('saml/sls/', saml2_views.LogoutView.as_view(), name='saml2_ls'),
+        # Login
+        path('saml/login/', saml2_views.LoginView.as_view(), name='saml2_login'),
+        # Logout
+        path('saml/logout/', saml2_views.LogoutInitView.as_view(), name='saml2_logout'),
     ]
+    
+    urlpatterns += saml_urlpatterns
 
 # Add this if not already present
 if settings.DEBUG:
