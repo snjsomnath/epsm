@@ -65,6 +65,7 @@ services:
       - simulation_results_prod:/app/media/simulation_results
       - static_files:/app/staticfiles
       - /var/run/docker.sock:/var/run/docker.sock
+      - /opt:/host-opt:ro  # Read-only bind mount of host /opt for disk monitoring
     expose:
       - "8000"
     depends_on:

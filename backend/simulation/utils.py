@@ -32,8 +32,12 @@ def get_system_resources():
         }
         
         # Get disk information for /opt (where EPSM application data lives)
-        #TODO This will fail if /opt does not exist, ie in windows or local dev
-        disk = psutil.disk_usage('/opt')
+        # Use bind-mounted host /opt via /host-opt for accurate disk space reporting
+        try:
+            disk = psutil.disk_usage('/host-opt')
+        except (OSError, FileNotFoundError):
+            # Fallback to container's root filesystem if bind mount not available
+            disk = psutil.disk_usage('/')
         system_info['disk'] = {
             'total_gb': round(disk.total / (1024 ** 3), 2),
             'free_gb': round(disk.free / (1024 ** 3), 2),
