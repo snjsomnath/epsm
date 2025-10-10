@@ -117,6 +117,9 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        # Connection persistence settings
+        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
+        'CONN_HEALTH_CHECKS': True,  # Test connections before using them
     },
     'materials_db': {
         # Docker PostgreSQL for materials/constructions data
@@ -126,6 +129,9 @@ DATABASES = {
         'PASSWORD': os.getenv('MATERIALS_DB_PASSWORD', ''),
         'HOST': os.getenv('MATERIALS_DB_HOST', 'database'),
         'PORT': os.getenv('MATERIALS_DB_PORT', '5432'),
+        # Connection persistence settings
+        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
+        'CONN_HEALTH_CHECKS': True,  # Test connections before using them
     }
     ,
     'results_db': {
@@ -136,6 +142,9 @@ DATABASES = {
         'PASSWORD': os.getenv('RESULTS_DB_PASSWORD', ''),
         'HOST': os.getenv('RESULTS_DB_HOST', 'database'),
         'PORT': os.getenv('RESULTS_DB_PORT', '5432'),
+        # Connection persistence settings
+        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
+        'CONN_HEALTH_CHECKS': True,  # Test connections before using them
     }
 }
 
