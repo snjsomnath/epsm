@@ -119,6 +119,11 @@ services:
       - database
       - redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   celery-beat:
     image: epsm-celery-beat:latest
@@ -150,6 +155,11 @@ services:
       - database
       - redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "celery.*beat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     image: epsm-frontend:latest

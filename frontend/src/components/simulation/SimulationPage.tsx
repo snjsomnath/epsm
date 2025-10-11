@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { authenticatedFetch } from '../../lib/auth-api';
+import { getApiUrl } from '../../utils/api';
 import { 
   Box, 
   Typography, 
@@ -173,7 +174,7 @@ const SimulationPage = () => {
         return;
       }
       try {
-        const response = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+        const response = await authenticatedFetch(getApiUrl(`simulation/${simulationId}/parallel-results/`));
         if (response.status === 202) {
           // Results not ready yet
           return;
@@ -259,7 +260,7 @@ const SimulationPage = () => {
       // Fetch final results first to get accurate count AND the actual results array
       let finalResults: any[] = [];
       try {
-        const response = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/parallel-results/`);
+        const response = await authenticatedFetch(getApiUrl(`simulation/${simulationId}/parallel-results/`));
         if (response.ok) {
           const data = await response.json();
           finalResults = Array.isArray(data) ? data : [data];
@@ -385,7 +386,7 @@ const SimulationPage = () => {
       const poll = async () => {
         if (monitorStopRef.current) return;
         try {
-          const statusResponse = await authenticatedFetch(`http://localhost:8000/api/simulation/${simulationId}/status/`);
+          const statusResponse = await authenticatedFetch(getApiUrl(`simulation/${simulationId}/status/`));
           if (monitorStopRef.current) return;
           if (statusResponse.status === 429) return;
           if (!statusResponse.ok) {
@@ -641,7 +642,7 @@ const SimulationPage = () => {
     fetchSimulationResults(activeRun.simulationId, { force: true }).then(() => {
       // If we suspected completion, verify with backend status
       if (mightBeComplete) {
-        authenticatedFetch(`http://localhost:8000/api/simulation/${activeRun.simulationId}/status/`)
+        authenticatedFetch(getApiUrl(`simulation/${activeRun.simulationId}/status/`))
           .then(async (statusResponse) => {
             if (statusResponse && statusResponse.ok) {
               const statusData = await statusResponse.json();
@@ -672,7 +673,7 @@ const SimulationPage = () => {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await authenticatedFetch('http://localhost:8000/api/simulation/system-resources/');
+        const response = await authenticatedFetch(getApiUrl('simulation/system-resources/'));
         setBackendAvailable(!!(response && response.ok));
       } catch (err) {
         console.warn('Backend not available:', err);
@@ -1084,7 +1085,7 @@ const SimulationPage = () => {
       formData.append('parallel', 'true');
       formData.append('batch_mode', 'true');
 
-      const response = await authenticatedFetch('http://localhost:8000/api/simulation/run/', {
+      const response = await authenticatedFetch(getApiUrl('simulation/run/'), {
         method: 'POST',
         body: formData,
       });
