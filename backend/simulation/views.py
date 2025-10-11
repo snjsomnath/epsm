@@ -5,7 +5,7 @@ import tempfile
 from django.http import JsonResponse
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.views.decorators.csrf import csrf_exempt
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
@@ -35,10 +35,11 @@ _parse_idf_lock = Lock()
 _PARSE_IDF_MIN_INTERVAL = 1.0  # seconds
 
 @csrf_exempt
-@api_view(['POST'])
-@permission_classes([AllowAny])
 def parse_idf(request):
     """Parse uploaded IDF files and compare with database."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
     global _parse_idf_last_call
     with _parse_idf_lock:
         now = time.time()

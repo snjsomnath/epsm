@@ -1,7 +1,14 @@
 // API configuration
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = '/api';
 const API_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
+
+// Helper function to get the full API URL
+export const getApiUrl = (endpoint: string): string => {
+  // Remove leading slash if present to avoid double slashes
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  return `${API_BASE_URL}/${cleanEndpoint}`;
+};
 
 interface ApiResponse<T> {
   data?: T;

@@ -167,6 +167,11 @@ services:
     networks:
       - epsm_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Celery Beat for periodic tasks
   celery_beat:
@@ -204,6 +209,11 @@ services:
     networks:
       - epsm_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "celery.*beat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # EnergyPlus service to ensure image is always available
   energyplus:
