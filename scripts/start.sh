@@ -80,9 +80,15 @@ echo "✅ Results database and role ensured (epsm_results / epsm_results_user)"
 
 # Run database migrations
 echo "🔄 Running database migrations..."
+echo "   - Default database..."
 docker-compose exec backend python manage.py migrate
-echo "🔄 Running results DB migrations..."
-docker-compose exec backend bash -lc "export RESULTS_DB_NAME=epsm_results RESULTS_DB_USER=epsm_results_user RESULTS_DB_PASSWORD=epsm_results_password RESULTS_DB_HOST=database RESULTS_DB_PORT=5432; python manage.py migrate --database=results_db"
+echo "   - Materials database..."
+docker-compose exec backend python manage.py migrate database --database=materials_db --noinput
+echo "   - Results database..."
+# Fake the first 3 migrations (they create tables that belong in 'default' db)
+docker-compose exec backend python manage.py migrate simulation 0003 --database=results_db --fake --noinput 2>/dev/null || true
+# Apply the remaining migrations (which create result tables)
+docker-compose exec backend python manage.py migrate simulation --database=results_db --noinput
 
 # Create superuser if it doesn't exist
 echo "👤 Creating Django superuser (if needed)..."

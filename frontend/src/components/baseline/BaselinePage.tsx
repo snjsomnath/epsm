@@ -84,7 +84,7 @@ const BaselinePage = () => {
       uploadedFiles.forEach(file => formData.append('idf_files', file));
       formData.append('weather_file', weatherFile as File);
 
-      const backendUrl = 'http://localhost:8000';
+      const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
       // start run
   const response = await authenticatedFetch(`${backendUrl}/api/simulation/run/`, { method: 'POST', body: formData });

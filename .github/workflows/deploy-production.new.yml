@@ -1,0 +1,238 @@
+name: Deploy to Production
+
+# ============================================================================
+# Streamlined Production Deployment Workflow
+# ============================================================================
+# This workflow uses a SELF-HOSTED runner on the VM
+# - Single source of truth: .env.production
+# - Always builds from source (no cache confusion)
+# - Forces clean builds with --no-cache
+# - No remote image fetching
+# ============================================================================
+
+on:
+  workflow_dispatch:  # Manual triggering only (recommended for safety)
+    inputs:
+      skip_migrations:
+        description: 'Skip database migrations'
+        required: false
+        default: 'false'
+      skip_seed:
+        description: 'Skip database seeding'
+        required: false
+        default: 'false'
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # Uses runner on VM, not GitHub-hosted
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load environment variables
+        run: |
+          echo "🔧 Loading environment variables from .env.production"
+          if [ ! -f /opt/epsm/.env.production ]; then
+            echo "❌ ERROR: .env.production not found!"
+            exit 1
+          fi
+          
+          # Show file exists and is readable
+          ls -lh /opt/epsm/.env.production
+          
+          # Source environment for this workflow
+          set -a
+          source /opt/epsm/.env.production
+          set +a
+          
+          echo "✅ Environment variables loaded"
+
+      - name: Stop existing containers
+        run: |
+          cd /opt/epsm
+          echo "🛑 Stopping existing containers..."
+          docker-compose -f docker-compose.production.yml down || true
+          echo "✅ Containers stopped"
+
+      - name: Pull latest code
+        run: |
+          cd /opt/epsm
+          echo "📥 Pulling latest code from main branch..."
+          git fetch origin main
+          git reset --hard origin/main
+          echo "✅ Code updated to latest"
+
+      - name: Pull EnergyPlus image
+        run: |
+          cd /opt/epsm
+          source .env.production
+          echo "📥 Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
+          docker pull ${ENERGYPLUS_DOCKER_IMAGE}
+          echo "✅ EnergyPlus image ready"
+
+      - name: Clean Docker build cache
+        run: |
+          echo "🧹 Removing Docker build cache to force fresh builds..."
+          docker builder prune -af
+          echo "✅ Build cache cleared"
+
+      - name: Remove old images
+        run: |
+          echo "🧹 Removing old EPSM images..."
+          docker images | grep epsm | awk '{print $3}' | xargs -r docker rmi -f || true
+          echo "✅ Old images removed"
+
+      - name: Build and deploy services
+        run: |
+          cd /opt/epsm
+          
+          echo "🚀 Building services from source (NO CACHE)..."
+          echo "📝 Using docker-compose.production.yml"
+          
+          # Build with explicit no-cache and force-recreate
+          docker-compose -f docker-compose.production.yml build \
+            --no-cache \
+            --pull \
+            --progress=plain
+          
+          echo "✅ Build complete"
+          
+          echo "🚀 Starting services..."
+          docker-compose -f docker-compose.production.yml up -d --force-recreate
+          
+          echo "✅ Services started"
+
+      - name: Wait for services
+        run: |
+          cd /opt/epsm
+          echo "⏳ Waiting for services to be healthy..."
+          
+          # Wait for database
+          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user; do sleep 2; done'
+          echo "✅ Database is ready"
+          
+          # Wait for backend
+          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
+          echo "✅ Backend is ready"
+          
+          # Additional buffer
+          echo "⏳ Waiting 10 more seconds for full initialization..."
+          sleep 10
+
+      - name: Run database migrations
+        if: ${{ github.event.inputs.skip_migrations != 'true' }}
+        run: |
+          cd /opt/epsm
+          echo "📊 Running database migrations..."
+          docker-compose -f docker-compose.production.yml exec -T backend python manage.py migrate --noinput
+          echo "✅ Migrations complete"
+
+      - name: Seed database
+        if: ${{ github.event.inputs.skip_seed != 'true' }}
+        run: |
+          cd /opt/epsm
+          echo "🌱 Seeding database with initial data..."
+          
+          if [ -f scripts/seed-database.sh ]; then
+            bash scripts/seed-database.sh
+          else
+            echo "⚠️  Seed script not found, skipping..."
+          fi
+          
+          echo "✅ Database seeding complete"
+
+      - name: Collect static files
+        run: |
+          cd /opt/epsm
+          echo "📁 Collecting static files..."
+          docker-compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+          echo "✅ Static files collected"
+
+      - name: Clean up Docker system
+        run: |
+          echo "🧹 Cleaning up Docker system..."
+          docker system prune -f --volumes
+          echo "✅ Cleanup complete"
+
+      - name: Verify deployment
+        run: |
+          cd /opt/epsm
+          echo "🔍 Verifying deployment..."
+          
+          echo ""
+          echo "==================================="
+          echo "Container Status:"
+          echo "==================================="
+          docker-compose -f docker-compose.production.yml ps
+          
+          echo ""
+          echo "==================================="
+          echo "Service Health:"
+          echo "==================================="
+          
+          # Check database
+          if docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user > /dev/null 2>&1; then
+            echo "✅ Database: HEALTHY"
+          else
+            echo "❌ Database: UNHEALTHY"
+          fi
+          
+          # Check Redis
+          if docker-compose -f docker-compose.production.yml exec -T redis redis-cli ping > /dev/null 2>&1; then
+            echo "✅ Redis: HEALTHY"
+          else
+            echo "❌ Redis: UNHEALTHY"
+          fi
+          
+          # Check backend
+          if docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
+            echo "✅ Backend: HEALTHY"
+          else
+            echo "❌ Backend: UNHEALTHY"
+          fi
+          
+          # Check Celery worker
+          if docker-compose -f docker-compose.production.yml exec -T celery_worker celery -A config inspect ping > /dev/null 2>&1; then
+            echo "✅ Celery Worker: HEALTHY"
+          else
+            echo "❌ Celery Worker: UNHEALTHY"
+          fi
+          
+          echo ""
+          echo "==================================="
+          echo "Deployment Information:"
+          echo "==================================="
+          echo "Deployed at: $(date)"
+          echo "Git commit: $(git rev-parse --short HEAD)"
+          echo "Git branch: $(git rev-parse --abbrev-ref HEAD)"
+          
+          if [ -f VERSION ]; then
+            echo "Version: $(cat VERSION)"
+          fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Git commit:** $(git rev-parse --short HEAD)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f VERSION ]; then
+            echo "**Version:** $(cat VERSION)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services" >> $GITHUB_STEP_SUMMARY
+          echo "- Database: PostgreSQL 15" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: Django + Gunicorn" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: React + Vite" >> $GITHUB_STEP_SUMMARY
+          echo "- Workers: Celery" >> $GITHUB_STEP_SUMMARY
+          echo "- Cache: Redis" >> $GITHUB_STEP_SUMMARY
+          echo "- Proxy: Nginx" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Access" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
