@@ -10,13 +10,13 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# Local PostgreSQL connection (where materials data exists)
+# PostgreSQL connection using environment variables
 MATERIALS_DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'epsm_local', 
-    'user': 'ssanjay',
-    'password': '',
-    'port': 5432
+    'host': os.getenv('MATERIALS_DB_HOST', 'localhost'),
+    'database': os.getenv('MATERIALS_DB_NAME', 'epsm_local'), 
+    'user': os.getenv('MATERIALS_DB_USER', 'ssanjay'),
+    'password': os.getenv('MATERIALS_DB_PASSWORD', ''),
+    'port': int(os.getenv('MATERIALS_DB_PORT', '5432'))
 }
 
 def get_materials_connection():

@@ -527,24 +527,24 @@ class BrowserDatabaseService {
     }
   }
 
-  // Subscription placeholders (same as before)
+  // Subscription placeholders - real-time updates not needed as we use HTTP polling
   subscribeToMaterials(_callback: (materials: Material[]) => void) {
-    console.warn('Real-time subscriptions not implemented for browser-compatible client');
+    // Subscriptions not implemented for browser client - using HTTP polling instead
     return { unsubscribe: () => {} };
   }
 
   subscribeToConstructions(_callback: (constructions: Construction[]) => void) {
-    console.warn('Real-time subscriptions not implemented for browser-compatible client');
+    // Subscriptions not implemented for browser client - using HTTP polling instead
     return { unsubscribe: () => {} };
   }
 
   subscribeToConstructionSets(_callback: (sets: ConstructionSet[]) => void) {
-    console.warn('Real-time subscriptions not implemented for browser-compatible client');
+    // Subscriptions not implemented for browser client - using HTTP polling instead
     return { unsubscribe: () => {} };
   }
 
   subscribeToScenarios(_callback: (scenarios: Scenario[]) => void) {
-    console.warn('Real-time subscriptions not implemented for browser-compatible client');
+    // Subscriptions not implemented for browser client - using HTTP polling instead
     return { unsubscribe: () => {} };
   }
 }

@@ -187,11 +187,9 @@ const HomePage = () => {
     const fetchSystemResources = async () => {
       setLoadingResources(true);
       try {
-        // Use the full URL for development
-        // In development, we'll use the direct backend URL
-        // In production, we can use the relative path
-        const isDev = process.env.NODE_ENV === 'development';
-        const baseUrl = isDev ? 'http://localhost:8000' : '';
+        // Use VITE_API_BASE_URL environment variable
+        // Falls back to localhost for development
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
         const response = await axios.get(`${baseUrl}/api/simulation/system-resources/`);
         setSystemResources(response.data);
       } catch (error) {

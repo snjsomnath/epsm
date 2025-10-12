@@ -29,7 +29,7 @@ fi
 # Create required directories with proper permissions
 echo "Creating required directories..."
 mkdir -p /app/logs /app/media /app/staticfiles
-chmod -R 777 /app/logs /app/media /app/staticfiles
+chmod -R 777 /app/logs /app/media /app/staticfiles 2>/dev/null || echo "Warning: Some chmod operations failed (non-fatal)"
 
 # Wait for database to be ready
 echo "Waiting for database..."
@@ -67,7 +67,67 @@ END
 
 # Run database migrations
 echo "Running database migrations..."
+echo "  - Migrating default database..."
 python manage.py migrate --noinput --fake-initial
+
+echo "  - Migrating materials_db database..."
+python manage.py migrate database --database=materials_db --noinput --fake-initial
+
+echo "  - Migrating results_db database..."
+# The challenge: migrations 0001-0003 reference Simulation model with FK
+# which exists on default DB but not on results_db
+# Solution: Fake 0001-0003, then manually create tables, then apply 0004+
+
+# Check if tables already exist
+TABLE_EXISTS=$(python << 'PYEOF'
+import psycopg2, os, sys
+try:
+    conn = psycopg2.connect(
+        dbname='epsm_results',
+        user=os.getenv('DB_USER', 'epsm_user'),
+        password=os.getenv('DB_PASSWORD', 'epsm_secure_password'),
+        host=os.getenv('DB_HOST', 'database'),
+        port=os.getenv('DB_PORT', '5432')
+    )
+    cur = conn.cursor()
+    cur.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name='simulation_results')")
+    print('true' if cur.fetchone()[0] else 'false')
+    cur.close()
+    conn.close()
+except: print('false')
+PYEOF
+)
+
+if [ "$TABLE_EXISTS" = "true" ]; then
+    echo "    ✓ Tables exist on results_db, syncing migration state..."
+    python manage.py migrate simulation --database=results_db --fake-initial --noinput
+else
+    echo "    Creating tables on results_db..."
+    # Fake 0001-0003 (they have FK to Simulation which doesn't exist here)
+    python manage.py migrate simulation 0003 --database=results_db --fake --noinput
+    
+    # Manually create the tables that 0001 would have created
+    echo "    Manually creating simulation result tables..."
+    python manage.py shell <<'SHELLEOF'
+from django.db import connection
+from simulation.models import SimulationResult, SimulationZone, SimulationEnergyUse, SimulationHourlyTimeseries
+
+# Use results_db connection
+from django.db import connections
+results_conn = connections['results_db']
+with results_conn.schema_editor() as schema_editor:
+    # Create the tables from current model state (includes all fields from migrations 0001-0008)
+    schema_editor.create_model(SimulationResult)
+    schema_editor.create_model(SimulationZone)
+    schema_editor.create_model(SimulationEnergyUse)
+    schema_editor.create_model(SimulationHourlyTimeseries)
+print("Tables created successfully")
+SHELLEOF
+    
+    # Fake all migrations since tables are at current state
+    echo "    Marking all migrations as applied (tables created from current models)..."
+    python manage.py migrate simulation --database=results_db --fake --noinput
+fi
 
 # Collect static files
 echo "Collecting static files..."

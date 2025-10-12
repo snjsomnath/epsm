@@ -949,7 +949,10 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                 <Button 
                   startIcon={<FileText size={18} />} 
                   size="small"
-                  onClick={() => window.open(`http://localhost:8000/api/simulation/${result.simulationId}/download/`, '_blank')}
+                  onClick={() => {
+                    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+                    window.open(`${baseUrl}/api/simulation/${result.simulationId}/download/`, '_blank');
+                  }}
                 >
                   View HTML Report
                 </Button>
@@ -957,7 +960,10 @@ const ResultsTab = ({ uploadedFiles, simulationComplete, simulationResults }: Re
                   startIcon={<Download size={18} />} 
                   size="small" 
                   variant="outlined"
-                  onClick={() => window.open(`http://localhost:8000/api/simulation/${result.simulationId}/results/`, '_blank')}
+                  onClick={() => {
+                    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+                    window.open(`${baseUrl}/api/simulation/${result.simulationId}/results/`, '_blank');
+                  }}
                 >
                   Download Results
                 </Button>

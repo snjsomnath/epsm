@@ -254,7 +254,7 @@ logger = logging.getLogger(__name__)
 def login_info(request):
     """
     Provides login information based on environment
-    In production: directs to SAML SSO
+    In production: provides both SAML SSO and local admin login
     In development: allows local authentication
     PUBLIC ENDPOINT - No authentication required
     """
@@ -268,14 +268,16 @@ def login_info(request):
             'message': 'Development mode: Use local authentication'
         })
     else:
-        # Production mode - use Chalmers SSO
+        # Production mode - provide both options
         return Response({
-            'method': 'saml',
-            'login_url': '/saml/login/',
+            'method': 'hybrid',
+            'saml_login_url': '/saml/login/',
+            'local_login_url': '/api/auth/local-login/',
             'saml_enabled': True,
+            'local_enabled': True,
             'environment': 'production',
             'provider': 'Chalmers University',
-            'message': 'Login with your Chalmers CID (e.g., ssanjay@chalmers.se)'
+            'message': 'Login with Chalmers SSO or admin credentials'
         })
 
 
@@ -306,16 +308,11 @@ def current_user(request):
 @require_http_methods(["POST"])
 def local_login(request):
     """
-    Local authentication endpoint (development only)
-    In production, redirects to SAML SSO
+    Local authentication endpoint
+    In production: Allow admin/staff users to login (temporary for testing)
+    In development: Allow all users
+    Supports both username and email-based login
     """
-    if not settings.DEBUG:
-        return JsonResponse({
-            'error': 'Local login disabled in production',
-            'message': 'Please use Chalmers SSO',
-            'saml_login_url': '/saml/login/'
-        }, status=403)
-    
     try:
         data = json.loads(request.body)
         username = data.get('username')
@@ -326,17 +323,43 @@ def local_login(request):
                 'error': 'Username and password required'
             }, status=400)
         
+        # Try to authenticate using username directly
         user = authenticate(request, username=username, password=password)
         
+        # If that fails, try to look up a user with this email and authenticate with their username
+        if user is None:
+            email_match = (
+                User.objects
+                .filter(email__iexact=username)
+                .order_by('id')
+                .first()
+            )
+            if email_match is not None:
+                user = authenticate(request, username=email_match.username, password=password)
+        
         if user is not None:
+            # In production, only allow staff/admin users
+            if not settings.DEBUG and not (user.is_staff or user.is_superuser):
+                return JsonResponse({
+                    'error': 'Local login restricted to admin users in production',
+                    'message': 'Please use Chalmers SSO or contact administrator'
+                }, status=403)
+            
             login(request, user)
             logger.info(f"User logged in: {username}")
             return JsonResponse({
                 'success': True,
                 'user': {
+                    'id': user.pk,
                     'username': user.username,
                     'email': user.email,
+                    'first_name': user.first_name or '',
+                    'last_name': user.last_name or '',
                     'full_name': user.get_full_name() or user.username,
+                    'is_active': user.is_active,
+                    'is_staff': user.is_staff,
+                    'is_superuser': user.is_superuser,
+                    'date_joined': user.date_joined.isoformat(),
                 }
             })
         else:

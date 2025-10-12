@@ -447,10 +447,8 @@ const SimulationPage = () => {
 
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const host = window.location.host;
-      const hostnameFallback = window.location.hostname || 'localhost';
       const candidateUrls = [
         `${wsProtocol}://${host}/ws/simulation-progress/${simulationId}/`,
-        `${wsProtocol}://${hostnameFallback}:8000/ws/simulation-progress/${simulationId}/`,
       ];
 
       const connect = (index: number) => {
@@ -687,11 +685,10 @@ const SimulationPage = () => {
   useEffect(() => {
     if (!backendAvailable) return;
 
-    // Always use backend port (8000) for WebSocket, not window.location.port
+    // Use the same host as the page, proxied through nginx
     const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsHost = window.location.hostname || 'localhost';
-    const wsPort = '8000'; // <-- hardcoded backend port
-    const wsUrl = `${wsProtocol}://${wsHost}:${wsPort}/ws/system-resources/`;
+    const wsHost = window.location.host; // includes port if present
+    const wsUrl = `${wsProtocol}://${wsHost}/ws/system-resources/`;
 
   // Clear any previous errors
   setWsError(null);

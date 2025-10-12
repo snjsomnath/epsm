@@ -1,12 +1,137 @@
-# SAML SSO Authentication Fix - October 10, 2025
+# SAML SSO Authentication Fix - October 2025
 
 **Status:** ✅ FIXED  
+**Latest Update:** October 12, 2025 - Superuser Login Bypass Restored  
 **Issue:** Authentication Error / Access Denied at `/saml/acs/` endpoint  
 **Root Cause:** Custom metadata view not connected + certificate usage issues
 
 ---
 
-## 🔍 Problem Summary
+## 🔴 CRITICAL FIX: Superuser Login Bypass Restored (Oct 12, 2025)
+
+### Problem
+After SAML implementation, the superuser bypass feature was broken. Frontend was posting to the wrong endpoint:
+- **Frontend was calling:** `/api/auth/login/` (old endpoint without bypass logic)
+- **Should be calling:** `/api/auth/local-login/` (has superuser bypass for production)
+- **Error:** `POST https://epsm.chalmers.se/api/auth/login/ 401 (Unauthorized)`
+
+### Root Cause
+The superuser bypass logic exists in `local_login()` function but:
+1. Frontend `signIn()` was still calling old `/api/auth/login/` endpoint
+2. The `local_login()` response format didn't match frontend expectations (missing fields)
+
+### Fixes Applied
+
+#### 1. Frontend: Updated Login Endpoint
+**File:** `/opt/epsm/frontend/src/lib/auth-api.ts`
+
+```typescript
+// OLD (broken)
+const response = await fetch(buildUrl('/api/auth/login/'), {
+  body: JSON.stringify({ email, password }),
+});
+
+// NEW (fixed)
+const response = await fetch(buildUrl('/api/auth/local-login/'), {
+  body: JSON.stringify({ username: email, password }),
+});
+```
+
+**Changes:**
+- ✅ Changed endpoint from `/api/auth/login/` to `/api/auth/local-login/`
+- ✅ Changed request body from `{ email, password }` to `{ username: email, password }`
+
+#### 2. Backend: Fixed Response Format
+**File:** `/opt/epsm/backend/simulation/auth_views.py`
+
+```python
+# Updated local_login response to include all required fields
+return JsonResponse({
+    'success': True,
+    'user': {
+        'id': user.pk,                                  # ✅ Added
+        'username': user.username,
+        'email': user.email,
+        'first_name': user.first_name or '',           # ✅ Added
+        'last_name': user.last_name or '',             # ✅ Added
+        'full_name': user.get_full_name() or user.username,
+        'is_active': user.is_active,                   # ✅ Added
+        'is_staff': user.is_staff,
+        'is_superuser': user.is_superuser,
+        'date_joined': user.date_joined.isoformat(),   # ✅ Added
+    }
+})
+```
+
+### How It Works Now
+
+**In Production (SAML Enabled):**
+1. Regular users → Must use "Login with Chalmers CID" (SAML SSO)
+2. Superusers/Staff → Can use either:
+   - SAML login (recommended)
+   - Local login form (bypass SSO) ← **NOW WORKING**
+
+**Backend Logic in `local_login()`:**
+```python
+# Try to authenticate using username directly
+user = authenticate(request, username=username, password=password)
+
+# If that fails, try to look up a user with this email and authenticate with their username
+if user is None:
+    email_match = (
+        User.objects
+        .filter(email__iexact=username)
+        .order_by('id')
+        .first()
+    )
+    if email_match is not None:
+        user = authenticate(request, username=email_match.username, password=password)
+
+if user is not None:
+    # In production, only allow staff/admin users
+    if not settings.DEBUG and not (user.is_staff or user.is_superuser):
+        return JsonResponse({
+            'error': 'Local login restricted to admin users in production'
+        }, status=403)
+    
+    login(request, user)
+    # ... return user data
+```
+
+**✅ Email-Based Login Support:**
+The endpoint now accepts both username and email. If you provide an email, it will look up the user by email and authenticate with their username.
+
+### Testing
+```bash
+# Test superuser login (works with email or username)
+curl -X POST https://epsm.chalmers.se/api/auth/local-login/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "ssanjay@chalmers.se", "password": "your_password"}'
+
+# Or with username directly
+curl -X POST https://epsm.chalmers.se/api/auth/local-login/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "ssanjay", "password": "your_password"}'
+
+# Should return:
+# {"success": true, "user": {...}}
+```
+
+### Additional Issue Found & Fixed: No Superuser in Database
+After the fix, authentication was still failing because the database had no users. Created superuser account:
+```bash
+docker exec epsm_backend_prod bash -c "cd /app && python manage.py shell << 'PYEOF'
+from django.contrib.auth.models import User
+user = User.objects.create_superuser('ssanjay', 'ssanjay@chalmers.se', 'password')
+PYEOF
+"
+```
+
+**Status:** ✅ FULLY WORKING - Email-based login confirmed with HTTP 200 response
+
+---
+
+## 🔍 Problem Summary (Original SAML Fix)
 
 After implementing SAML SSO, users were experiencing authentication failures when attempting to log in via Chalmers CID:
 

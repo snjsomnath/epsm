@@ -179,19 +179,21 @@ export const redirectToSAMLLogin = (returnUrl?: string) => {
 
 /**
  * Sign in with email and password
+ * Uses local-login endpoint which supports superuser bypass in production
  */
 export const signIn = async (email: string, password: string): Promise<{ data: AuthSession | null; error: AuthError | null }> => {
   try {
     const csrfToken = await getCSRFToken();
     
-    const response = await fetch(buildUrl('/api/auth/login/'), {
+    // Use local-login endpoint which allows superuser/staff login without SSO in production
+    const response = await fetch(buildUrl('/api/auth/local-login/'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': csrfToken,
       },
       credentials: 'include',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username: email, password }),
     });
 
     if (!response.ok) {
