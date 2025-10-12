@@ -399,6 +399,22 @@ class EnergyPlusSimulator:
             html_path = output_file.with_suffix('.htm')
             log_path = output_file.parent / 'run_output.log'
             
+            print(f"DEBUG process_file_results: output_file = {output_file}")
+            print(f"DEBUG process_file_results: html_path = {html_path}")
+            print(f"DEBUG process_file_results: html_path.exists() = {html_path.exists()}")
+            
+            # List files in the directory to see what's actually there
+            try:
+                import os
+                parent_dir = html_path.parent
+                if parent_dir.exists():
+                    files = os.listdir(parent_dir)
+                    print(f"DEBUG process_file_results: Files in {parent_dir}: {files[:10]}")  # First 10 files
+                else:
+                    print(f"DEBUG process_file_results: Parent directory does not exist: {parent_dir}")
+            except Exception as list_err:
+                print(f"DEBUG process_file_results: Error listing directory: {list_err}")
+            
             if html_path.exists():
                 # Extract results from HTML
                 results = parse_html_with_table_lookup(html_path, log_path, [idf_file])

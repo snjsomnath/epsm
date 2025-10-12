@@ -381,6 +381,7 @@ class UnifiedIDFParser:
                 continue
             cname = self._sanitize_construction_name(cdef.get("name") or ctype, ctype, cdef.get("layers", []))
             layers = cdef.get("layers", []) or []
+            print(f"DEBUG: Processing {ctype}, cname={cname}, layers={layers}")
             self._ensure_construction_exact(cname, layers)
             cdef["name"] = cname
 
@@ -877,6 +878,14 @@ def _sanitize_construction_name(self, proposed: str, ctype: str, layers: List[st
     return name
 
 def _ensure_construction_exact(self, name: str, layers: List[str]) -> None:
+    # Debug logging
+    print(f"DEBUG: _ensure_construction_exact called for '{name}' with layers: {layers}")
+    
+    # Skip constructions with no layers - they are incomplete and will cause EnergyPlus to fail
+    if not layers or len(layers) == 0:
+        print(f"WARNING: Skipping construction '{name}' - no layers defined")
+        return
+    
     # remove any existing construction with same name for determinism
     for c in list(self._idf.idfobjects.get("CONSTRUCTION", [])):
         if getattr(c, "Name", None) == name:
@@ -884,6 +893,7 @@ def _ensure_construction_exact(self, name: str, layers: List[str]) -> None:
                 self._idf.removeidfobject(c)
             except Exception:
                 pass
+    
     kwargs = {"Name": name}
     # Prefer to map into an example CONSTRUCTION's fieldnames so we populate
     # IDF-specific fields like 'Outside_Layer' when present. Fall back to
@@ -901,16 +911,30 @@ def _ensure_construction_exact(self, name: str, layers: List[str]) -> None:
             example_fieldnames = getattr(example, "fieldnames", []) or []
         except Exception:
             example_fieldnames = []
+        print(f"DEBUG: Using example construction, fieldnames: {example_fieldnames}")
+        print(f"DEBUG: Number of layers to add: {len(layers)}")
         for i, layer in enumerate(layers):
-            target_index = i + 1
+            # fieldnames[0] = 'key', fieldnames[1] = 'Name'
+            # fieldnames[2] = 'Outside_Layer', fieldnames[3] = 'Layer_2', etc.
+            # So we need to start at index 2 for the first layer
+            target_index = i + 2  # Start at 2 (Outside_Layer), not 1 (Name)
+            print(f"DEBUG: Layer {i}: '{layer}', target_index={target_index}, fieldnames_len={len(example_fieldnames)}")
             if target_index < len(example_fieldnames):
                 field = example_fieldnames[target_index]
                 kwargs[field] = layer
+                print(f"DEBUG: Added kwargs['{field}'] = '{layer}'")
             else:
-                kwargs[f"Layer_{target_index}"] = layer
+                # Fallback for layers beyond the example's fieldnames
+                kwargs[f"Layer_{i + 2}"] = layer
+                print(f"DEBUG: Added kwargs['Layer_{i + 2}'] = '{layer}'")
     else:
-        for i, layer in enumerate(layers, start=1):
-            kwargs[f"Layer_{i}"] = layer
+        # No example construction found - use EnergyPlus standard field names
+        # The first layer must be named "Outside Layer", subsequent layers are "Layer 2", "Layer 3", etc.
+        for i, layer in enumerate(layers):
+            if i == 0:
+                kwargs["Outside Layer"] = layer
+            else:
+                kwargs[f"Layer {i + 1}"] = layer
 
     try:
         self._idf.newidfobject("CONSTRUCTION", **kwargs)
