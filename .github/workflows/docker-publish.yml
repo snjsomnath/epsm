@@ -3,12 +3,9 @@ name: Build and Push Docker Images
 on:
   # Disabled automatic builds on push to prevent conflicts
   # Build images manually or on release tags only
-  # push:
-  #   branches:
-  #     - main
-  #     - development
-  tags:
-    - 'v*.*.*'
+  push:
+    tags:
+      - 'v*.*.*'
   # pull_request:
   #   branches:
   #     - main
