@@ -88,12 +88,18 @@ sp_metadata.xml
 # DEVELOPMENT & TESTING
 # ==============================================
 
-# Environment files
+# Environment files - Block ALL .env files except examples
+.env*
+!.env.example
+!.env*.example
 .env
 .env.local
 .env.development
 .env.test
 .env.production
+.env.production.new
+.env.template
+archive/.env*
 cookies.txt
 
 # Test files and coverage
