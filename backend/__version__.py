@@ -13,6 +13,11 @@ BACKEND_DIR = Path(__file__).parent
 PROJECT_ROOT = BACKEND_DIR.parent
 VERSION_FILE = PROJECT_ROOT / 'VERSION'
 
+# In Docker, VERSION might be at /app/VERSION (when COPY . /app/ is used)
+# Check both locations
+if not VERSION_FILE.exists():
+    VERSION_FILE = Path('/app/VERSION')
+
 
 def get_version():
     """Read version from VERSION file."""

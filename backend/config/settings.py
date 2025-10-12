@@ -237,8 +237,22 @@ WEATHER_FILES_DIR = BASE_DIR / 'weather_files'
 SIMULATION_RESULTS_DIR = BASE_DIR / 'media/simulation_results'
 
 # Celery Configuration
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://redis:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://redis:6379/0')
+# Construct Redis URLs based on environment variables
+REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
+
+if REDIS_PASSWORD:
+    CELERY_BROKER_URL = f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0'
+    CELERY_RESULT_BACKEND = f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/0'
+else:
+    CELERY_BROKER_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+    CELERY_RESULT_BACKEND = f'redis://{REDIS_HOST}:{REDIS_PORT}/0'
+
+# Allow override via environment variables if explicitly set
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', CELERY_BROKER_URL)
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', CELERY_RESULT_BACKEND)
+
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -246,3 +260,21 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 3600  # 1 hour hard limit
 CELERY_TASK_SOFT_TIME_LIMIT = 3300  # 55 minutes soft limit
+
+# Channels Layer Configuration (WebSocket support)
+# Uses the same Redis instance as Celery
+if REDIS_PASSWORD:
+    redis_url = f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/1'
+else:
+    redis_url = f'redis://{REDIS_HOST}:{REDIS_PORT}/1'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [redis_url],
+            'capacity': 1500,  # Maximum number of messages to store
+            'expiry': 10,      # Message expiry time in seconds
+        },
+    },
+}

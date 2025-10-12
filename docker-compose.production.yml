@@ -1,85 +1,143 @@
-# Production Docker Compose Configuration (GitHub Container Registry)
-# 
-# This file uses pre-built Docker images from GitHub Container Registry (ghcr.io)
-# Use this for CI/CD deployments with automated image building.
-#
-# For Chalmers VM deployment, use docker-compose.prod.yml instead (builds from source)
-# See DOCKER_COMPOSE_STRATEGY.md for details.
-#
+# ============================================================================
+# EPSM Production Docker Compose - STREAMLINED VERSION
+# ============================================================================
+# Single source of truth for production deployment
+# - Builds from source (no remote cache confusion)
+# - Uses .env.production for all configuration
+# - Always builds fresh (--no-cache recommended)
+# - No version confusion or stale builds
+# ============================================================================
+# Usage:
+#   docker-compose -f docker-compose.production.yml up -d --build --force-recreate
+# ============================================================================
+
+version: '3.8'
+
 services:
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
   database:
-    image: postgres:15
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+      no_cache: true  # Always build fresh
     container_name: epsm_database_prod
+    image: epsm-database:${VERSION:-latest}
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-epsm_db}
-      POSTGRES_USER: ${POSTGRES_USER:-epsm_user}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_results_password}"
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_DB},${MATERIALS_DB_NAME}
+      RESULTS_DB_PASSWORD: ${RESULTS_DB_PASSWORD}
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
       - ./database/init:/docker-entrypoint-initdb.d
+      - ./database/exports:/docker-entrypoint-initdb.d/exports:ro
+    ports:
+      - "127.0.0.1:5432:5432"  # Only localhost access
     networks:
       - epsm_network
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-epsm_user} -d ${POSTGRES_DB:-epsm_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    restart: unless-stopped
 
+  # ==========================================================================
+  # Redis Cache & Message Broker
+  # ==========================================================================
   redis:
     image: redis:7-alpine
     container_name: epsm_redis_prod
+    volumes:
+      - redis_data_prod:/data
     networks:
       - epsm_network
-    restart: unless-stopped
+    command: sh -c "if [ -n \"${REDIS_PASSWORD}\" ]; then redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}; else redis-server --appendonly yes; fi"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ==========================================================================
+  # Django Backend
+  # ==========================================================================
   backend:
-    image: epsm-backend:latest
+    build:
+      context: .  # Use project root as context
+      dockerfile: ./backend/Dockerfile.prod
+      no_cache: true  # Always build fresh - no stale builds
+      args:
+        VERSION: ${VERSION:-latest}
     container_name: epsm_backend_prod
+    image: epsm-backend:${VERSION:-latest}
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DB_NAME: ${POSTGRES_DB:-epsm_db}
-      DB_USER: ${POSTGRES_USER:-epsm_user}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_HOST: database
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
-      MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      MATERIALS_DB_HOST: database
-      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
-      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
-      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
-      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
-      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
-      REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      ALLOWED_HOSTS: epsm.chalmers.se,www.epsm.chalmers.se,epsm.ita.chalmers.se,www.epsm.ita.chalmers.se,localhost,backend
-      CORS_ALLOWED_ORIGINS: "https://epsm.chalmers.se"
-      SAML_IDP_METADATA_URL: ${SAML_IDP_METADATA_URL}
-      EMAIL_HOST: ${EMAIL_HOST:-smtp.chalmers.se}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      DOCKER_GID: ${DOCKER_GID:-299}
+      # Django Core
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DEBUG=${DEBUG}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - VERSION=${VERSION}
+      
+      # Main Database
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      
+      # Materials Database
+      - MATERIALS_DB_NAME=${MATERIALS_DB_NAME}
+      - MATERIALS_DB_USER=${MATERIALS_DB_USER}
+      - MATERIALS_DB_PASSWORD=${MATERIALS_DB_PASSWORD}
+      - MATERIALS_DB_HOST=${MATERIALS_DB_HOST}
+      - MATERIALS_DB_PORT=${MATERIALS_DB_PORT}
+      
+      # Results Database
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME}
+      - RESULTS_DB_USER=${RESULTS_DB_USER}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT}
+      
+      # Redis & Celery
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      
+      # EnergyPlus Simulation
+      - ENERGYPLUS_DOCKER_IMAGE=${ENERGYPLUS_DOCKER_IMAGE}
+      - SIMULATION_TIMEOUT=${SIMULATION_TIMEOUT}
+      
+      # SAML Authentication
+      - SAML_IDP_METADATA_URL=${SAML_IDP_METADATA_URL}
+      
+      # CORS
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      
+      # Docker
+      - DOCKER_GID=${DOCKER_GID}
+      - HOST_MEDIA_ROOT=/var/lib/docker/volumes/epsm_media_data_prod/_data
     volumes:
       - media_data_prod:/app/media
       - static_data_prod:/app/staticfiles
       - logs_prod:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      - epsm_network
+      - /opt:/host-opt:ro  # For disk monitoring
+    expose:
+      - "8000"
     depends_on:
       database:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - epsm_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
@@ -87,37 +145,68 @@ services:
       timeout: 10s
       retries: 3
 
-  celery-worker:
-    image: epsm-celery-worker:latest
+  # ==========================================================================
+  # Celery Worker
+  # ==========================================================================
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      no_cache: true  # Always build fresh
+      args:
+        VERSION: ${VERSION:-latest}
     container_name: epsm_celery_worker_prod
-    command: celery -A config worker --loglevel=info
+    image: epsm-backend:${VERSION:-latest}  # Reuse backend image
+    command: celery -A config worker --loglevel=info --concurrency=4
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DB_NAME: ${POSTGRES_DB:-epsm_db}
-      DB_USER: ${POSTGRES_USER:-epsm_user}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_HOST: database
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
-      MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      MATERIALS_DB_HOST: database
-      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
-      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
-      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
-      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
-      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
-      REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      DOCKER_GID: ${DOCKER_GID:-299}
+      # Django Core
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DEBUG=${DEBUG}
+      
+      # Main Database
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      
+      # Materials Database
+      - MATERIALS_DB_NAME=${MATERIALS_DB_NAME}
+      - MATERIALS_DB_USER=${MATERIALS_DB_USER}
+      - MATERIALS_DB_PASSWORD=${MATERIALS_DB_PASSWORD}
+      - MATERIALS_DB_HOST=${MATERIALS_DB_HOST}
+      - MATERIALS_DB_PORT=${MATERIALS_DB_PORT}
+      
+      # Results Database
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME}
+      - RESULTS_DB_USER=${RESULTS_DB_USER}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT}
+      
+      # Redis & Celery
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      
+      # EnergyPlus Simulation
+      - ENERGYPLUS_DOCKER_IMAGE=${ENERGYPLUS_DOCKER_IMAGE}
+      - SIMULATION_TIMEOUT=${SIMULATION_TIMEOUT}
+      
+      # Docker
+      - DOCKER_GID=${DOCKER_GID}
+      - HOST_MEDIA_ROOT=/var/lib/docker/volumes/epsm_media_data_prod/_data
     volumes:
       - media_data_prod:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - epsm_network
-    depends_on:
-      - database
-      - redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "celery", "-A", "config", "inspect", "ping"]
@@ -125,35 +214,59 @@ services:
       timeout: 10s
       retries: 3
 
-  celery-beat:
-    image: epsm-celery-beat:latest
+  # ==========================================================================
+  # Celery Beat (Scheduler)
+  # ==========================================================================
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      no_cache: true  # Always build fresh
+      args:
+        VERSION: ${VERSION:-latest}
     container_name: epsm_celery_beat_prod
+    image: epsm-backend:${VERSION:-latest}  # Reuse backend image
     command: celery -A config beat --loglevel=info
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DB_NAME: ${POSTGRES_DB:-epsm_db}
-      DB_USER: ${POSTGRES_USER:-epsm_user}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_HOST: database
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: ${POSTGRES_USER:-epsm_user}
-      MATERIALS_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      MATERIALS_DB_HOST: database
-      RESULTS_DB_NAME: "${RESULTS_DB_NAME:-epsm_db}"
-      RESULTS_DB_USER: "${RESULTS_DB_USER:-epsm_user}"
-      RESULTS_DB_PASSWORD: "${RESULTS_DB_PASSWORD:-epsm_secure_password}"
-      RESULTS_DB_HOST: "${RESULTS_DB_HOST:-database}"
-      RESULTS_DB_PORT: "${RESULTS_DB_PORT:-5432}"
-      REDIS_HOST: redis
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Django Core
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - DEBUG=${DEBUG}
+      
+      # Main Database
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      
+      # Materials Database
+      - MATERIALS_DB_NAME=${MATERIALS_DB_NAME}
+      - MATERIALS_DB_USER=${MATERIALS_DB_USER}
+      - MATERIALS_DB_PASSWORD=${MATERIALS_DB_PASSWORD}
+      - MATERIALS_DB_HOST=${MATERIALS_DB_HOST}
+      - MATERIALS_DB_PORT=${MATERIALS_DB_PORT}
+      
+      # Results Database
+      - RESULTS_DB_NAME=${RESULTS_DB_NAME}
+      - RESULTS_DB_USER=${RESULTS_DB_USER}
+      - RESULTS_DB_PASSWORD=${RESULTS_DB_PASSWORD}
+      - RESULTS_DB_HOST=${RESULTS_DB_HOST}
+      - RESULTS_DB_PORT=${RESULTS_DB_PORT}
+      
+      # Redis & Celery
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
     volumes:
       - media_data_prod:/app/media
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - epsm_network
-    depends_on:
-      - database
-      - redis
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pgrep", "-f", "celery.*beat"]
@@ -161,13 +274,31 @@ services:
       timeout: 10s
       retries: 3
 
+  # ==========================================================================
+  # React Frontend
+  # ==========================================================================
   frontend:
-    image: epsm-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      no_cache: true  # Always build fresh
+      args:
+        VERSION: ${VERSION:-latest}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
     container_name: epsm_frontend_prod
+    image: epsm-frontend:${VERSION:-latest}
+    expose:
+      - "80"
+    depends_on:
+      - backend
     networks:
       - epsm_network
     restart: unless-stopped
 
+  # ==========================================================================
+  # Nginx Reverse Proxy
+  # ==========================================================================
   nginx:
     image: nginx:alpine
     container_name: epsm_nginx_prod
@@ -180,11 +311,11 @@ services:
       - static_data_prod:/app/staticfiles:ro
       - media_data_prod:/app/media:ro
       - ./nginx/logs:/var/log/nginx
-    networks:
-      - epsm_network
     depends_on:
       - backend
       - frontend
+    networks:
+      - epsm_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
@@ -192,12 +323,37 @@ services:
       timeout: 10s
       retries: 3
 
+  # ==========================================================================
+  # EnergyPlus (Optional - ensures image is available)
+  # ==========================================================================
+  energyplus:
+    image: ${ENERGYPLUS_DOCKER_IMAGE}
+    container_name: epsm_energyplus_prod
+    command: /bin/true
+    restart: "no"
+    networks:
+      - epsm_network
+    profiles:
+      - tools
+
+# ============================================================================
+# Networks
+# ============================================================================
 networks:
   epsm_network:
     driver: bridge
 
+# ============================================================================
+# Volumes
+# ============================================================================
 volumes:
   postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local
   media_data_prod:
+    driver: local
   static_data_prod:
+    driver: local
   logs_prod:
+    driver: local
