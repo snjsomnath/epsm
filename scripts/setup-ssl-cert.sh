@@ -68,7 +68,7 @@ fi
 
 echo ""
 echo -e "${BLUE}🛑 Stopping nginx container to free port 80...${NC}"
-docker-compose -f docker-compose.production.yml --env-file .env.production stop nginx || true
+docker stop epsm_nginx_prod 2>/dev/null || docker-compose -f docker-compose.production.yml stop nginx 2>/dev/null || true
 echo -e "${GREEN}✓ nginx stopped${NC}"
 
 echo ""
@@ -110,7 +110,7 @@ echo -e "${GREEN}✓ Permissions set${NC}"
 
 echo ""
 echo -e "${BLUE}🚀 Starting all services...${NC}"
-docker-compose -f docker-compose.production.yml --env-file .env.production up -d --no-recreate
+docker start epsm_nginx_prod 2>/dev/null || docker-compose -f docker-compose.production.yml start nginx 2>/dev/null || true
 echo -e "${GREEN}✓ Services started${NC}"
 
 echo ""
