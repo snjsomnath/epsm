@@ -218,8 +218,18 @@ jobs:
           timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml --env-file .env.production exec -T database pg_isready -U epsm_user; do sleep 2; done'
           echo "✅ Database is ready"
           
-          # Wait for backend
-          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
+          # Wait for backend with extended timeout and better error handling
+          echo "⏳ Waiting for backend to start..."
+          if ! timeout 180 sh -c 'until docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do 
+            echo "Backend not ready yet, checking logs..."
+            docker-compose -f docker-compose.production.yml --env-file .env.production logs backend --tail=20
+            sleep 5
+          done'; then
+            echo "❌ Backend failed to start within 180 seconds"
+            echo "📋 Backend logs:"
+            docker-compose -f docker-compose.production.yml --env-file .env.production logs backend --tail=100
+            exit 1
+          fi
           echo "✅ Backend is ready"
           
           # Additional buffer
