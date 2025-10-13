@@ -333,7 +333,7 @@ class GeoJSONToIDFConverter:
                 object_per_model='District',
                 shade_distance=None,
                 use_multiplier=use_multiplier,
-                add_plenum=False,
+                exclude_plenums=True,  # Exclude plenum zones
                 cap=False,
                 solve_ceiling_adjacencies=True,
                 tolerance=None,
@@ -349,14 +349,21 @@ class GeoJSONToIDFConverter:
             sim_par.output.add_hvac_energy_use()
             
             ver_str = energyplus_idf_version()
+            logger.info(f"Version string: {ver_str is not None}")
+            
             sim_par_str = sim_par.to_idf()
+            logger.info(f"Simulation parameter string: {sim_par_str is not None}")
+            
             model_str = hb_model.to.idf(
                 hb_model,
                 schedule_directory=None,
                 use_ideal_air_equivalent=True
             )
+            logger.info(f"Model string: {model_str is not None}")
             
-            idf_content = '\n\n'.join([ver_str, sim_par_str, model_str])
+            # Filter out None values before joining
+            idf_parts = [s for s in [ver_str, sim_par_str, model_str] if s is not None]
+            idf_content = '\n\n'.join(idf_parts)
             
             with open(idf_path, 'w') as f:
                 f.write(idf_content)
