@@ -88,6 +88,10 @@ sp_metadata.xml
 # DEVELOPMENT & TESTING
 # ==============================================
 
+# Project documentation and cleanup directories
+cleanup/
+change_summary/
+
 # Environment files - Block ALL .env files except examples
 .env
 .env.local
