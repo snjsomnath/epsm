@@ -75,8 +75,10 @@ class DTCCService:
             geojson_path = self.work_dir / 'city.geojson'
             logger.info(f"Exporting to GeoJSON: {geojson_path}")
             
-            # Save city to GeoJSON format
-            city.to_geojson(str(geojson_path))
+            # Save building footprints to GeoJSON format
+            # Use dtcc_core.io.save_footprints which automatically detects format from extension
+            from dtcc_core.io import save_footprints
+            save_footprints(city, str(geojson_path))
             
             logger.info(f"Successfully downloaded city data to {geojson_path}")
             return geojson_path
