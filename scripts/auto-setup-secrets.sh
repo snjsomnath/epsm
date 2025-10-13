@@ -53,7 +53,9 @@ echo -e "${BLUE}🔑 Generating secrets...${NC}"
 echo ""
 
 # Django Secret Key
-DJANGO_SECRET=$(python3 -c 'import secrets, string; chars = string.ascii_letters + string.digits + "!@#$%^&*(-_=+)"; print("".join(secrets.choice(chars) for _ in range(50)))')
+# Use characters safe for both Django and shell environments
+# Avoid: ()$`\! which can cause shell interpretation issues
+DJANGO_SECRET=$(python3 -c 'import secrets, string; chars = string.ascii_letters + string.digits + "@#%^&*-_=+[]{}:;,.<>?/~"; print("".join(secrets.choice(chars) for _ in range(50)))')
 echo -e "${GREEN}✓${NC} Django Secret Key"
 
 # Database passwords
