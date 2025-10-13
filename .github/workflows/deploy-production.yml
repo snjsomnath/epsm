@@ -117,8 +117,8 @@ jobs:
             echo "COMPOSE_PROJECT_NAME=epsm_prod"
             echo ""
             echo "# Django Superuser (Optional - for initial setup)"
-            echo "DJANGO_SUPERUSER_USERNAME=ssanjay@chalmers.se"
-            echo "DJANGO_SUPERUSER_EMAIL=ssanjay@chalmers.se"
+            echo "DJANGO_SUPERUSER_USERNAME=epsm@chalmers.se"
+            echo "DJANGO_SUPERUSER_EMAIL=epsm@chalmers.se"
             echo ""
             echo "# Secrets"
           } > .env.production
