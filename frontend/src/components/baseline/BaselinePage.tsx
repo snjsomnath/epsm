@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField } from '@mui/material';
 import { Play, FileText, AlertCircle, BarChart2, Edit3, Trash2, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
@@ -11,6 +12,7 @@ import { useSimulation } from '../../context/SimulationContext';
 import type { ParsedData } from '../../types/simulation';
 
 const BaselinePage = () => {
+  const location = useLocation();
   const [tabIndex, setTabIndex] = useState(0);
   const [simulating, setSimulating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -18,6 +20,7 @@ const BaselinePage = () => {
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [simulationResults, setSimulationResults] = useState<any>(null);
+  const [geojsonInfo, setGeojsonInfo] = useState<any>(null);
 
   const { uploadedFiles, parsedData, weatherFile, setUploadedFiles, setParsedData, setWeatherFile, addToBaselineRun, updateBaselineRun, baselineHistory, removeBaselineRun, loadResults } = useSimulation();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -45,6 +48,44 @@ const BaselinePage = () => {
     tryHydrate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle incoming IDF file from GeoJSON processor
+  useEffect(() => {
+    const handleGeoJSONImport = async () => {
+      const state = location.state as any;
+      if (state?.fromGeoJSON && state?.idfUrl) {
+        setGeojsonInfo({
+          idfPath: state.idfPath,
+          idfUrl: state.idfUrl,
+          geojsonPath: state.geojsonPath,
+          geojsonUrl: state.geojsonUrl
+        });
+
+        try {
+          // Fetch the IDF file from the backend
+          const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+          const response = await fetch(`${backendUrl}${state.idfUrl}`);
+          if (!response.ok) throw new Error('Failed to fetch IDF file');
+          
+          const blob = await response.blob();
+          const fileName = state.idfPath?.split('/').pop() || 'city.idf';
+          const file = new File([blob], fileName, { type: 'application/octet-stream' });
+          
+          // Automatically load the IDF file
+          await handleIdfFilesUploaded([file]);
+          
+          // Clear the location state
+          window.history.replaceState({}, document.title);
+        } catch (err) {
+          console.error('Error loading GeoJSON IDF:', err);
+          setParseError('Failed to load generated IDF file');
+        }
+      }
+    };
+    
+    handleGeoJSONImport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const handleIdfFilesUploaded = async (files: File[]) => {
     if (files.length === 0) {
@@ -197,6 +238,28 @@ const BaselinePage = () => {
       <Typography variant="body1" paragraph>Upload baseline IDF files, analyze components, and run simulations.</Typography>
 
       <Grid container spacing={3}>
+        {geojsonInfo && (
+          <Grid item xs={12}>
+            <Alert severity="success" onClose={() => setGeojsonInfo(null)}>
+              <strong>IDF file loaded from GeoJSON processor!</strong>
+              <br />
+              The IDF file has been automatically generated from Swedish building data and is ready for simulation.
+              {geojsonInfo.geojsonUrl && (
+                <Box sx={{ mt: 1 }}>
+                  <Button 
+                    size="small" 
+                    variant="outlined"
+                    href={`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}${geojsonInfo.geojsonUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View GeoJSON
+                  </Button>
+                </Box>
+              )}
+            </Alert>
+          </Grid>
+        )}
         <Grid item xs={12}>
           <Card>
             <CardContent>

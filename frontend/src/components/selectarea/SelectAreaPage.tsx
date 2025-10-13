@@ -20,6 +20,7 @@ import {
 import { MapIcon, Trash2, Download, CheckCircle } from 'lucide-react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import { FeatureGroup as LeafletFeatureGroup } from 'leaflet';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
@@ -138,6 +139,7 @@ const DrawingControls = ({
 };
 
 const SelectAreaPage = () => {
+  const navigate = useNavigate();
   const [basemapType, setBasemapType] = useState<BasemapType>('osm');
   const [drawnArea, setDrawnArea] = useState<DrawnArea | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -254,9 +256,16 @@ const SelectAreaPage = () => {
         
         // Show success message for 2 seconds, then redirect to baseline
         setTimeout(() => {
-          // Navigate to baseline page
-          // For now, just alert - you can add navigation later
-          alert(`IDF file generated at: ${data.idf_path}\n\nRedirect to baseline page (to be implemented)`);
+          // Navigate to baseline page with IDF file info
+          navigate('/baseline', { 
+            state: { 
+              idfPath: data.idf_path,
+              idfUrl: data.idf_url,
+              geojsonPath: data.geojson_path,
+              geojsonUrl: data.geojson_url,
+              fromGeoJSON: true
+            } 
+          });
         }, 2000);
       } else {
         throw new Error('Processing failed');

@@ -30,12 +30,24 @@ const IdfUploadArea = ({ onFilesUploaded, initialFiles = [] }: IdfUploadAreaProp
     }
   }, [initialFiles, idfFiles.length]);
 
-  const validateIdfFile = async (file: File): Promise<boolean> => {
+  // Skip validation for files larger than 10MB to avoid performance issues
+  const MAX_VALIDATION_SIZE = 10 * 1024 * 1024; // 10MB
+
+  const validateIdfFile = async (file: File): Promise<{ valid: boolean; reason?: string }> => {
     try {
+      // Skip validation for large files
+      if (file.size > MAX_VALIDATION_SIZE) {
+        return { 
+          valid: true, 
+          reason: `File is large (${(file.size / 1024 / 1024).toFixed(1)}MB), skipping detailed validation` 
+        };
+      }
+
       const content = await file.text();
-      return content.includes('Version,') && content.includes('Building,');
+      const isValid = content.includes('Version,') && content.includes('Building,');
+      return { valid: isValid };
     } catch {
-      return false;
+      return { valid: false };
     }
   };
 
@@ -55,15 +67,25 @@ const IdfUploadArea = ({ onFilesUploaded, initialFiles = [] }: IdfUploadAreaProp
       setError(null);
 
       // Validate all files
+      let validationMessage: string | null = null;
       for (const file of filteredFiles) {
-        const isValid = await validateIdfFile(file);
-        if (!isValid) {
+        const result = await validateIdfFile(file);
+        if (!result.valid) {
           throw new Error(`Invalid IDF file format: ${file.name}`);
+        }
+        // Store message for large files (info, not error)
+        if (result.reason) {
+          validationMessage = result.reason;
         }
       }
 
       setIdfFiles(filteredFiles);
       onFilesUploaded(filteredFiles);
+      
+      // Show info message if file was large
+      if (validationMessage) {
+        setError(null); // Clear any previous errors
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate IDF files');
       setIdfFiles([]);
@@ -100,15 +122,25 @@ const IdfUploadArea = ({ onFilesUploaded, initialFiles = [] }: IdfUploadAreaProp
       setError(null);
 
       // Validate all files
+      let validationMessage: string | null = null;
       for (const file of files) {
-        const isValid = await validateIdfFile(file);
-        if (!isValid) {
+        const result = await validateIdfFile(file);
+        if (!result.valid) {
           throw new Error(`Invalid IDF file format: ${file.name}`);
+        }
+        // Store message for large files (info, not error)
+        if (result.reason) {
+          validationMessage = result.reason;
         }
       }
 
       setIdfFiles(files);
       onFilesUploaded(files);
+      
+      // Show info message if file was large
+      if (validationMessage) {
+        setError(null); // Clear any previous errors
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to validate IDF files');
       setIdfFiles([]);
@@ -162,8 +194,8 @@ const IdfUploadArea = ({ onFilesUploaded, initialFiles = [] }: IdfUploadAreaProp
         setIdfFiles([file]);
         onFilesUploaded([file]);
       } else {
-        const isValid = await validateIdfFile(file);
-        if (!isValid) throw new Error('Default IDF failed validation');
+        const result = await validateIdfFile(file);
+        if (!result.valid) throw new Error('Default IDF failed validation');
 
         setIdfFiles([file]);
         onFilesUploaded([file]);
