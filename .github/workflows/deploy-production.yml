@@ -379,21 +379,71 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Services" >> $GITHUB_STEP_SUMMARY
           echo "- Database: PostgreSQL 15" >> $GITHUB_STEP_SUMMARY
-          echo "- Backend: Django + Gunicorn" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: Django + Daphne (WebSocket support)" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend: React + Vite" >> $GITHUB_STEP_SUMMARY
           echo "- Workers: Celery" >> $GITHUB_STEP_SUMMARY
           echo "- Cache: Redis" >> $GITHUB_STEP_SUMMARY
           echo "- Proxy: Nginx" >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Access" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔐 **Admin Login:**" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://epsm.chalmers.se/admin/" >> $GITHUB_STEP_SUMMARY
+          echo "- Username: \`epsm@chalmers.se\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Password: \`${{ secrets.PROD_DJANGO_SUPERUSER_PASSWORD }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "👤 **SAML SSO:** Use Chalmers credentials (CID)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-      - name: Cleanup secrets file
+      - name: Secure .env.production file
         if: always()
         run: |
           cd /opt/epsm
           if [ -f .env.production ]; then
-            rm -f .env.production
-            echo "🔒 Cleaned up .env.production (secrets removed from disk)"
+            # Keep the file but secure it (don't delete)
+            chmod 600 .env.production
+            echo "� Secured .env.production (chmod 600)"
           fi
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## 🎉 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Git commit:** $(git rev-parse --short HEAD)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f VERSION ]; then
+            echo "**Version:** $(cat VERSION)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services" >> $GITHUB_STEP_SUMMARY
+          echo "- Database: PostgreSQL 15" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: Django + Daphne (WebSocket support)" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: React + Vite" >> $GITHUB_STEP_SUMMARY
+          echo "- Workers: Celery" >> $GITHUB_STEP_SUMMARY
+          echo "- Cache: Redis" >> $GITHUB_STEP_SUMMARY
+          echo "- Proxy: Nginx" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Access" >> $GITHUB_STEP_SUMMARY
           echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔐 **Admin Login:**" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://epsm.chalmers.se/admin/" >> $GITHUB_STEP_SUMMARY
+          echo "- Username: \`epsm@chalmers.se\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Password: Stored in GitHub Secrets (\`PROD_DJANGO_SUPERUSER_PASSWORD\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- On server: \`cat /opt/epsm/.admin-credentials\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "� **SAML SSO:** Use Chalmers credentials (CID)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📋 **Retrieve Credentials on Server:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "ssh ssanjay@epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
+          echo "cat /opt/epsm/.admin-credentials" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
