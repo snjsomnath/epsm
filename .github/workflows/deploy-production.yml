@@ -32,35 +32,35 @@ jobs:
 
       - name: Validate GitHub Secrets
         run: |
-          echo "� Validating GitHub Secrets..."
+          echo "  Validating GitHub Secrets..."
           errors=0
           
           if [ -z "${{ secrets.PROD_DJANGO_SECRET_KEY }}" ]; then
-            echo "❌ PROD_DJANGO_SECRET_KEY is not set"
+            echo "[ERROR] PROD_DJANGO_SECRET_KEY is not set"
             errors=$((errors+1))
           fi
           
           if [ -z "${{ secrets.PROD_DB_PASSWORD }}" ]; then
-            echo "❌ PROD_DB_PASSWORD is not set"
+            echo "[ERROR] PROD_DB_PASSWORD is not set"
             errors=$((errors+1))
           fi
           
           if [ -z "${{ secrets.PROD_REDIS_PASSWORD }}" ]; then
-            echo "❌ PROD_REDIS_PASSWORD is not set"
+            echo "[ERROR] PROD_REDIS_PASSWORD is not set"
             errors=$((errors+1))
           fi
           
           if [ $errors -gt 0 ]; then
-            echo "❌ $errors required secrets are missing!"
+            echo "[ERROR] $errors required secrets are missing!"
             exit 1
           fi
           
-          echo "✅ All required secrets are configured"
+          echo "[OK] All required secrets are configured"
 
       - name: Create .env.production from GitHub Secrets
         run: |
           cd /opt/epsm
-          echo "🔐 Creating .env.production from GitHub Secrets..."
+          echo "[SECRET] Creating .env.production from GitHub Secrets..."
           
           # Write variables one by one to avoid shell interpretation issues
           cat > .env.production <<'ENDOFFILE'
@@ -114,58 +114,58 @@ ENDOFFILE
           printf "CELERY_RESULT_BACKEND=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
           
           chmod 600 .env.production
-          echo "✅ .env.production created with secrets from GitHub"
+          echo "[OK] .env.production created with secrets from GitHub"
 
       - name: Load environment variables
         run: |
           cd /opt/epsm
-          echo "🔧 Loading environment variables..."
+          echo "[CONFIG] Loading environment variables..."
           set -a
           source .env.production
           set +a
-          echo "✅ Environment variables loaded"
+          echo "[OK] Environment variables loaded"
 
       - name: Stop existing containers
         run: |
           cd /opt/epsm
-          echo "🛑 Stopping existing containers..."
+          echo "[STOP] Stopping existing containers..."
           docker-compose -f docker-compose.production.yml down || true
-          echo "✅ Containers stopped"
+          echo "[OK] Containers stopped"
 
       - name: Pull latest code
         run: |
           cd /opt/epsm
-          echo "📥 Pulling latest code from main branch..."
+          echo "  Pulling latest code from main branch..."
           git fetch origin main
           git reset --hard origin/main
-          echo "✅ Code updated to latest"
+          echo "[OK] Code updated to latest"
 
       - name: Pull EnergyPlus image
         run: |
           cd /opt/epsm
           source .env.production
-          echo "📥 Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
+          echo "  Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
           docker pull ${ENERGYPLUS_DOCKER_IMAGE}
-          echo "✅ EnergyPlus image ready"
+          echo "[OK] EnergyPlus image ready"
 
       - name: Clean Docker build cache
         run: |
-          echo "🧹 Removing Docker build cache to force fresh builds..."
+          echo "[CLEAN] Removing Docker build cache to force fresh builds..."
           docker builder prune -af
-          echo "✅ Build cache cleared"
+          echo "[OK] Build cache cleared"
 
       - name: Remove old images
         run: |
-          echo "🧹 Removing old EPSM images..."
+          echo "[CLEAN] Removing old EPSM images..."
           docker images | grep epsm | awk '{print $3}' | xargs -r docker rmi -f || true
-          echo "✅ Old images removed"
+          echo "[OK] Old images removed"
 
       - name: Build and deploy services
         run: |
           cd /opt/epsm
           
-          echo "🚀 Building services from source (NO CACHE)..."
-          echo "📝 Using docker-compose.production.yml"
+          echo "[START] Building services from source (NO CACHE)..."
+          echo "  Using docker-compose.production.yml"
           
           # Build with explicit no-cache and force-recreate
           docker-compose -f docker-compose.production.yml build \
@@ -173,69 +173,69 @@ ENDOFFILE
             --pull \
             --progress=plain
           
-          echo "✅ Build complete"
+          echo "[OK] Build complete"
           
-          echo "🚀 Starting services..."
+          echo "[START] Starting services..."
           docker-compose -f docker-compose.production.yml up -d --force-recreate
           
-          echo "✅ Services started"
+          echo "[OK] Services started"
 
       - name: Wait for services
         run: |
           cd /opt/epsm
-          echo "⏳ Waiting for services to be healthy..."
+          echo "  Waiting for services to be healthy..."
           
           # Wait for database
           timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user; do sleep 2; done'
-          echo "✅ Database is ready"
+          echo "[OK] Database is ready"
           
           # Wait for backend
           timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
-          echo "✅ Backend is ready"
+          echo "[OK] Backend is ready"
           
           # Additional buffer
-          echo "⏳ Waiting 10 more seconds for full initialization..."
+          echo "  Waiting 10 more seconds for full initialization..."
           sleep 10
 
       - name: Run database migrations
         if: ${{ github.event.inputs.skip_migrations != 'true' }}
         run: |
           cd /opt/epsm
-          echo "📊 Running database migrations..."
+          echo "[STATUS] Running database migrations..."
           docker-compose -f docker-compose.production.yml exec -T backend python manage.py migrate --noinput
-          echo "✅ Migrations complete"
+          echo "[OK] Migrations complete"
 
       - name: Seed database
         if: ${{ github.event.inputs.skip_seed != 'true' }}
         run: |
           cd /opt/epsm
-          echo "🌱 Seeding database with initial data..."
+          echo "  Seeding database with initial data..."
           
           if [ -f scripts/seed-database.sh ]; then
             bash scripts/seed-database.sh
           else
-            echo "⚠️  Seed script not found, skipping..."
+            echo "    Seed script not found, skipping..."
           fi
           
-          echo "✅ Database seeding complete"
+          echo "[OK] Database seeding complete"
 
       - name: Collect static files
         run: |
           cd /opt/epsm
-          echo "📁 Collecting static files..."
+          echo "  Collecting static files..."
           docker-compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
-          echo "✅ Static files collected"
+          echo "[OK] Static files collected"
 
       - name: Clean up Docker system
         run: |
-          echo "🧹 Cleaning up Docker system..."
+          echo "[CLEAN] Cleaning up Docker system..."
           docker system prune -f --volumes
-          echo "✅ Cleanup complete"
+          echo "[OK] Cleanup complete"
 
       - name: Verify deployment
         run: |
           cd /opt/epsm
-          echo "🔍 Verifying deployment..."
+          echo "[VALIDATE] Verifying deployment..."
           
           echo ""
           echo "==================================="
@@ -250,30 +250,30 @@ ENDOFFILE
           
           # Check database
           if docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user > /dev/null 2>&1; then
-            echo "✅ Database: HEALTHY"
+            echo "[OK] Database: HEALTHY"
           else
-            echo "❌ Database: UNHEALTHY"
+            echo "[ERROR] Database: UNHEALTHY"
           fi
           
           # Check Redis
           if docker-compose -f docker-compose.production.yml exec -T redis redis-cli ping > /dev/null 2>&1; then
-            echo "✅ Redis: HEALTHY"
+            echo "[OK] Redis: HEALTHY"
           else
-            echo "❌ Redis: UNHEALTHY"
+            echo "[ERROR] Redis: UNHEALTHY"
           fi
           
           # Check backend
           if docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
-            echo "✅ Backend: HEALTHY"
+            echo "[OK] Backend: HEALTHY"
           else
-            echo "❌ Backend: UNHEALTHY"
+            echo "[ERROR] Backend: UNHEALTHY"
           fi
           
           # Check Celery worker
           if docker-compose -f docker-compose.production.yml exec -T celery_worker celery -A config inspect ping > /dev/null 2>&1; then
-            echo "✅ Celery Worker: HEALTHY"
+            echo "[OK] Celery Worker: HEALTHY"
           else
-            echo "❌ Celery Worker: UNHEALTHY"
+            echo "[ERROR] Celery Worker: UNHEALTHY"
           fi
           
           echo ""
@@ -291,7 +291,7 @@ ENDOFFILE
       - name: Deployment summary
         if: always()
         run: |
-          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## [START] Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
@@ -318,7 +318,7 @@ ENDOFFILE
           cd /opt/epsm
           if [ -f .env.production ]; then
             rm -f .env.production
-            echo "🗑️  Cleaned up .env.production (secrets removed from disk)"
+            echo "    Cleaned up .env.production (secrets removed from disk)"
           fi
           echo "### Access" >> $GITHUB_STEP_SUMMARY
-          echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
+          echo "  **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
