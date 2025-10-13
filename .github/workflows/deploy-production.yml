@@ -120,6 +120,10 @@ jobs:
             echo "DJANGO_SUPERUSER_USERNAME=epsm@chalmers.se"
             echo "DJANGO_SUPERUSER_EMAIL=epsm@chalmers.se"
             echo ""
+            echo "# Docker and Media"
+            echo "DOCKER_GID=999"
+            echo "HOST_MEDIA_ROOT=/var/lib/docker/volumes/epsm_prod_media_data_prod/_data"
+            echo ""
             echo "# Secrets"
           } > .env.production
           
