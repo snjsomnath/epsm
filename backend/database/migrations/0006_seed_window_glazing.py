@@ -55,7 +55,7 @@ def load_window_glazing(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('database', '0005_scenario_scenarioconstruction'),
+        ('database', '0005_create_scenario_tables'),
     ]
     operations = [
         migrations.RunPython(load_window_glazing),

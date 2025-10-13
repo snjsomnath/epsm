@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.6] - 2025-10-13
+
+### Fixed
+- **WebSocket Support in Development**
+  - Fixed backend to run with Daphne ASGI server instead of Django's development server
+  - Added WebSocket proxy configuration to Vite dev server
+  - System resource monitoring WebSocket now works in development environment
+  - Simulation progress WebSocket connections properly proxied
+
+### Changed
+- **Backend Development Server**
+  - Changed from `python manage.py runserver` to `daphne` in Dockerfile.dev
+  - Ensures consistent WebSocket behavior between development and production
+
+- **Frontend Vite Configuration**
+  - Added `/ws` proxy configuration for WebSocket connections
+  - WebSocket connections now properly routed to backend in development
+
+---
+
 ## [0.2.1] - 2025-10-07
 
 ### Added

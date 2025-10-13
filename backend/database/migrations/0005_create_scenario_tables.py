@@ -8,7 +8,7 @@ import uuid
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('database', '0004_load_materials'),
+        ('database', '0004_seed_initial_materials'),
     ]
 
     operations = [

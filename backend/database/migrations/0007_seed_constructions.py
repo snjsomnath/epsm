@@ -65,7 +65,7 @@ def load_constructions(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('database', '0006_load_window_glazing'),
+        ('database', '0006_seed_window_glazing'),
     ]
     operations = [
         migrations.RunPython(load_constructions),

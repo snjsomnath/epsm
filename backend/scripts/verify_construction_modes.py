@@ -1,11 +1,11 @@
 from database.models import Scenario, ScenarioConstruction, Layer
 import itertools, json
 
-s = Scenario.objects.using('materials_db').filter(name='test').first()
+s = Scenario.objects.filter(name='test').first()
 if not s:
     print('SCENARIO NOT FOUND')
 else:
-    sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario=s)
+    sc_qs = ScenarioConstruction.objects.filter(scenario=s)
     groups = {}
     for sc in sc_qs:
         c = sc.construction
@@ -13,7 +13,7 @@ else:
             continue
         layers = []
         try:
-            for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+            for L in Layer.objects.filter(construction=c).order_by('layer_order'):
                 if getattr(L, 'material', None):
                     layers.append(L.material.name)
                 elif getattr(L, 'window', None):
@@ -44,7 +44,7 @@ else:
             continue
         layers = []
         try:
-            for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+            for L in Layer.objects.filter(construction=c).order_by('layer_order'):
                 if getattr(L, 'material', None):
                     layers.append(L.material.name)
                 elif getattr(L, 'window', None):

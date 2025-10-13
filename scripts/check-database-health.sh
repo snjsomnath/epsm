@@ -108,43 +108,23 @@ check_critical_table() {
 }
 
 echo ""
-echo "=== Default Database (epsm_db) ==="
+echo "=== Single Database (epsm_db) ==="
+echo "All data (auth, simulation, materials, results) stored in epsm_db"
 check_db_connection "epsm_db" "epsm_user" "database"
-check_tables "epsm_db" "epsm_user" 10
-check_critical_table "epsm_db" "epsm_user" "simulation_runs"
+check_tables "epsm_db" "epsm_user" 15
 check_critical_table "epsm_db" "epsm_user" "auth_user"
-
-echo ""
-echo "=== Materials Database (epsm_materials) ==="
-check_db_connection "epsm_materials" "epsm_user" "database"
-check_tables "epsm_materials" "epsm_user" 5
-check_critical_table "epsm_materials" "epsm_user" "materials"
-check_critical_table "epsm_materials" "epsm_user" "constructions"
-check_critical_table "epsm_materials" "epsm_user" "scenarios"
-
-echo ""
-echo "=== Results Database (epsm_results) ==="
-check_db_connection "epsm_results" "epsm_results_user" "database"
-check_tables "epsm_results" "epsm_results_user" 3
-check_critical_table "epsm_results" "epsm_results_user" "simulation_results"
-check_critical_table "epsm_results" "epsm_results_user" "simulation_zones"
-check_critical_table "epsm_results" "epsm_results_user" "simulation_energy_uses"
+check_critical_table "epsm_db" "epsm_user" "simulation_runs"
+check_critical_table "epsm_db" "epsm_user" "simulation_results"
+check_critical_table "epsm_db" "epsm_user" "materials"
+check_critical_table "epsm_db" "epsm_user" "constructions"
 
 echo ""
 echo "=== Migration Status ==="
 print_info "Checking migration status..."
 
 echo ""
-echo "Default database migrations:"
-docker-compose -f "$COMPOSE_FILE" exec -T backend python manage.py showmigrations --database=default 2>&1 | grep -E "^\[X\]" | tail -5
-
-echo ""
-echo "Materials database migrations:"
-docker-compose -f "$COMPOSE_FILE" exec -T backend python manage.py showmigrations database --database=materials_db 2>&1 | grep -E "^\[X\]" | tail -5
-
-echo ""
-echo "Results database migrations:"
-docker-compose -f "$COMPOSE_FILE" exec -T backend python manage.py showmigrations simulation --database=results_db 2>&1 | grep -E "^\[X\]" | tail -5
+echo "All migrations (single database):"
+docker-compose -f "$COMPOSE_FILE" exec -T backend python manage.py showmigrations 2>&1 | grep -E "^\[X\]" | tail -10
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"

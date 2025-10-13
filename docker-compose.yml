@@ -1,6 +1,6 @@
 # Development Docker Compose Configuration
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (Single Database)
   database:
     build:
       context: ./database
@@ -10,11 +10,8 @@ services:
       POSTGRES_DB: epsm_db
       POSTGRES_USER: epsm_user
       POSTGRES_PASSWORD: ${DB_PASSWORD:-epsm_secure_password}
-      POSTGRES_MULTIPLE_DATABASES: epsm_db,epsm_materials
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
-      - ./database/exports:/docker-entrypoint-initdb.d/exports:ro
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations:ro
     ports:
       - "5432:5432"
     networks:
@@ -39,23 +36,13 @@ services:
       DB_PASSWORD: epsm_secure_password
       DB_HOST: database
       DB_PORT: "5432"
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: epsm_user
-      MATERIALS_DB_PASSWORD: epsm_secure_password
-      MATERIALS_DB_HOST: database
-      MATERIALS_DB_PORT: "5432"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
+      DJANGO_SUPERUSER_USERNAME: epsm@chalmers.se
+      DJANGO_SUPERUSER_EMAIL: epsm@chalmers.se
+      DJANGO_SUPERUSER_PASSWORD: password
       ENERGYPLUS_DOCKER_IMAGE: nrel/energyplus:23.2.0
       SIMULATION_TIMEOUT: "600"
-      # Development defaults; for production set to your frontend origin(s), e.g.
-      # CORS_ALLOWED_ORIGINS: "https://epsm.chalmers.se"
-      CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://frontend:5173,https://epsm.chalmers.se"
-      HOST_MEDIA_ROOT: "/Users/ssanjay/GitHub/epsm/backend/media"
-      RESULTS_DB_NAME: epsm_db
-      RESULTS_DB_USER: epsm_user
-      RESULTS_DB_PASSWORD: epsm_secure_password
-      RESULTS_DB_HOST: database
-      RESULTS_DB_PORT: "5432"
+      CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://frontend:5173,http://127.0.0.1:5173"
     volumes:
       - ./backend:/app
       - ./backend/media/simulation_files:/app/media/simulation_files
@@ -130,22 +117,13 @@ services:
       DB_PASSWORD: epsm_secure_password
       DB_HOST: database
       DB_PORT: "5432"
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: epsm_user
-      MATERIALS_DB_PASSWORD: epsm_secure_password
-      MATERIALS_DB_HOST: database
-      MATERIALS_DB_PORT: "5432"
-      RESULTS_DB_NAME: epsm_db
-      RESULTS_DB_USER: epsm_user
-      RESULTS_DB_PASSWORD: epsm_secure_password
-      RESULTS_DB_HOST: database
-      RESULTS_DB_PORT: "5432"
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
       ENERGYPLUS_DOCKER_IMAGE: nrel/energyplus:23.2.0
       SIMULATION_TIMEOUT: "600"
-      HOST_MEDIA_ROOT: /Users/ssanjay/GitHub/epsm/backend/media
+      # HOST_MEDIA_ROOT is optional in dev - only needed for host-level file monitoring
+      # HOST_MEDIA_ROOT: "${PWD}/backend/media"
     volumes:
       - ./backend:/app
       - ./backend/media/simulation_files:/app/media/simulation_files
@@ -180,16 +158,6 @@ services:
       DB_PASSWORD: epsm_secure_password
       DB_HOST: database
       DB_PORT: "5432"
-      MATERIALS_DB_NAME: epsm_materials
-      MATERIALS_DB_USER: epsm_user
-      MATERIALS_DB_PASSWORD: epsm_secure_password
-      MATERIALS_DB_HOST: database
-      MATERIALS_DB_PORT: "5432"
-      RESULTS_DB_NAME: epsm_db
-      RESULTS_DB_USER: epsm_user
-      RESULTS_DB_PASSWORD: epsm_secure_password
-      RESULTS_DB_HOST: database
-      RESULTS_DB_PORT: "5432"
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key-change-in-production}
@@ -212,10 +180,6 @@ services:
 
 volumes:
   postgres_data_dev:
-    driver: local
-  simulation_files_dev:
-    driver: local
-  simulation_results_dev:
     driver: local
   redis_data_dev:
     driver: local

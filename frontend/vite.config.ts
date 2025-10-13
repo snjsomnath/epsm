@@ -30,11 +30,25 @@ export default defineConfig({
           proxy.on('error', (err, _req, _res) => {
             console.log('proxy error', err);
           });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
+          proxy.on('proxyReq', (_proxyReq, req, _res) => {
             console.log('Proxying request:', req.method, req.url, 'to', backendHost);
           });
           proxy.on('proxyRes', (proxyRes, req, _res) => {
             console.log('Received response:', proxyRes.statusCode, req.url);
+          });
+        },
+      },
+      '/ws': {
+        target: backendHost.replace('http', 'ws'),
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('WebSocket proxy error', err);
+          });
+          proxy.on('proxyReqWs', (_proxyReq, req, _socket, _options, _head) => {
+            console.log('Proxying WebSocket:', req.url, 'to', backendHost);
           });
         },
       },

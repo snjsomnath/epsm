@@ -462,7 +462,7 @@ def run_simulation(request):
                 from database.models import ScenarioConstruction, Layer, Scenario
                 import itertools
 
-                sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario_id=scenario_id)
+                sc_qs = ScenarioConstruction.objects.filter(scenario_id=scenario_id)
                 groups = {}
                 for sc in sc_qs:
                     c = sc.construction
@@ -470,7 +470,7 @@ def run_simulation(request):
                         continue
                     # collect ordered layer names for this construction
                     layers = []
-                    for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+                    for L in Layer.objects.filter(construction=c).order_by('layer_order'):
                         if getattr(L, 'material', None):
                             layers.append(L.material.name)
                         elif getattr(L, 'window', None):
@@ -486,7 +486,7 @@ def run_simulation(request):
                 scenario_obj = None
                 if scenario_id:
                     try:
-                        scenario_obj = Scenario.objects.using('materials_db').filter(id=scenario_id).first()
+                        scenario_obj = Scenario.objects.filter(id=scenario_id).first()
                         if scenario_obj and getattr(scenario_obj, 'total_simulations', None):
                             scenario_expected_total = int(getattr(scenario_obj, 'total_simulations'))
                     except Exception as scenario_lookup_err:
@@ -504,7 +504,7 @@ def run_simulation(request):
                             if not c:
                                 continue
                             layers = []
-                            for L in Layer.objects.using('materials_db').filter(construction=c).order_by('layer_order'):
+                            for L in Layer.objects.filter(construction=c).order_by('layer_order'):
                                 if getattr(L, 'material', None):
                                     layers.append(L.material.name)
                                 elif getattr(L, 'window', None):
@@ -1128,13 +1128,13 @@ def list_simulation_results(request):
         return response
 
 
-# Simple endpoint to return window glazing rows from the materials_db
+# Simple endpoint to return window glazing rows from the default database
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def api_window_glazing(request):
     try:
         from database.models import WindowGlazing
-        glazings_qs = WindowGlazing.objects.using('materials_db').all()
+        glazings_qs = WindowGlazing.objects.all()
         glazings = []
         for g in glazings_qs:
             glazings.append({
@@ -1167,7 +1167,7 @@ def api_materials(request):
     import json
     if request.method == 'GET':
         try:
-            materials = Material.objects.using('materials_db').all()
+            materials = Material.objects.all()
             materials_data = []
             for material in materials:
                 materials_data.append({
@@ -1199,7 +1199,7 @@ def api_materials(request):
     elif request.method == 'POST':
         try:
             data = request.data
-            material = Material.objects.using('materials_db').create(
+            material = Material.objects.create(
                 name=data['name'],
                 roughness=data['roughness'],
                 thickness_m=data['thickness_m'],
@@ -1232,13 +1232,13 @@ def api_constructions(request):
         from django.db import connections
         
         # Check which database is being used
-        constructions = Construction.objects.using('materials_db').all()
+        constructions = Construction.objects.all()
         
         from database.models import Layer, Material, WindowGlazing
         constructions_data = []
         for construction in constructions:
             # gather flattened layer info for listing
-            layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+            layers_qs = Layer.objects.filter(construction=construction).order_by('layer_order')
             layers_list = []
             for L in layers_qs:
                 mat = L.material
@@ -1304,11 +1304,11 @@ def api_constructions_create(request):
         if request.method == 'GET':
             # Return list of constructions (inline to avoid DRF Request vs HttpRequest mismatch)
             from database.models import Layer, Material, WindowGlazing
-            constructions = Construction.objects.using('materials_db').all()
+            constructions = Construction.objects.all()
             constructions_data = []
             for construction in constructions:
                 # gather flattened layer info for listing
-                layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+                layers_qs = Layer.objects.filter(construction=construction).order_by('layer_order')
                 layers_list = []
                 for L in layers_qs:
                     mat = L.material
@@ -1361,7 +1361,7 @@ def api_constructions_create(request):
         # POST - create construction and layers
         data = request.data
 
-        construction = Construction.objects.using('materials_db').create(
+        construction = Construction.objects.create(
             name=data.get('name'),
             element_type=data.get('element_type', 'wall'),
             is_window=data.get('is_window', False),
@@ -1382,8 +1382,8 @@ def api_constructions_create(request):
                 except Exception:
                     return JsonResponse({'error': f"Invalid material_id in layer: {layer.get('material_id')}"}, status=400)
                 try:
-                    mat = Material.objects.using('materials_db').get(id=layer['material_id'])
-                    Layer.objects.using('materials_db').create(
+                    mat = Material.objects.get(id=layer['material_id'])
+                    Layer.objects.create(
                         construction=construction,
                         material=mat,
                         layer_order=layer_order,
@@ -1399,8 +1399,8 @@ def api_constructions_create(request):
                 except Exception:
                     return JsonResponse({'error': f"Invalid glazing_id in layer: {layer.get('glazing_id')}"}, status=400)
                 try:
-                    win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
-                    Layer.objects.using('materials_db').create(
+                    win = WindowGlazing.objects.get(id=layer['glazing_id'])
+                    Layer.objects.create(
                         construction=construction,
                         window=win,
                         layer_order=layer_order,
@@ -1425,7 +1425,7 @@ def api_construction_detail(request, id):
         from database.models import Construction, Layer, Material, WindowGlazing
 
         try:
-            construction = Construction.objects.using('materials_db').get(id=id)
+            construction = Construction.objects.get(id=id)
         except Construction.DoesNotExist:
             # Make DELETE idempotent: if client attempted DELETE on a missing resource,
             # treat it as successful (no-op). For non-DELETE methods, return 404.
@@ -1435,7 +1435,7 @@ def api_construction_detail(request, id):
 
         if request.method == 'GET':
             # Return construction detail including layers
-            layers_qs = Layer.objects.using('materials_db').filter(construction=construction).order_by('layer_order')
+            layers_qs = Layer.objects.filter(construction=construction).order_by('layer_order')
             layers_data = []
             for L in layers_qs:
                 # include flattened fields expected by the frontend
@@ -1486,7 +1486,7 @@ def api_construction_detail(request, id):
 
         if request.method == 'DELETE':
             # Delete construction and its layers (cascade should handle layers)
-            Construction.objects.using('materials_db').filter(id=construction.id).delete()
+            Construction.objects.filter(id=construction.id).delete()
             return JsonResponse({'status': 'deleted'})
 
         # PUT - update construction and replace layers if provided
@@ -1499,11 +1499,11 @@ def api_construction_detail(request, id):
         construction.gwp_kgco2e_per_m2 = data.get('gwp_kgco2e_per_m2', construction.gwp_kgco2e_per_m2)
         construction.cost_sek_per_m2 = data.get('cost_sek_per_m2', construction.cost_sek_per_m2)
         construction.source = data.get('source', construction.source)
-        construction.save(using='materials_db')
+        construction.save()
 
         # If layers provided, remove existing and recreate
         if 'layers' in data:
-            Layer.objects.using('materials_db').filter(construction=construction).delete()
+            Layer.objects.filter(construction=construction).delete()
             for layer in data.get('layers', []):
                 layer_order = layer.get('layer_order', 1)
                 if layer.get('material_id'):
@@ -1513,8 +1513,8 @@ def api_construction_detail(request, id):
                     except Exception:
                         return JsonResponse({'error': f"Invalid material_id in layer: {layer.get('material_id')}"}, status=400)
                     try:
-                        mat = Material.objects.using('materials_db').get(id=layer['material_id'])
-                        Layer.objects.using('materials_db').create(
+                        mat = Material.objects.get(id=layer['material_id'])
+                        Layer.objects.create(
                             construction=construction,
                             material=mat,
                             layer_order=layer_order,
@@ -1531,8 +1531,8 @@ def api_construction_detail(request, id):
                     except Exception:
                         return JsonResponse({'error': f"Invalid glazing_id in layer: {layer.get('glazing_id')}"}, status=400)
                     try:
-                        win = WindowGlazing.objects.using('materials_db').get(id=layer['glazing_id'])
-                        Layer.objects.using('materials_db').create(
+                        win = WindowGlazing.objects.get(id=layer['glazing_id'])
+                        Layer.objects.create(
                             construction=construction,
                             window=win,
                             layer_order=layer_order,
@@ -1556,7 +1556,7 @@ def api_construction_sets(request):
     """Get all construction sets from database"""
     try:
         from database.models import ConstructionSet
-        construction_sets = ConstructionSet.objects.using('materials_db').all()
+        construction_sets = ConstructionSet.objects.all()
         
         sets_data = []
         for cs in construction_sets:
@@ -1594,11 +1594,11 @@ def api_scenarios(request):
     try:
         from database.models import Scenario, ScenarioConstruction, Construction
         if request.method == 'GET':
-            scenarios_qs = Scenario.objects.using('materials_db').all()
+            scenarios_qs = Scenario.objects.all()
             scenarios = []
             for s in scenarios_qs:
                 constructions = []
-                sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario=s)
+                sc_qs = ScenarioConstruction.objects.filter(scenario=s)
                 for sc in sc_qs:
                     constructions.append({
                         'id': str(sc.id),
@@ -1633,7 +1633,7 @@ def api_scenarios(request):
             try:
                 from database.models import Author
                 author_uuid = uuid.UUID(str(author_id))
-                author_obj = Author.objects.using('materials_db').filter(id=author_uuid).first()
+                author_obj = Author.objects.filter(id=author_uuid).first()
             except Exception:
                 author_obj = None
 
@@ -1666,7 +1666,7 @@ def api_scenarios(request):
                 total_simulations = compute_combinatorial(constructions)
 
         # Create scenario
-        scenario = Scenario.objects.using('materials_db').create(
+        scenario = Scenario.objects.create(
             name=name,
             description=description,
             total_simulations=total_simulations,
@@ -1676,10 +1676,10 @@ def api_scenarios(request):
         # Create scenario_constructions rows
         for sc in constructions:
             try:
-                construction_obj = Construction.objects.using('materials_db').get(id=sc.get('constructionId'))
+                construction_obj = Construction.objects.get(id=sc.get('constructionId'))
             except Exception:
                 construction_obj = None
-            ScenarioConstruction.objects.using('materials_db').create(
+            ScenarioConstruction.objects.create(
                 scenario=scenario,
                 construction=construction_obj,
                 element_type=sc.get('elementType')
@@ -1700,7 +1700,7 @@ def api_scenario_detail(request, id):
     try:
         from database.models import Scenario, ScenarioConstruction, Construction
         try:
-            s = Scenario.objects.using('materials_db').get(id=id)
+            s = Scenario.objects.get(id=id)
         except Scenario.DoesNotExist:
             if request.method == 'DELETE':
                 return HttpResponse(status=204)
@@ -1708,7 +1708,7 @@ def api_scenario_detail(request, id):
 
         if request.method == 'GET':
             constructions = []
-            sc_qs = ScenarioConstruction.objects.using('materials_db').filter(scenario=s)
+            sc_qs = ScenarioConstruction.objects.filter(scenario=s)
             for sc in sc_qs:
                 constructions.append({
                     'id': str(sc.id),
@@ -1725,9 +1725,9 @@ def api_scenario_detail(request, id):
             })
 
         if request.method == 'DELETE':
-            # Delete scenario and related scenario_constructions explicitly on materials_db
-            ScenarioConstruction.objects.using('materials_db').filter(scenario=s).delete()
-            Scenario.objects.using('materials_db').filter(id=s.id).delete()
+            # Delete scenario and related scenario_constructions explicitly on default database
+            ScenarioConstruction.objects.filter(scenario=s).delete()
+            Scenario.objects.filter(id=s.id).delete()
 
             # Option B: update historical simulation results so UI no longer groups them
             # by the deleted scenario id. We nullify SimulationResult.simulation_id for any
@@ -1769,7 +1769,7 @@ def api_scenario_detail(request, id):
                 from database.models import Author
                 aid = data.get('author_id')
                 author_uuid = uuid.UUID(str(aid))
-                s.author = Author.objects.using('materials_db').filter(id=author_uuid).first()
+                s.author = Author.objects.filter(id=author_uuid).first()
             except Exception:
                 # ignore invalid author id and leave author unchanged
                 pass
@@ -1800,16 +1800,16 @@ def api_scenario_detail(request, id):
                     s.total_simulations = compute_combinatorial_from_payload(data.get('constructions', []))
                 except Exception:
                     pass
-        s.save(using='materials_db')
+        s.save()
 
         if 'constructions' in data:
-            ScenarioConstruction.objects.using('materials_db').filter(scenario=s).delete()
+            ScenarioConstruction.objects.filter(scenario=s).delete()
             for sc in data.get('constructions', []):
                 try:
-                    construction_obj = Construction.objects.using('materials_db').get(id=sc.get('constructionId'))
+                    construction_obj = Construction.objects.get(id=sc.get('constructionId'))
                 except Exception:
                     construction_obj = None
-                ScenarioConstruction.objects.using('materials_db').create(
+                ScenarioConstruction.objects.create(
                     scenario=s,
                     construction=construction_obj,
                     element_type=sc.get('elementType')
@@ -1831,7 +1831,7 @@ def api_construction_set_detail(request, id):
         from database.models import ConstructionSet
 
         try:
-            cs = ConstructionSet.objects.using('materials_db').get(id=id)
+            cs = ConstructionSet.objects.get(id=id)
         except ConstructionSet.DoesNotExist:
             if request.method == 'DELETE':
                 return HttpResponse(status=204)
@@ -1852,7 +1852,7 @@ def api_construction_set_detail(request, id):
             })
 
         if request.method == 'DELETE':
-            ConstructionSet.objects.using('materials_db').filter(id=cs.id).delete()
+            ConstructionSet.objects.filter(id=cs.id).delete()
             return JsonResponse({'status': 'deleted'})
 
         # PUT - update fields
@@ -1863,29 +1863,29 @@ def api_construction_set_detail(request, id):
         if 'wall_construction_id' in data:
             from database.models import Construction
             try:
-                cs.wall_construction = Construction.objects.using('materials_db').get(id=data['wall_construction_id']) if data['wall_construction_id'] else None
+                cs.wall_construction = Construction.objects.get(id=data['wall_construction_id']) if data['wall_construction_id'] else None
             except Construction.DoesNotExist:
                 return JsonResponse({'error': 'Wall construction not found'}, status=400)
         if 'roof_construction_id' in data:
             from database.models import Construction
             try:
-                cs.roof_construction = Construction.objects.using('materials_db').get(id=data['roof_construction_id']) if data['roof_construction_id'] else None
+                cs.roof_construction = Construction.objects.get(id=data['roof_construction_id']) if data['roof_construction_id'] else None
             except Construction.DoesNotExist:
                 return JsonResponse({'error': 'Roof construction not found'}, status=400)
         if 'floor_construction_id' in data:
             from database.models import Construction
             try:
-                cs.floor_construction = Construction.objects.using('materials_db').get(id=data['floor_construction_id']) if data['floor_construction_id'] else None
+                cs.floor_construction = Construction.objects.get(id=data['floor_construction_id']) if data['floor_construction_id'] else None
             except Construction.DoesNotExist:
                 return JsonResponse({'error': 'Floor construction not found'}, status=400)
         if 'window_construction_id' in data:
             from database.models import Construction
             try:
-                cs.window_construction = Construction.objects.using('materials_db').get(id=data['window_construction_id']) if data['window_construction_id'] else None
+                cs.window_construction = Construction.objects.get(id=data['window_construction_id']) if data['window_construction_id'] else None
             except Construction.DoesNotExist:
                 return JsonResponse({'error': 'Window construction not found'}, status=400)
 
-        cs.save(using='materials_db')
+        cs.save()
         return JsonResponse({'status': 'updated'})
 
     except Exception as e:
