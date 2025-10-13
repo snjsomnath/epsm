@@ -107,26 +107,19 @@ jobs:
             echo "COMPOSE_PROJECT_NAME=epsm_prod"
             echo ""
             echo "# Secrets"
-            echo "DJANGO_SECRET_KEY=${{ secrets.PROD_DJANGO_SECRET_KEY }}"
-            echo "DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}"
-            echo "POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}"
-            echo "REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}"
-            echo "REDIS_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0"
-            echo "CELERY_BROKER_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0"
-            echo "CELERY_RESULT_BACKEND=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0"
           } > .env.production
+          
+          # Append secrets using printf to properly handle special characters
+          printf "DJANGO_SECRET_KEY=%s\n" "${{ secrets.PROD_DJANGO_SECRET_KEY }}" >> .env.production
+          printf "DB_PASSWORD=%s\n" "${{ secrets.PROD_DB_PASSWORD }}" >> .env.production
+          printf "POSTGRES_PASSWORD=%s\n" "${{ secrets.PROD_DB_PASSWORD }}" >> .env.production
+          printf "REDIS_PASSWORD=%s\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
+          printf "REDIS_URL=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
+          printf "CELERY_BROKER_URL=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
+          printf "CELERY_RESULT_BACKEND=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
           
           chmod 600 .env.production
           echo "✅ .env.production created with secrets from GitHub"
-
-      - name: Load environment variables
-        run: |
-          cd /opt/epsm
-          echo "📋 Loading environment variables..."
-          set -a
-          source .env.production
-          set +a
-          echo "✅ Environment variables loaded"
 
       - name: Stop existing containers
         run: |
@@ -146,9 +139,8 @@ jobs:
       - name: Pull EnergyPlus image
         run: |
           cd /opt/epsm
-          source .env.production
-          echo "🐳 Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
-          docker pull ${ENERGYPLUS_DOCKER_IMAGE}
+          echo "🐳 Pulling EnergyPlus Docker image: nrel/energyplus:23.2.0"
+          docker pull nrel/energyplus:23.2.0
           echo "✅ EnergyPlus image ready"
 
       - name: Clean Docker build cache
