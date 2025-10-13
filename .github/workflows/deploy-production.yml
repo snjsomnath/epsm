@@ -32,140 +32,143 @@ jobs:
 
       - name: Validate GitHub Secrets
         run: |
-          echo "  Validating GitHub Secrets..."
+          echo "🔐 Validating GitHub Secrets..."
           errors=0
           
           if [ -z "${{ secrets.PROD_DJANGO_SECRET_KEY }}" ]; then
-            echo "[ERROR] PROD_DJANGO_SECRET_KEY is not set"
+            echo "❌ PROD_DJANGO_SECRET_KEY is not set"
             errors=$((errors+1))
           fi
           
           if [ -z "${{ secrets.PROD_DB_PASSWORD }}" ]; then
-            echo "[ERROR] PROD_DB_PASSWORD is not set"
+            echo "❌ PROD_DB_PASSWORD is not set"
             errors=$((errors+1))
           fi
           
           if [ -z "${{ secrets.PROD_REDIS_PASSWORD }}" ]; then
-            echo "[ERROR] PROD_REDIS_PASSWORD is not set"
+            echo "❌ PROD_REDIS_PASSWORD is not set"
             errors=$((errors+1))
           fi
           
           if [ $errors -gt 0 ]; then
-            echo "[ERROR] $errors required secrets are missing!"
+            echo "❌ $errors required secrets are missing!"
             exit 1
           fi
           
-          echo "[OK] All required secrets are configured"
+          echo "✅ All required secrets are configured"
 
       - name: Create .env.production from GitHub Secrets
         run: |
           cd /opt/epsm
-          echo "[SECRET] Creating .env.production from GitHub Secrets..."
+          echo "📝 Creating .env.production from GitHub Secrets..."
           
-          # Write variables one by one to avoid shell interpretation issues
-          cat > .env.production <<'ENDOFFILE'
-# Django Core
-DEBUG=False
-DJANGO_SETTINGS_MODULE=config.settings
-ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
-CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
-
-# Database (Single Database Architecture)
-DB_NAME=epsm_db
-DB_USER=epsm_user
-DB_HOST=database
-DB_PORT=5432
-
-# PostgreSQL Container
-POSTGRES_DB=epsm_db
-POSTGRES_USER=epsm_user
-
-# Redis
-REDIS_HOST=redis
-REDIS_PORT=6379
-
-# CORS
-CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
-
-# EnergyPlus
-ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
-SIMULATION_TIMEOUT=600
-MAX_CONCURRENT_SIMULATIONS=4
-DOCKER_GID=999
-
-# Frontend
-VITE_API_BASE_URL=https://epsm.ita.chalmers.se
-VITE_WS_URL=wss://epsm.ita.chalmers.se/ws
-
-# Application Version
-VERSION=0.2.6
-
-# Docker Compose
-COMPOSE_PROJECT_NAME=epsm_prod
-ENDOFFILE
-
-          # Now append secrets safely using printf to avoid interpretation
-          printf "DJANGO_SECRET_KEY=%s\n" '${{ secrets.PROD_DJANGO_SECRET_KEY }}' >> .env.production
-          printf "DB_PASSWORD=%s\n" '${{ secrets.PROD_DB_PASSWORD }}' >> .env.production
-          printf "POSTGRES_PASSWORD=%s\n" '${{ secrets.PROD_DB_PASSWORD }}' >> .env.production
-          printf "REDIS_PASSWORD=%s\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
-          printf "REDIS_URL=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
-          printf "CELERY_BROKER_URL=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
-          printf "CELERY_RESULT_BACKEND=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
+          # Create .env.production file with all configurations
+          cat > .env.production << EOF
+          # Django Core
+          DEBUG=False
+          DJANGO_SETTINGS_MODULE=config.settings.production
+          ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
+          CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
+          
+          # Database (Single Database Architecture)
+          DB_NAME=epsm_db
+          DB_USER=epsm_user
+          DB_HOST=database
+          DB_PORT=5432
+          
+          # PostgreSQL Container
+          POSTGRES_DB=epsm_db
+          POSTGRES_USER=epsm_user
+          
+          # Redis
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          
+          # CORS
+          CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
+          
+          # SAML SSO Configuration (Chalmers Identity Provider)
+          SAML_IDP_METADATA_URL=https://www.ita.chalmers.se/idp.chalmers.se.xml
+          
+          # EnergyPlus
+          ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
+          SIMULATION_TIMEOUT=600
+          MAX_CONCURRENT_SIMULATIONS=4
+          DOCKER_GID=999
+          
+          # Frontend
+          VITE_API_BASE_URL=https://epsm.ita.chalmers.se
+          VITE_WS_URL=wss://epsm.ita.chalmers.se/ws
+          
+          # Application Version
+          VERSION=0.2.6
+          
+          # Docker Compose
+          COMPOSE_PROJECT_NAME=epsm_prod
+          
+          # Secrets
+          DJANGO_SECRET_KEY=${{ secrets.PROD_DJANGO_SECRET_KEY }}
+          DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}
+          REDIS_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          CELERY_BROKER_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          CELERY_RESULT_BACKEND=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          EOF
           
           chmod 600 .env.production
-          echo "[OK] .env.production created with secrets from GitHub"
+          echo "✅ .env.production created with secrets from GitHub"
 
       - name: Load environment variables
         run: |
           cd /opt/epsm
-          echo "[CONFIG] Loading environment variables..."
+          echo "📋 Loading environment variables..."
           set -a
           source .env.production
           set +a
-          echo "[OK] Environment variables loaded"
+          echo "✅ Environment variables loaded"
 
       - name: Stop existing containers
         run: |
           cd /opt/epsm
-          echo "[STOP] Stopping existing containers..."
+          echo "🛑 Stopping existing containers..."
           docker-compose -f docker-compose.production.yml down || true
-          echo "[OK] Containers stopped"
+          echo "✅ Containers stopped"
 
       - name: Pull latest code
         run: |
           cd /opt/epsm
-          echo "  Pulling latest code from main branch..."
+          echo "📥 Pulling latest code from main branch..."
           git fetch origin main
           git reset --hard origin/main
-          echo "[OK] Code updated to latest"
+          echo "✅ Code updated to latest"
 
       - name: Pull EnergyPlus image
         run: |
           cd /opt/epsm
           source .env.production
-          echo "  Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
+          echo "🐳 Pulling EnergyPlus Docker image: ${ENERGYPLUS_DOCKER_IMAGE}"
           docker pull ${ENERGYPLUS_DOCKER_IMAGE}
-          echo "[OK] EnergyPlus image ready"
+          echo "✅ EnergyPlus image ready"
 
       - name: Clean Docker build cache
         run: |
-          echo "[CLEAN] Removing Docker build cache to force fresh builds..."
+          echo "🧹 Removing Docker build cache to force fresh builds..."
           docker builder prune -af
-          echo "[OK] Build cache cleared"
+          echo "✅ Build cache cleared"
 
       - name: Remove old images
         run: |
-          echo "[CLEAN] Removing old EPSM images..."
+          echo "🧹 Removing old EPSM images..."
           docker images | grep epsm | awk '{print $3}' | xargs -r docker rmi -f || true
-          echo "[OK] Old images removed"
+          echo "✅ Old images removed"
 
       - name: Build and deploy services
         run: |
           cd /opt/epsm
           
-          echo "[START] Building services from source (NO CACHE)..."
-          echo "  Using docker-compose.production.yml"
+          echo "🔨 Building services from source (NO CACHE)..."
+          echo "📋 Using docker-compose.production.yml"
           
           # Build with explicit no-cache and force-recreate
           docker-compose -f docker-compose.production.yml build \
@@ -173,69 +176,69 @@ ENDOFFILE
             --pull \
             --progress=plain
           
-          echo "[OK] Build complete"
+          echo "✅ Build complete"
           
-          echo "[START] Starting services..."
+          echo "🚀 Starting services..."
           docker-compose -f docker-compose.production.yml up -d --force-recreate
           
-          echo "[OK] Services started"
+          echo "✅ Services started"
 
       - name: Wait for services
         run: |
           cd /opt/epsm
-          echo "  Waiting for services to be healthy..."
+          echo "⏳ Waiting for services to be healthy..."
           
           # Wait for database
           timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user; do sleep 2; done'
-          echo "[OK] Database is ready"
+          echo "✅ Database is ready"
           
           # Wait for backend
           timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
-          echo "[OK] Backend is ready"
+          echo "✅ Backend is ready"
           
           # Additional buffer
-          echo "  Waiting 10 more seconds for full initialization..."
+          echo "⏳ Waiting 10 more seconds for full initialization..."
           sleep 10
 
       - name: Run database migrations
         if: ${{ github.event.inputs.skip_migrations != 'true' }}
         run: |
           cd /opt/epsm
-          echo "[STATUS] Running database migrations..."
+          echo "🔄 Running database migrations..."
           docker-compose -f docker-compose.production.yml exec -T backend python manage.py migrate --noinput
-          echo "[OK] Migrations complete"
+          echo "✅ Migrations complete"
 
       - name: Seed database
         if: ${{ github.event.inputs.skip_seed != 'true' }}
         run: |
           cd /opt/epsm
-          echo "  Seeding database with initial data..."
+          echo "🌱 Seeding database with initial data..."
           
           if [ -f scripts/seed-database.sh ]; then
             bash scripts/seed-database.sh
           else
-            echo "    Seed script not found, skipping..."
+            echo "⚠️  Seed script not found, skipping..."
           fi
           
-          echo "[OK] Database seeding complete"
+          echo "✅ Database seeding complete"
 
       - name: Collect static files
         run: |
           cd /opt/epsm
-          echo "  Collecting static files..."
+          echo "📦 Collecting static files..."
           docker-compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
-          echo "[OK] Static files collected"
+          echo "✅ Static files collected"
 
       - name: Clean up Docker system
         run: |
-          echo "[CLEAN] Cleaning up Docker system..."
+          echo "🧹 Cleaning up Docker system..."
           docker system prune -f --volumes
-          echo "[OK] Cleanup complete"
+          echo "✅ Cleanup complete"
 
       - name: Verify deployment
         run: |
           cd /opt/epsm
-          echo "[VALIDATE] Verifying deployment..."
+          echo "🔍 Verifying deployment..."
           
           echo ""
           echo "==================================="
@@ -250,30 +253,30 @@ ENDOFFILE
           
           # Check database
           if docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user > /dev/null 2>&1; then
-            echo "[OK] Database: HEALTHY"
+            echo "✅ Database: HEALTHY"
           else
-            echo "[ERROR] Database: UNHEALTHY"
+            echo "❌ Database: UNHEALTHY"
           fi
           
           # Check Redis
           if docker-compose -f docker-compose.production.yml exec -T redis redis-cli ping > /dev/null 2>&1; then
-            echo "[OK] Redis: HEALTHY"
+            echo "✅ Redis: HEALTHY"
           else
-            echo "[ERROR] Redis: UNHEALTHY"
+            echo "❌ Redis: UNHEALTHY"
           fi
           
           # Check backend
           if docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
-            echo "[OK] Backend: HEALTHY"
+            echo "✅ Backend: HEALTHY"
           else
-            echo "[ERROR] Backend: UNHEALTHY"
+            echo "❌ Backend: UNHEALTHY"
           fi
           
           # Check Celery worker
           if docker-compose -f docker-compose.production.yml exec -T celery_worker celery -A config inspect ping > /dev/null 2>&1; then
-            echo "[OK] Celery Worker: HEALTHY"
+            echo "✅ Celery Worker: HEALTHY"
           else
-            echo "[ERROR] Celery Worker: UNHEALTHY"
+            echo "❌ Celery Worker: UNHEALTHY"
           fi
           
           echo ""
@@ -291,7 +294,7 @@ ENDOFFILE
       - name: Deployment summary
         if: always()
         run: |
-          echo "## [START] Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎉 Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
           echo "**Deployed at:** $(date)" >> $GITHUB_STEP_SUMMARY
@@ -318,7 +321,7 @@ ENDOFFILE
           cd /opt/epsm
           if [ -f .env.production ]; then
             rm -f .env.production
-            echo "    Cleaned up .env.production (secrets removed from disk)"
+            echo "🔒 Cleaned up .env.production (secrets removed from disk)"
           fi
           echo "### Access" >> $GITHUB_STEP_SUMMARY
-          echo "  **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
+          echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
