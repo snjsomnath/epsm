@@ -172,10 +172,19 @@ jobs:
           
           # Check if certificates exist
           if [ -f "/etc/letsencrypt/live/epsm.ita.chalmers.se/fullchain.pem" ]; then
-            echo "✓ Let's Encrypt certificates found"
+            echo "✓ Let's Encrypt certificates found (epsm.ita.chalmers.se)"
             # Copy certificates to nginx directory
             sudo cp /etc/letsencrypt/live/epsm.ita.chalmers.se/fullchain.pem nginx/ssl/ 2>/dev/null || true
             sudo cp /etc/letsencrypt/live/epsm.ita.chalmers.se/privkey.pem nginx/ssl/ 2>/dev/null || true
+            sudo chown -R $(whoami):$(whoami) nginx/ssl/ 2>/dev/null || true
+            chmod 600 nginx/ssl/privkey.pem 2>/dev/null || true
+            chmod 644 nginx/ssl/fullchain.pem 2>/dev/null || true
+            echo "✓ Certificates copied and permissions set"
+          elif [ -f "/etc/letsencrypt/live/epsm.chalmers.se/fullchain.pem" ]; then
+            echo "✓ Let's Encrypt certificates found (epsm.chalmers.se - multi-domain)"
+            # Copy certificates to nginx directory (multi-domain cert)
+            sudo cp /etc/letsencrypt/live/epsm.chalmers.se/fullchain.pem nginx/ssl/ 2>/dev/null || true
+            sudo cp /etc/letsencrypt/live/epsm.chalmers.se/privkey.pem nginx/ssl/ 2>/dev/null || true
             sudo chown -R $(whoami):$(whoami) nginx/ssl/ 2>/dev/null || true
             chmod 600 nginx/ssl/privkey.pem 2>/dev/null || true
             chmod 644 nginx/ssl/fullchain.pem 2>/dev/null || true
