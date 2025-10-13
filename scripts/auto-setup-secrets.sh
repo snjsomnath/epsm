@@ -72,6 +72,10 @@ echo -e "${GREEN}✓${NC} Results DB Password"
 REDIS_PASSWORD=$(openssl rand -base64 24)
 echo -e "${GREEN}✓${NC} Redis Password"
 
+# Django superuser password
+DJANGO_SUPERUSER_PASSWORD=$(openssl rand -base64 16)
+echo -e "${GREEN}✓${NC} Django Superuser Password"
+
 echo ""
 echo -e "${BLUE}💾 Saving backup to ~/Desktop/epsm-secrets.txt...${NC}"
 
@@ -102,6 +106,9 @@ ${RESULTS_DB_PASSWORD}
 
 PROD_REDIS_PASSWORD
 ${REDIS_PASSWORD}
+
+PROD_DJANGO_SUPERUSER_PASSWORD
+${DJANGO_SUPERUSER_PASSWORD}
 
 PROD_EMAIL_HOST_PASSWORD
 [MANUALLY SET - Use: gh secret set PROD_EMAIL_HOST_PASSWORD]
@@ -140,6 +147,7 @@ gh secret set PROD_DB_PASSWORD --body "$DB_PASSWORD" && echo -e "${GREEN}✓${NC
 gh secret set PROD_MATERIALS_DB_PASSWORD --body "$MATERIALS_DB_PASSWORD" && echo -e "${GREEN}✓${NC} PROD_MATERIALS_DB_PASSWORD"
 gh secret set PROD_RESULTS_DB_PASSWORD --body "$RESULTS_DB_PASSWORD" && echo -e "${GREEN}✓${NC} PROD_RESULTS_DB_PASSWORD"
 gh secret set PROD_REDIS_PASSWORD --body "$REDIS_PASSWORD" && echo -e "${GREEN}✓${NC} PROD_REDIS_PASSWORD"
+gh secret set PROD_DJANGO_SUPERUSER_PASSWORD --body "$DJANGO_SUPERUSER_PASSWORD" && echo -e "${GREEN}✓${NC} PROD_DJANGO_SUPERUSER_PASSWORD"
 gh secret set PROD_SAML_IDP_METADATA_URL --body "https://www.ita.chalmers.se/idp.chalmers.se.xml" && echo -e "${GREEN}✓${NC} PROD_SAML_IDP_METADATA_URL"
 
 echo ""
@@ -163,6 +171,7 @@ echo "  ✓ PROD_DB_PASSWORD"
 echo "  ✓ PROD_MATERIALS_DB_PASSWORD"
 echo "  ✓ PROD_RESULTS_DB_PASSWORD"
 echo "  ✓ PROD_REDIS_PASSWORD"
+echo "  ✓ PROD_DJANGO_SUPERUSER_PASSWORD"
 echo "  ✓ PROD_SAML_IDP_METADATA_URL"
 echo "  ⏳ PROD_EMAIL_HOST_PASSWORD (manual)"
 echo ""
