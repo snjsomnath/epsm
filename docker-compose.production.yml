@@ -64,8 +64,8 @@ services:
   # ==========================================================================
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
+      context: .
+      dockerfile: backend/Dockerfile.prod
       args:
         VERSION: ${VERSION:-latest}
     container_name: epsm_backend_prod
