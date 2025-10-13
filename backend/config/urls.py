@@ -150,6 +150,9 @@ urlpatterns = [
 
     # RESTful materials API (v2)
     path('api/v2/', include('database.urls')),
+    
+    # GeoJSON Processor API
+    path('api/geojson/', include('geojson_processor.urls')),
 
     # Add a test endpoint for diagnostics
     path('api/test/', lambda request: JsonResponse({

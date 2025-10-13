@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'simulation',
     'database',
     'channels',
+    'geojson_processor',
 ]
 
 MIDDLEWARE = [
