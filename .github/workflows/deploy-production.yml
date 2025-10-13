@@ -62,53 +62,56 @@ jobs:
           cd /opt/epsm
           echo "🔐 Creating .env.production from GitHub Secrets..."
           
-          cat > .env.production << EOF
-          # Django Core
-          DEBUG=False
-          DJANGO_SETTINGS_MODULE=config.settings
-          DJANGO_SECRET_KEY='${{ secrets.PROD_DJANGO_SECRET_KEY }}'
-          ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
-          CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
-          
-          # Database (Single Database Architecture)
-          DB_NAME=epsm_db
-          DB_USER=epsm_user
-          DB_PASSWORD='${{ secrets.PROD_DB_PASSWORD }}'
-          DB_HOST=database
-          DB_PORT=5432
-          
-          # PostgreSQL Container
-          POSTGRES_DB=epsm_db
-          POSTGRES_USER=epsm_user
-          POSTGRES_PASSWORD='${{ secrets.PROD_DB_PASSWORD }}'
-          
-          # Redis
-          REDIS_HOST=redis
-          REDIS_PORT=6379
-          REDIS_PASSWORD='${{ secrets.PROD_REDIS_PASSWORD }}'
-          REDIS_URL='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
-          CELERY_BROKER_URL='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
-          CELERY_RESULT_BACKEND='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
-          
-          # CORS
-          CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
-          
-          # EnergyPlus
-          ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
-          SIMULATION_TIMEOUT=600
-          MAX_CONCURRENT_SIMULATIONS=4
-          DOCKER_GID=999
-          
-          # Frontend
-          VITE_API_BASE_URL=https://epsm.ita.chalmers.se
-          VITE_WS_URL=wss://epsm.ita.chalmers.se/ws
-          
-          # Application Version
-          VERSION=0.2.6
-          
-          # Docker Compose
-          COMPOSE_PROJECT_NAME=epsm_prod
-          EOF
+          # Write variables one by one to avoid shell interpretation issues
+          cat > .env.production <<'ENDOFFILE'
+# Django Core
+DEBUG=False
+DJANGO_SETTINGS_MODULE=config.settings
+ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
+CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
+
+# Database (Single Database Architecture)
+DB_NAME=epsm_db
+DB_USER=epsm_user
+DB_HOST=database
+DB_PORT=5432
+
+# PostgreSQL Container
+POSTGRES_DB=epsm_db
+POSTGRES_USER=epsm_user
+
+# Redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# CORS
+CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
+
+# EnergyPlus
+ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
+SIMULATION_TIMEOUT=600
+MAX_CONCURRENT_SIMULATIONS=4
+DOCKER_GID=999
+
+# Frontend
+VITE_API_BASE_URL=https://epsm.ita.chalmers.se
+VITE_WS_URL=wss://epsm.ita.chalmers.se/ws
+
+# Application Version
+VERSION=0.2.6
+
+# Docker Compose
+COMPOSE_PROJECT_NAME=epsm_prod
+ENDOFFILE
+
+          # Now append secrets safely using printf to avoid interpretation
+          printf "DJANGO_SECRET_KEY=%s\n" '${{ secrets.PROD_DJANGO_SECRET_KEY }}' >> .env.production
+          printf "DB_PASSWORD=%s\n" '${{ secrets.PROD_DB_PASSWORD }}' >> .env.production
+          printf "POSTGRES_PASSWORD=%s\n" '${{ secrets.PROD_DB_PASSWORD }}' >> .env.production
+          printf "REDIS_PASSWORD=%s\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
+          printf "REDIS_URL=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
+          printf "CELERY_BROKER_URL=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
+          printf "CELERY_RESULT_BACKEND=redis://:%s@redis:6379/0\n" '${{ secrets.PROD_REDIS_PASSWORD }}' >> .env.production
           
           chmod 600 .env.production
           echo "✅ .env.production created with secrets from GitHub"
