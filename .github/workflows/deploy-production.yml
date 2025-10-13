@@ -62,33 +62,33 @@ jobs:
           cd /opt/epsm
           echo "🔐 Creating .env.production from GitHub Secrets..."
           
-          cat > .env.production << 'EOF'
+          cat > .env.production << EOF
           # Django Core
           DEBUG=False
           DJANGO_SETTINGS_MODULE=config.settings
-          DJANGO_SECRET_KEY=${{ secrets.PROD_DJANGO_SECRET_KEY }}
+          DJANGO_SECRET_KEY='${{ secrets.PROD_DJANGO_SECRET_KEY }}'
           ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
           CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
           
           # Database (Single Database Architecture)
           DB_NAME=epsm_db
           DB_USER=epsm_user
-          DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          DB_PASSWORD='${{ secrets.PROD_DB_PASSWORD }}'
           DB_HOST=database
           DB_PORT=5432
           
           # PostgreSQL Container
           POSTGRES_DB=epsm_db
           POSTGRES_USER=epsm_user
-          POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          POSTGRES_PASSWORD='${{ secrets.PROD_DB_PASSWORD }}'
           
           # Redis
           REDIS_HOST=redis
           REDIS_PORT=6379
-          REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}
-          REDIS_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
-          CELERY_BROKER_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
-          CELERY_RESULT_BACKEND=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          REDIS_PASSWORD='${{ secrets.PROD_REDIS_PASSWORD }}'
+          REDIS_URL='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
+          CELERY_BROKER_URL='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
+          CELERY_RESULT_BACKEND='redis://:\${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0'
           
           # CORS
           CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
