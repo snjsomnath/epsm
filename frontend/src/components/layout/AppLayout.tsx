@@ -32,7 +32,8 @@ import {
   Menu as MenuIcon,
   BarChart2,
   FileDown,
-  Info
+  Info,
+  MapPin
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -44,6 +45,7 @@ const collapsedDrawerWidth = 73;
 
 const navItems = [
   { text: 'Home', icon: <Home size={24} />, path: '/' },
+  { text: 'Select Area', icon: <MapPin size={24} />, path: '/selectarea' },
   { text: 'Database', icon: <DatabaseIcon size={24} />, path: '/database' },
   { text: 'Baseline', icon: <Home size={24} />, path: '/baseline' },
   { text: 'Scenario Setup', icon: <FlaskConical size={24} />, path: '/scenario' },
