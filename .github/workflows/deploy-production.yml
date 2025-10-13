@@ -30,22 +30,96 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Load environment variables
+      - name: Validate GitHub Secrets
         run: |
-          echo "🔧 Loading environment variables from .env.production"
-          if [ ! -f /opt/epsm/.env.production ]; then
-            echo "❌ ERROR: .env.production not found!"
+          echo "� Validating GitHub Secrets..."
+          errors=0
+          
+          if [ -z "${{ secrets.PROD_DJANGO_SECRET_KEY }}" ]; then
+            echo "❌ PROD_DJANGO_SECRET_KEY is not set"
+            errors=$((errors+1))
+          fi
+          
+          if [ -z "${{ secrets.PROD_DB_PASSWORD }}" ]; then
+            echo "❌ PROD_DB_PASSWORD is not set"
+            errors=$((errors+1))
+          fi
+          
+          if [ -z "${{ secrets.PROD_REDIS_PASSWORD }}" ]; then
+            echo "❌ PROD_REDIS_PASSWORD is not set"
+            errors=$((errors+1))
+          fi
+          
+          if [ $errors -gt 0 ]; then
+            echo "❌ $errors required secrets are missing!"
             exit 1
           fi
           
-          # Show file exists and is readable
-          ls -lh /opt/epsm/.env.production
+          echo "✅ All required secrets are configured"
+
+      - name: Create .env.production from GitHub Secrets
+        run: |
+          cd /opt/epsm
+          echo "🔐 Creating .env.production from GitHub Secrets..."
           
-          # Source environment for this workflow
+          cat > .env.production << 'EOF'
+          # Django Core
+          DEBUG=False
+          DJANGO_SETTINGS_MODULE=config.settings
+          DJANGO_SECRET_KEY=${{ secrets.PROD_DJANGO_SECRET_KEY }}
+          ALLOWED_HOSTS=epsm.ita.chalmers.se,backend
+          CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se
+          
+          # Database (Single Database Architecture)
+          DB_NAME=epsm_db
+          DB_USER=epsm_user
+          DB_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          DB_HOST=database
+          DB_PORT=5432
+          
+          # PostgreSQL Container
+          POSTGRES_DB=epsm_db
+          POSTGRES_USER=epsm_user
+          POSTGRES_PASSWORD=${{ secrets.PROD_DB_PASSWORD }}
+          
+          # Redis
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}
+          REDIS_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          CELERY_BROKER_URL=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          CELERY_RESULT_BACKEND=redis://:${{ secrets.PROD_REDIS_PASSWORD }}@redis:6379/0
+          
+          # CORS
+          CORS_ALLOWED_ORIGINS=https://epsm.ita.chalmers.se
+          
+          # EnergyPlus
+          ENERGYPLUS_DOCKER_IMAGE=nrel/energyplus:23.2.0
+          SIMULATION_TIMEOUT=600
+          MAX_CONCURRENT_SIMULATIONS=4
+          DOCKER_GID=999
+          
+          # Frontend
+          VITE_API_BASE_URL=https://epsm.ita.chalmers.se
+          VITE_WS_URL=wss://epsm.ita.chalmers.se/ws
+          
+          # Application Version
+          VERSION=0.2.6
+          
+          # Docker Compose
+          COMPOSE_PROJECT_NAME=epsm_prod
+          EOF
+          
+          chmod 600 .env.production
+          echo "✅ .env.production created with secrets from GitHub"
+
+      - name: Load environment variables
+        run: |
+          cd /opt/epsm
+          echo "🔧 Loading environment variables..."
           set -a
-          source /opt/epsm/.env.production
+          source .env.production
           set +a
-          
           echo "✅ Environment variables loaded"
 
       - name: Stop existing containers
@@ -234,5 +308,14 @@ jobs:
           echo "- Proxy: Nginx" >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup secrets file
+        if: always()
+        run: |
+          cd /opt/epsm
+          if [ -f .env.production ]; then
+            rm -f .env.production
+            echo "🗑️  Cleaned up .env.production (secrets removed from disk)"
+          fi
           echo "### Access" >> $GITHUB_STEP_SUMMARY
           echo "🌐 **URL:** https://epsm.chalmers.se" >> $GITHUB_STEP_SUMMARY
