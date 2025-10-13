@@ -140,7 +140,16 @@ jobs:
         run: |
           cd /opt/epsm
           echo "🛑 Stopping existing containers..."
+          
+          # Stop containers with current env file
           docker-compose -f docker-compose.production.yml --env-file .env.production down || true
+          
+          # Stop containers without env file (legacy deployments)
+          docker-compose -f docker-compose.production.yml down || true
+          
+          # Force remove any containers with EPSM names
+          docker rm -f epsm_backend_prod epsm_frontend_prod epsm_database_prod epsm_redis_prod epsm_celery_worker_prod epsm_celery_beat_prod epsm_nginx_prod epsm_energyplus_prod 2>/dev/null || true
+          
           echo "✅ Containers stopped"
 
       - name: Pull latest code
