@@ -21,6 +21,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 DOMAIN="epsm.ita.chalmers.se"
+DOMAIN_ALT="epsm.chalmers.se"
 EMAIL="ssanjay@chalmers.se"
 
 echo ""
@@ -28,7 +29,8 @@ echo "========================================================================"
 echo "  🔐 SSL Certificate Setup for EPSM"
 echo "========================================================================"
 echo ""
-echo "Domain: $DOMAIN"
+echo "Primary Domain: $DOMAIN"
+echo "Alternative Domain: $DOMAIN_ALT"
 echo "Email: $EMAIL"
 echo ""
 
@@ -72,15 +74,16 @@ echo -e "${GREEN}✓ nginx stopped${NC}"
 echo ""
 echo -e "${BLUE}🔐 Requesting SSL certificate from Let's Encrypt...${NC}"
 echo "This will:"
-echo "  1. Verify you control the domain"
+echo "  1. Verify you control both domains"
 echo "  2. Issue a certificate valid for 90 days"
 echo "  3. Store it in /etc/letsencrypt/live/$DOMAIN/"
 echo ""
 
-# Request certificate using standalone mode
+# Request certificate using standalone mode for both domains
 sudo certbot certonly \
     --standalone \
     -d "$DOMAIN" \
+    -d "$DOMAIN_ALT" \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
@@ -120,14 +123,16 @@ echo -e "${GREEN}✅ SSL Certificate Setup Complete!${NC}"
 echo "========================================================================"
 echo ""
 echo "Certificate Details:"
-echo "  Domain: $DOMAIN"
+echo "  Primary Domain: $DOMAIN"
+echo "  Alternative Domain: $DOMAIN_ALT"
 echo "  Certificate: /opt/epsm/nginx/ssl/fullchain.pem"
 echo "  Private Key: /opt/epsm/nginx/ssl/privkey.pem"
 echo "  Valid for: 90 days"
 echo ""
 echo "Next Steps:"
 echo "  1. Test HTTPS access: https://$DOMAIN"
-echo "  2. Certificate will auto-renew via certbot"
+echo "  2. Test alternative domain: https://$DOMAIN_ALT"
+echo "  3. Certificate will auto-renew via certbot"
 echo ""
 echo "To manually renew in the future:"
 echo "  sudo certbot renew"
