@@ -72,7 +72,7 @@ jobs:
             echo "# Django Core"
             echo "DEBUG=False"
             echo "DJANGO_SETTINGS_MODULE=config.settings.production"
-            echo "ALLOWED_HOSTS=epsm.ita.chalmers.se,backend"
+            echo "ALLOWED_HOSTS=epsm.ita.chalmers.se,backend,localhost,127.0.0.1"
             echo "CSRF_TRUSTED_ORIGINS=https://epsm.ita.chalmers.se"
             echo ""
             echo "# Database (Single Database Architecture)"
