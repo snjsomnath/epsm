@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.7] - 2025-10-13
+
+### Added
+- **Production Deployment Enhancements**
+  - SSL certificate setup script for automated certificate management
+  - SSL certificate verification script for both epsm domains
+  - WebSocket connectivity test script for production environments
+  - Comprehensive backend health check with detailed error reporting
+  - SAML configuration guide for Chalmers University SSO
+
+### Fixed
+- **Production Configuration**
+  - WebSocket connections in production (Redis password and admin access)
+  - SSL certificate domain configuration for epsm.chalmers.se and epsm.ita.chalmers.se
+  - Nginx server_name configuration to match deployment domain
+  - ALLOWED_HOSTS includes localhost and 127.0.0.1 for local testing
+  - Volume directory structure conflicts resolved
+  - Redis password environment variables added to all services
+
+### Changed
+- **Deployment Process**
+  - Enhanced deployment summary with access details and secure secrets
+  - SSL script now supports both primary and ITA domains
+  - Improved error handling in SSL certificate requests
+  - Prevent unnecessary container rebuilds during SSL setup
+  - Made epsm.chalmers.se the primary domain
+
+### Removed
+- Obsolete Docker Compose configuration files from archive
+  - Removed docker-compose.prod.legacy.20251012.yml
+  - Removed docker-compose.production.legacy.20251012.yml
+  - Removed docker-compose.versioned.yml
+
+---
+
 ## [0.2.6] - 2025-10-13
 
 ### Fixed
