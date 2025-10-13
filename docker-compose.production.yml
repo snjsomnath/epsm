@@ -94,8 +94,8 @@ services:
       - SIMULATION_TIMEOUT=${SIMULATION_TIMEOUT:-600}
       
       # Superuser Creation
-      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-admin@chalmers.se}
-      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-admin@chalmers.se}
+      - DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME:-epsm@chalmers.se}
+      - DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL:-epsm@chalmers.se}
       - DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
       
       # SAML Authentication (Optional)
