@@ -71,24 +71,9 @@ done
 
 echo "✅ Database is ready!"
 
-# Ensure results database and user exist (idempotent)
-echo "🔧 Ensuring results database and role exist..."
-# Use the postgres superuser that the container created (POSTGRES_USER = epsm_user in docker-compose)
-docker-compose exec -T database bash -lc "psql -U epsm_user -d epsm_db -tc \"SELECT 1 FROM pg_roles WHERE rolname='epsm_results_user'\" | grep -q 1 || psql -U epsm_user -d epsm_db -c \"CREATE ROLE epsm_results_user WITH LOGIN PASSWORD 'epsm_results_password';\""
-docker-compose exec -T database bash -lc "psql -U epsm_user -d epsm_db -tc \"SELECT 1 FROM pg_database WHERE datname='epsm_results'\" | grep -q 1 || psql -U epsm_user -d epsm_db -c \"CREATE DATABASE epsm_results OWNER epsm_results_user;\""
-echo "✅ Results database and role ensured (epsm_results / epsm_results_user)"
-
-# Run database migrations
+# Run database migrations (single database - all models use epsm_db)
 echo "🔄 Running database migrations..."
-echo "   - Default database..."
 docker-compose exec backend python manage.py migrate
-echo "   - Materials database..."
-docker-compose exec backend python manage.py migrate database --database=materials_db --noinput
-echo "   - Results database..."
-# Fake the first 3 migrations (they create tables that belong in 'default' db)
-docker-compose exec backend python manage.py migrate simulation 0003 --database=results_db --fake --noinput 2>/dev/null || true
-# Apply the remaining migrations (which create result tables)
-docker-compose exec backend python manage.py migrate simulation --database=results_db --noinput
 
 # Create superuser if it doesn't exist
 echo "👤 Creating Django superuser (if needed)..."

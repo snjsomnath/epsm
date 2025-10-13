@@ -89,18 +89,31 @@ sp_metadata.xml
 # ==============================================
 
 # Environment files - Block ALL .env files except examples
-.env*
-!.env.example
-!.env*.example
 .env
 .env.local
 .env.development
-.env.test
+.env.staging
 .env.production
+.env.test
+.env.*.local
+.env.backup*
 .env.production.new
 .env.template
 archive/.env*
 cookies.txt
+
+# Allow environment examples and templates
+!.env.example
+!.env*.example
+!environments/*.example
+!environments/*.template
+
+# Secrets output files - NEVER commit these
+*secrets.txt
+epsm-secrets.txt
+generated-secrets.txt
+secrets-*.txt
+~/Desktop/epsm-secrets.txt
 
 # Test files and coverage
 coverage/

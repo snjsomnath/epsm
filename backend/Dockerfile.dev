@@ -34,6 +34,10 @@ RUN mkdir -p /app/media/simulation_files \
     && mkdir -p /app/staticfiles \
     && chown -R appuser:appuser /app
 
+# Copy and set up entrypoint (do this before switching user)
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Switch to app user for security (but keep root for Docker access in development)
 # USER appuser
 
@@ -47,5 +51,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/ || exit 1
 
-# Run migrations and start server
-CMD ["sh", "-c", "docker pull nrel/energyplus:23.2.0 2>/dev/null || true && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+# Set entrypoint
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Run Daphne ASGI server for WebSocket support
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

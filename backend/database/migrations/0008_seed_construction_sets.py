@@ -43,7 +43,7 @@ def load_construction_sets(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('database', '0007_load_constructions'),
+        ('database', '0007_seed_constructions'),
     ]
     operations = [
         migrations.RunPython(load_construction_sets),

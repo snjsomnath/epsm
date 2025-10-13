@@ -12,57 +12,39 @@ import mimetypes
 import datetime
 
 def db_test_view():
-    """Test database connectivity"""
+    """Test database connectivity and count records"""
     try:
         from django.db import connections
-        from database.models import Construction, ConstructionSet
+        from database.models import Construction, ConstructionSet, Material
         
         # Test default database
-        default_cursor = connections['default'].cursor()
-        default_cursor.execute("SELECT 1")
-        default_works = True
+        cursor = connections['default'].cursor()
+        cursor.execute("SELECT 1")
+        db_works = True
         
-        # Test materials database with direct SQL
-        try:
-            materials_cursor = connections['materials_db'].cursor()
-            materials_cursor.execute("SELECT COUNT(*) FROM materials")
-            materials_count = materials_cursor.fetchone()[0]
-            
-            materials_cursor.execute("SELECT COUNT(*) FROM constructions")
-            constructions_count_sql = materials_cursor.fetchone()[0]
-            
-            materials_cursor.execute("SELECT COUNT(*) FROM construction_sets")
-            construction_sets_count_sql = materials_cursor.fetchone()[0]
-            
-            materials_works = True
-        except Exception as e:
-            materials_works = False
-            materials_count = f"Error: {str(e)}"
-            constructions_count_sql = f"Error: {str(e)}"
-            construction_sets_count_sql = f"Error: {str(e)}"
+        # Count records using direct SQL
+        cursor.execute("SELECT COUNT(*) FROM materials")
+        materials_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM constructions")
+        constructions_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM construction_sets")
+        construction_sets_count = cursor.fetchone()[0]
         
         # Test ORM queries
-        try:
-            constructions_orm_default = Construction.objects.count()
-            constructions_orm_materials = Construction.objects.using('materials_db').count()
-            construction_sets_orm_default = ConstructionSet.objects.count()
-            construction_sets_orm_materials = ConstructionSet.objects.using('materials_db').count()
-        except Exception as e:
-            constructions_orm_default = f"Error: {str(e)}"
-            constructions_orm_materials = f"Error: {str(e)}"
-            construction_sets_orm_default = f"Error: {str(e)}"
-            construction_sets_orm_materials = f"Error: {str(e)}"
+        materials_orm = Material.objects.count()
+        constructions_orm = Construction.objects.count()
+        construction_sets_orm = ConstructionSet.objects.count()
         
         return {
-            'default_db_works': default_works,
-            'materials_db_works': materials_works,
+            'database_works': db_works,
             'materials_count_sql': materials_count,
-            'constructions_count_sql': constructions_count_sql,
-            'construction_sets_count_sql': construction_sets_count_sql,
-            'constructions_orm_default': constructions_orm_default,
-            'constructions_orm_materials': constructions_orm_materials,
-            'construction_sets_orm_default': construction_sets_orm_default,
-            'construction_sets_orm_materials': construction_sets_orm_materials
+            'constructions_count_sql': constructions_count,
+            'construction_sets_count_sql': construction_sets_count,
+            'materials_count_orm': materials_orm,
+            'constructions_count_orm': constructions_orm,
+            'construction_sets_count_orm': construction_sets_orm,
         }
         
     except Exception as e:
@@ -157,7 +139,7 @@ urlpatterns = [
     path('api/construction-sets/<uuid:id>/', simulation_views.api_construction_set_detail, name='api_construction_set_detail'),
     path('api/scenarios/', simulation_views.api_scenarios, name='api_scenarios'),
     path('api/scenarios/<uuid:id>/', simulation_views.api_scenario_detail, name='api_scenario_detail'),
-    path('api/window-glazing', simulation_views.api_window_glazing, name='api_window_glazing'),
+    path('api/window-glazing/', simulation_views.api_window_glazing, name='api_window_glazing'),
     
     # Direct endpoints
     path('api/parse/idf/', simulation_views.parse_idf, name='parse_idf'),

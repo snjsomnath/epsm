@@ -7,7 +7,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('database', '0002_material_roughness'),
+        ('database', '0002_add_material_roughness_field'),
     ]
 
     operations = [

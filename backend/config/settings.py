@@ -107,49 +107,21 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.routing.application'
 
-# Database configuration - Dual database setup
+# Database configuration - Single database for all data
+# All models (auth, simulation, materials, results) use the same PostgreSQL database
 DATABASES = {
     'default': {
-        # Docker PostgreSQL for Django-managed tables (users, simulations, etc.)
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.getenv('DB_NAME', 'epsm_db'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'USER': os.getenv('DB_USER', 'epsm_user'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'epsm_secure_password'),
+        'HOST': os.getenv('DB_HOST', 'database'),
         'PORT': os.getenv('DB_PORT', '5432'),
-        # Connection persistence settings
-        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
-        'CONN_HEALTH_CHECKS': True,  # Test connections before using them
-    },
-    'materials_db': {
-        # Docker PostgreSQL for materials/constructions data
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('MATERIALS_DB_NAME', 'epsm_materials'),
-        'USER': os.getenv('MATERIALS_DB_USER', 'epsm_user'),
-        'PASSWORD': os.getenv('MATERIALS_DB_PASSWORD', ''),
-        'HOST': os.getenv('MATERIALS_DB_HOST', 'database'),
-        'PORT': os.getenv('MATERIALS_DB_PORT', '5432'),
-        # Connection persistence settings
-        'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
-        'CONN_HEALTH_CHECKS': True,  # Test connections before using them
-    }
-    ,
-    'results_db': {
-        # Dedicated Postgres database for simulation results/time-series
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('RESULTS_DB_NAME', 'epsm_results'),
-        'USER': os.getenv('RESULTS_DB_USER', 'epsm_results_user'),
-        'PASSWORD': os.getenv('RESULTS_DB_PASSWORD', ''),
-        'HOST': os.getenv('RESULTS_DB_HOST', 'database'),
-        'PORT': os.getenv('RESULTS_DB_PORT', '5432'),
         # Connection persistence settings
         'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
         'CONN_HEALTH_CHECKS': True,  # Test connections before using them
     }
 }
-
-# Database routing
-DATABASE_ROUTERS = ['config.db_router.DatabaseRouter']
 
 AUTH_PASSWORD_VALIDATORS = [
     {

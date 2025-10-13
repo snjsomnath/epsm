@@ -1226,9 +1226,9 @@ def calculate_gwp_and_cost_from_construction_set(
         try:
             # Fetch construction from database (must use materials_db)
             if construction_id:
-                construction = Construction.objects.using('materials_db').filter(id=construction_id).first()
+                construction = Construction.objects.filter(id=construction_id).first()
             else:
-                construction = Construction.objects.using('materials_db').filter(name=construction_name).first()
+                construction = Construction.objects.filter(name=construction_name).first()
             
             if construction:
                 gwp_per_m2 = getattr(construction, 'gwp_kgco2e_per_m2', 0.0) or 0.0

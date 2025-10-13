@@ -105,7 +105,7 @@ def load_materials(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('database', '0003_auto_20250922_0724'),
+        ('database', '0003_update_material_schema'),
     ]
     operations = [
         migrations.RunPython(load_materials),
