@@ -308,9 +308,10 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
     if (!simulationId) return null;
     if (cachedResults[simulationId]) return cachedResults[simulationId];
 
+    const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     const endpoints = [
-      `/api/simulation/${simulationId}/parallel-results/`,
-      `/api/simulation/${simulationId}/results/`,
+      `${backendUrl}/api/simulation/${simulationId}/parallel-results/`,
+      `${backendUrl}/api/simulation/${simulationId}/results/`,
     ];
 
     const fetchFromEndpoint = async (endpoint: string) => {

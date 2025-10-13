@@ -113,10 +113,14 @@ export const parseIdfFiles = async (files: File[]) => {
   try {
     await validateFiles(files, {
       allowedExtensions: ['.idf'],
-      maxSize: 5 * 1024 * 1024,
+      maxSize: 50 * 1024 * 1024, // 50MB for large generated IDF files from GeoJSON processor
       maxFiles: 10,
       validateContent: async (file) => {
-        // Basic IDF content validation
+        // Skip content validation for large files to avoid memory issues
+        if (file.size > 10 * 1024 * 1024) { // Skip for files > 10MB
+          return true;
+        }
+        // Basic IDF content validation for smaller files
         const content = await file.text();
         return content.includes('Version,') && content.includes('Building,');
       }
