@@ -82,6 +82,7 @@ echo ""
 # Request certificate using standalone mode for both domains
 sudo certbot certonly \
     --standalone \
+    --expand \
     -d "$DOMAIN" \
     -d "$DOMAIN_ALT" \
     --email "$EMAIL" \
