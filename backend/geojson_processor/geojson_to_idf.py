@@ -1,0 +1,515 @@
+"""
+GeoJSON to IDF Converter Service
+
+This module converts GeoJSON building footprints to EnergyPlus IDF files
+using the Ladybug Tools ecosystem (Ladybug, Dragonfly, Honeybee).
+
+Attribution:
+This work incorporates code from the Ladybug Tools project (https://github.com/ladybug-tools),
+which is licensed under the GNU General Public License (GPL) Version 3.
+Any derivative works must also be released under an open source GPL license.
+
+Copyright (C) 2023 Sanjay Somanath
+Copyright (C) Ladybug Tools
+Licensed under the GPL License
+"""
+
+import json
+import logging
+import os
+import shutil
+from math import ceil
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Constants
+DEFAULT_CLIMATE_ZONE = 'ClimateZone6'
+DEFAULT_CONSTRUCTION_TYPE = 'Mass'  # 'SteelFramed', 'WoodFramed', 'Mass', 'Metal Building'
+DEFAULT_YEAR = 2000
+PROJECT_NAME = 'City'
+FLOOR_TO_FLOOR_HEIGHT = 2.8
+WINDOW_TO_WALL_RATIO = 0.4
+WINDOW_HEIGHT = 1.6
+WINDOW_SILL_HEIGHT = 0.7
+WINDOW_TO_WINDOW_HORIZONTAL_SPACING = 4
+ADD_DEFAULT_IDEAL_AIR = True
+
+# Building type mapping (Swedish building categories to DOE building types)
+BUILDING_PROGRAM_DICT = {
+    "Bostad; Småhus friliggande": "HighriseApartment",
+    "Bostad; Småhus kedjehus": "MidriseApartment",
+    "Bostad; Småhus radhus": "MidriseApartment",
+    "Bostad; Flerfamiljshus": "HighriseApartment",
+    "Bostad; Småhus med flera lägenheter": "MidriseApartment",
+    "Bostad; Ospecificerad": "HighriseApartment",
+    "Industri; Annan tillverkningsindustri": "Warehouse",
+    "Industri; Gasturbinanläggning": "LargeDataCenterHighITE",
+    "Industri; Industrihotell": "LargeHotel",
+    "Industri; Kemisk industri": "Laboratory",
+    "Industri; Kondenskraftverk": "Warehouse",
+    "Industri; Kärnkraftverk": "LargeDataCenterHighITE",
+    "Industri; Livsmedelsindustri": "SuperMarket",
+    "Industri; Metall- eller maskinindustri": "Warehouse",
+    "Industri; Textilindustri": "Warehouse",
+    "Industri; Trävaruindustri": "Warehouse",
+    "Industri; Vattenkraftverk": "Warehouse",
+    "Industri; Vindkraftverk": "Warehouse",
+    "Industri; Värmeverk": "Warehouse",
+    "Industri; Övrig industribyggnad": "Warehouse",
+    "Industri; Ospecificerad": "Warehouse",
+    "Samhällsfunktion; Badhus": "Outpatient",
+    "Samhällsfunktion; Brandstation": "SmallOffice",
+    "Samhällsfunktion; Busstation": "SmallOffice",
+    "Samhällsfunktion; Distributionsbyggnad": "Warehouse",
+    "Samhällsfunktion; Djursjukhus": "Outpatient",
+    "Samhällsfunktion; Försvarsbyggnad": "Courthouse",
+    "Samhällsfunktion; Vårdcentral": "Outpatient",
+    "Samhällsfunktion; Hälsocentral": "Outpatient",
+    "Samhällsfunktion; Högskola": "SecondarySchool",
+    "Samhällsfunktion; Ishall": "SmallOffice",
+    "Samhällsfunktion; Järnvägsstation": "SmallOffice",
+    "Samhällsfunktion; Kommunhus": "Courthouse",
+    "Samhällsfunktion; Kriminalvårdsanstalt": "Courthouse",
+    "Samhällsfunktion; Kulturbyggnad": "SmallOffice",
+    "Samhällsfunktion; Polisstation": "SmallOffice",
+    "Samhällsfunktion; Reningsverk": "SmallDataCenterHighITE",
+    "Samhällsfunktion; Ridhus": "SmallOffice",
+    "Samhällsfunktion; Samfund": "SmallOffice",
+    "Samhällsfunktion; Sjukhus": "Hospital",
+    "Samhällsfunktion; Skola": "PrimarySchool",
+    "Samhällsfunktion; Sporthall": "SmallOffice",
+    "Samhällsfunktion; Universitet": "SecondarySchool",
+    "Samhällsfunktion; Vattenverk": "SmallDataCenterHighITE",
+    "Samhällsfunktion; Multiarena": "SmallOffice",
+    "Samhällsfunktion; Ospecificerad": "SmallOffice",
+    "Verksamhet; Ospecificerad": "SmallOffice",
+    "Ekonomibyggnad; Ospecificerad": "Warehouse",
+    "Komplementbyggnad; Ospecificerad": "SmallOffice",
+    "Övrig byggnad; Ospecificerad": "SmallOffice"
+}
+
+DEFAULT_PROGRAM_TYPE = "HighriseApartment"
+
+
+class GeoJSONToIDFConverter:
+    """Convert GeoJSON building footprints to EnergyPlus IDF format."""
+    
+    def __init__(self, work_dir: str):
+        """
+        Initialize converter.
+        
+        Args:
+            work_dir: Working directory for input/output files
+        """
+        self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+    
+    def filter_buildings(
+        self,
+        geojson_path: Path,
+        filter_height_less_than: float = 3,
+        filter_height_greater_than: float = 100,
+        filter_area_less_than: float = 100
+    ) -> Path:
+        """
+        Filter out buildings that don't meet criteria.
+        
+        Args:
+            geojson_path: Path to input GeoJSON file
+            filter_height_less_than: Minimum height in meters
+            filter_height_greater_than: Maximum height in meters
+            filter_area_less_than: Minimum area in square meters
+            
+        Returns:
+            Path to filtered GeoJSON file
+        """
+        try:
+            import geopandas as gpd
+            
+            logger.info(f"Filtering buildings from {geojson_path}")
+            logger.info(f"Filters: height {filter_height_less_than}m - {filter_height_greater_than}m, area >= {filter_area_less_than}m²")
+            
+            # Load GeoDataFrame
+            gdf = gpd.read_file(geojson_path)
+            features_before = len(gdf)
+            
+            # Filter by height
+            if 'height' in gdf.columns:
+                gdf = gdf[(gdf['height'] > filter_height_less_than) & (gdf['height'] < filter_height_greater_than)]
+            
+            # Convert to EPSG 3006 to calculate area in square meters
+            gdf = gdf.to_crs(crs='3006')
+            gdf["area_sqm"] = gdf.geometry.area
+            
+            # Filter by area
+            gdf = gdf[gdf['area_sqm'] >= filter_area_less_than]
+            
+            # Convert back to EPSG 4326
+            gdf = gdf.to_crs(crs='4326')
+            gdf = gdf.drop(columns=['area_sqm'])
+            
+            # Save filtered GeoJSON
+            filtered_path = self.work_dir / 'city_filtered.geojson'
+            gdf.to_file(filtered_path, driver='GeoJSON')
+            
+            features_after = len(gdf)
+            logger.info(f"Filtered {features_before - features_after} buildings, {features_after} remaining")
+            
+            return filtered_path
+            
+        except ImportError as e:
+            logger.error(f"geopandas not available: {e}")
+            raise ImportError("geopandas is required. Install with: pip install geopandas")
+        except Exception as e:
+            logger.error(f"Error filtering buildings: {e}")
+            raise
+    
+    def enrich_geojson(self, geojson_path: Path) -> Path:
+        """
+        Add building properties required for Dragonfly model.
+        
+        Args:
+            geojson_path: Path to input GeoJSON file
+            
+        Returns:
+            Path to enriched GeoJSON file
+        """
+        try:
+            import geopandas as gpd
+            
+            logger.info(f"Enriching GeoJSON: {geojson_path}")
+            
+            with open(geojson_path, 'r', encoding='utf-8') as f:
+                city_geojson = json.load(f)
+            
+            # Get bounding box
+            city_gdf = gpd.read_file(geojson_path)
+            city_bounds = city_gdf.bounds
+            lon_min, lat_min = city_bounds.minx.min(), city_bounds.miny.min()
+            
+            # Add project metadata
+            city_geojson['project'] = {
+                'id': PROJECT_NAME,
+                'name': PROJECT_NAME,
+                'latitude': lat_min,
+                'longitude': lon_min
+            }
+            
+            # Add building properties
+            for i, building in enumerate(city_geojson.get('features', [])):
+                properties = building.get('properties', {})
+                height = properties.get('height', 10)
+                number_of_stories = ceil(height / FLOOR_TO_FLOOR_HEIGHT)
+                
+                properties['id'] = f"Building{i}"
+                properties['name'] = f"Building{i}"
+                properties['building_status'] = 'Building'
+                properties['type'] = 'Building'
+                properties['maximum_roof_height'] = height
+                properties['number_of_stories'] = number_of_stories
+                properties['window_to_wall_ratio'] = WINDOW_TO_WALL_RATIO
+                
+                # Ensure ground_height exists (default to 0)
+                if 'ground_height' not in properties:
+                    properties['ground_height'] = 0
+                
+                building['properties'] = properties
+            
+            # Save enriched GeoJSON
+            enriched_path = self.work_dir / 'city_enriched.geojson'
+            with open(enriched_path, 'w', encoding='utf-8') as f:
+                json.dump(city_geojson, f, ensure_ascii=False, indent=4)
+            
+            logger.info(f"Enriched GeoJSON saved to {enriched_path}")
+            return enriched_path
+            
+        except Exception as e:
+            logger.error(f"Error enriching GeoJSON: {e}")
+            raise
+    
+    def get_construction_identifier(self, construction_type: str, climate_zone: str, year: int) -> str:
+        """
+        Get construction set identifier for Honeybee energy standards.
+        
+        Args:
+            construction_type: Type of construction (Mass, SteelFramed, WoodFramed, etc.)
+            climate_zone: Climate zone (ClimateZone1-7)
+            year: Building year
+            
+        Returns:
+            Construction identifier string
+        """
+        try:
+            from honeybee_energy.lib._loadprogramtypes import _program_types_standards_registry as STANDARDS_REGISTRY
+            
+            # Convert year to closest standard year
+            conversion = {
+                'pre_1980': 1979,
+                '1980_2004': 1980
+            }
+            
+            years = []
+            for yr in STANDARDS_REGISTRY.keys():
+                if yr in conversion:
+                    years.append(conversion[yr])
+                else:
+                    try:
+                        years.append(int(yr))
+                    except ValueError:
+                        pass
+            
+            # Find closest year
+            if years:
+                differences = [abs(year - y) for y in years]
+                closest_idx = differences.index(min(differences))
+                closest_year_key = list(STANDARDS_REGISTRY.keys())[closest_idx]
+            else:
+                closest_year_key = str(year)
+            
+            return f"{closest_year_key}::{climate_zone}::{construction_type}"
+            
+        except ImportError:
+            logger.warning("honeybee_energy_standards not available, using default construction")
+            return f"{year}::{climate_zone}::{construction_type}"
+    
+    def convert_to_idf(
+        self,
+        geojson_path: Path,
+        use_multiplier: bool = False
+    ) -> Tuple[Path, Optional[Path]]:
+        """
+        Convert enriched GeoJSON to IDF and GBXML formats.
+        
+        Args:
+            geojson_path: Path to enriched GeoJSON file
+            use_multiplier: Whether to use floor multipliers
+            
+        Returns:
+            Tuple of (idf_path, gbxml_path)
+        """
+        try:
+            from ladybug_geometry.geometry2d.pointvector import Point2D
+            from ladybug_geometry.geometry3d.pointvector import Vector3D
+            from dragonfly.model import Model
+            from dragonfly.windowparameter import RepeatingWindowRatio
+            from honeybee_energy.lib.programtypes import ProgramType
+            from honeybee_energy.lib.constructionsets import construction_set_by_identifier
+            from honeybee_energy.simulation.parameter import SimulationParameter
+            from honeybee_energy.writer import energyplus_idf_version
+            
+            logger.info(f"Converting GeoJSON to IDF: {geojson_path}")
+            
+            # Load GeoJSON data
+            with open(geojson_path, 'r', encoding='utf-8') as f:
+                geojson_data = json.load(f)
+            
+            # Create Dragonfly model from GeoJSON
+            logger.info("Creating Dragonfly model...")
+            model, location = Model.from_geojson(
+                str(geojson_path),
+                location=None,
+                point=Point2D(0, 0),
+                all_polygons_to_buildings=False,
+                existing_to_context=True,
+                units='Meters',
+                tolerance=None,
+                angle_tolerance=1.0
+            )
+            
+            # Adjust building properties
+            logger.info("Adjusting building properties...")
+            model = self._adjust_building_properties(model, geojson_data)
+            
+            # Save Dragonfly JSON
+            dfjson_path = self.work_dir / 'city.dfjson'
+            model.to_dfjson('city', str(self.work_dir), 2, None)
+            logger.info(f"Saved Dragonfly model to {dfjson_path}")
+            
+            # Convert to Honeybee model
+            logger.info("Converting to Honeybee model...")
+            hb_models = model.to_honeybee(
+                object_per_model='District',
+                shade_distance=None,
+                use_multiplier=use_multiplier,
+                add_plenum=False,
+                cap=False,
+                solve_ceiling_adjacencies=True,
+                tolerance=None,
+                enforce_adj=False
+            )
+            hb_model = hb_models[0]
+            
+            # Convert to IDF
+            logger.info("Generating IDF file...")
+            idf_path = self.work_dir / 'city.idf'
+            sim_par = SimulationParameter()
+            sim_par.output.add_zone_energy_use()
+            sim_par.output.add_hvac_energy_use()
+            
+            ver_str = energyplus_idf_version()
+            sim_par_str = sim_par.to_idf()
+            model_str = hb_model.to.idf(
+                hb_model,
+                schedule_directory=None,
+                use_ideal_air_equivalent=True
+            )
+            
+            idf_content = '\n\n'.join([ver_str, sim_par_str, model_str])
+            
+            with open(idf_path, 'w') as f:
+                f.write(idf_content)
+            
+            logger.info(f"Successfully generated IDF file: {idf_path}")
+            
+            # For now, skip GBXML generation (can be added later if needed)
+            gbxml_path = None
+            
+            return idf_path, gbxml_path
+            
+        except ImportError as e:
+            logger.error(f"Required libraries not available: {e}")
+            raise ImportError("Ladybug/Dragonfly/Honeybee libraries required. Install with requirements.txt")
+        except Exception as e:
+            logger.error(f"Error converting to IDF: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+    
+    def _adjust_building_properties(self, model, geojson_data: dict):
+        """
+        Adjust building properties in the Dragonfly model.
+        
+        Args:
+            model: Dragonfly model
+            geojson_data: Original GeoJSON data with properties
+            
+        Returns:
+            Adjusted model
+        """
+        try:
+            from ladybug_geometry.geometry3d.pointvector import Vector3D
+            from dragonfly.windowparameter import RepeatingWindowRatio
+            from honeybee_energy.lib.programtypes import ProgramType
+            from honeybee_energy.lib.constructionsets import construction_set_by_identifier
+            
+            # Separate buildings and context
+            building_objects = [
+                bldg for bldg in geojson_data.get('features', [])
+                if bldg.get('properties', {}).get('building_status') == 'Building'
+            ]
+            context_objects = [
+                bldg for bldg in geojson_data.get('features', [])
+                if bldg.get('properties', {}).get('building_status') == 'Existing'
+            ]
+            
+            # Get construction identifier
+            construction_identifier = self.get_construction_identifier(
+                DEFAULT_CONSTRUCTION_TYPE,
+                DEFAULT_CLIMATE_ZONE,
+                DEFAULT_YEAR
+            )
+            
+            # Adjust buildings
+            for i, building in enumerate(model.buildings):
+                if i >= len(building_objects):
+                    break
+                    
+                props = building_objects[i].get('properties', {})
+                ground_height = props.get('ground_height', 0)
+                building_type = props.get('ANDAMAL_1T', None)
+                
+                # Move building to ground height
+                m_vec = Vector3D(0, 0, ground_height)
+                building.move(m_vec)
+                
+                # Set construction set and program type for each room
+                try:
+                    construction_set = construction_set_by_identifier(construction_identifier)
+                except:
+                    construction_set = None
+                    logger.warning(f"Could not load construction set: {construction_identifier}")
+                
+                for storey in building:
+                    for room in storey.room_2ds:
+                        if construction_set:
+                            room.properties.energy.construction_set = construction_set
+                        
+                        # Set program type
+                        building_program = BUILDING_PROGRAM_DICT.get(building_type, DEFAULT_PROGRAM_TYPE)
+                        try:
+                            program = ProgramType(building_program)
+                            room.properties.energy.program_type = program
+                        except:
+                            logger.warning(f"Could not load program type: {building_program}")
+                        
+                        # Add ideal air system
+                        if ADD_DEFAULT_IDEAL_AIR:
+                            room.properties.energy.add_default_ideal_air()
+                    
+                    # Set window parameters
+                    storey.set_outdoor_window_parameters(
+                        RepeatingWindowRatio(
+                            WINDOW_TO_WALL_RATIO,
+                            WINDOW_HEIGHT,
+                            WINDOW_SILL_HEIGHT,
+                            WINDOW_TO_WINDOW_HORIZONTAL_SPACING
+                        )
+                    )
+            
+            # Adjust context shades
+            for i, context in enumerate(model.context_shades):
+                if i >= len(context_objects):
+                    break
+                    
+                props = context_objects[i].get('properties', {})
+                ground_height = props.get('ground_height', 0)
+                m_vec = Vector3D(0, 0, ground_height)
+                context.move(m_vec)
+            
+            return model
+            
+        except Exception as e:
+            logger.error(f"Error adjusting building properties: {e}")
+            raise
+    
+    def process(
+        self,
+        geojson_path: Path,
+        filter_height_min: float = 3,
+        filter_height_max: float = 100,
+        filter_area_min: float = 100,
+        use_multiplier: bool = False
+    ) -> Tuple[Path, Optional[Path]]:
+        """
+        Complete pipeline: filter → enrich → convert to IDF.
+        
+        Args:
+            geojson_path: Path to input GeoJSON file
+            filter_height_min: Minimum building height
+            filter_height_max: Maximum building height
+            filter_area_min: Minimum building area
+            use_multiplier: Use floor multipliers in model
+            
+        Returns:
+            Tuple of (idf_path, gbxml_path)
+        """
+        logger.info("Starting GeoJSON to IDF conversion pipeline")
+        
+        # Step 1: Filter buildings
+        filtered_path = self.filter_buildings(
+            geojson_path,
+            filter_height_min,
+            filter_height_max,
+            filter_area_min
+        )
+        
+        # Step 2: Enrich with metadata
+        enriched_path = self.enrich_geojson(filtered_path)
+        
+        # Step 3: Convert to IDF
+        idf_path, gbxml_path = self.convert_to_idf(enriched_path, use_multiplier)
+        
+        logger.info("GeoJSON to IDF conversion complete")
+        return idf_path, gbxml_path

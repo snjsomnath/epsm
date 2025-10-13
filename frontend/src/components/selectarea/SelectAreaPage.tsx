@@ -9,15 +9,22 @@ import {
   ToggleButton,
   Chip,
   Alert,
-  Divider
+  Divider,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  LinearProgress
 } from '@mui/material';
-import { MapIcon, Trash2, Download } from 'lucide-react';
+import { MapIcon, Trash2, Download, CheckCircle } from 'lucide-react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import { FeatureGroup as LeafletFeatureGroup } from 'leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import '@geoman-io/leaflet-geoman-free';
+import { authenticatedFetch } from '../../lib/auth-api';
 
 // Fix Leaflet default marker icon issue
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -133,6 +140,11 @@ const DrawingControls = ({
 const SelectAreaPage = () => {
   const [basemapType, setBasemapType] = useState<BasemapType>('osm');
   const [drawnArea, setDrawnArea] = useState<DrawnArea | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [processComplete, setProcessComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [idfPath, setIdfPath] = useState<string | null>(null);
   const featureGroupRef = useRef<LeafletFeatureGroup>(null);
 
   // Sweden center coordinates: ~62.0° N, 15.0° E
@@ -190,15 +202,73 @@ const SelectAreaPage = () => {
     setDrawnArea(null);
   };
 
-  const handleFetchArea = () => {
-    if (!drawnArea) {
+  const handleFetchArea = async () => {
+    if (!drawnArea || !drawnArea.bounds) {
       alert('Please draw an area first');
       return;
     }
 
-    console.log('Fetching area data:', drawnArea);
-    // TODO: Implement API call to fetch area data
-    alert(`Fetching ${drawnArea.type} area with ${drawnArea.coordinates.length} points`);
+    try {
+      setProcessing(true);
+      setProcessComplete(false);
+      setError(null);
+      setProcessingStatus('Preparing request...');
+
+      const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      
+      // Prepare payload with bounds
+      const payload = {
+        bounds: {
+          north: drawnArea.bounds.north,
+          south: drawnArea.bounds.south,
+          east: drawnArea.bounds.east,
+          west: drawnArea.bounds.west
+        },
+        filter_height_min: 3,
+        filter_height_max: 100,
+        filter_area_min: 100,
+        use_multiplier: false
+      };
+
+      setProcessingStatus('Downloading building footprints from DTCC...');
+      
+      const response = await authenticatedFetch(`${backendUrl}/api/geojson/process-geojson/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process area');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setProcessingStatus('IDF files generated successfully!');
+        setProcessComplete(true);
+        setIdfPath(data.idf_path);
+        
+        // Show success message for 2 seconds, then redirect to baseline
+        setTimeout(() => {
+          // Navigate to baseline page
+          // For now, just alert - you can add navigation later
+          alert(`IDF file generated at: ${data.idf_path}\n\nRedirect to baseline page (to be implemented)`);
+        }, 2000);
+      } else {
+        throw new Error('Processing failed');
+      }
+
+    } catch (err) {
+      console.error('Error fetching area:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process area');
+      setProcessComplete(false);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleExportGeometry = () => {
@@ -235,6 +305,38 @@ const SelectAreaPage = () => {
 
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column' }}>
+      {/* Processing Dialog */}
+      <Dialog open={processing || processComplete} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {processComplete ? 'Processing Complete!' : 'Processing Area...'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {processingStatus}
+          </DialogContentText>
+          {!processComplete && (
+            <Box sx={{ mt: 2 }}>
+              <LinearProgress />
+            </Box>
+          )}
+          {processComplete && (
+            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1, color: 'success.main' }}>
+              <CheckCircle size={24} />
+              <Typography variant="body1">
+                IDF files generated successfully!
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="h6" sx={{ flexGrow: 1, minWidth: 200 }}>

@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies including GDAL for dtcc
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y \
     xmlsec1 \
     pkg-config \
     git \
+    gdal-bin \
+    libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user and add to docker group for Docker socket access
