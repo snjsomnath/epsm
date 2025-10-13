@@ -31,22 +31,22 @@ WORKDIR /app
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy requirements files
-COPY requirements.txt requirements.prod.txt /app/
+COPY backend/requirements.txt backend/requirements.prod.txt /app/
 
 # Install all production requirements
 RUN pip install --no-cache-dir -r requirements.prod.txt
 
-# Copy VERSION file from project root (parent directory since context is ./backend)
-COPY ../VERSION /app/VERSION
+# Copy VERSION file from project root
+COPY VERSION /app/VERSION
 
 # Copy project
-COPY . /app/
+COPY backend/ /app/
 
 # Explicitly copy static/images directory (in case .dockerignore excluded it)
-COPY static/images/ /app/static/images/
+COPY backend/static/images/ /app/static/images/
 
 # Copy SAML certificates
-COPY saml_certs/ /app/saml_certs/
+COPY backend/saml_certs/ /app/saml_certs/
 RUN chmod 600 /app/saml_certs/sp_private_key.pem && \
     chmod 644 /app/saml_certs/sp_certificate.pem
 
@@ -61,7 +61,7 @@ RUN mkdir -p /app/media && \
     fi
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY backend/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Create media directories and set permissions
