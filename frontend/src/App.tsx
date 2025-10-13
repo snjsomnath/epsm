@@ -8,6 +8,7 @@ import { SimulationProvider } from './context/SimulationContext';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './components/auth/LoginPage';
 import HomePage from './components/home/HomePage';
+import SelectAreaPage from './components/selectarea/SelectAreaPage';
 import DatabasePage from './components/database/DatabasePage';
 import BaselinePage from './components/baseline/BaselinePage';
 import ScenarioPage from './components/scenario/ScenarioPage';
@@ -29,6 +30,7 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/" element={<AppLayout />}>
                   <Route index element={<HomePage />} />
+                  <Route path="selectarea" element={<SelectAreaPage />} />
                   <Route path="database/*" element={<DatabasePage />} />
                   <Route path="baseline" element={<BaselinePage />} />
                   <Route path="scenario" element={<ScenarioPage />} />
