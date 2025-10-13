@@ -50,6 +50,11 @@ jobs:
             errors=$((errors+1))
           fi
           
+          if [ -z "${{ secrets.PROD_DJANGO_SUPERUSER_PASSWORD }}" ]; then
+            echo "❌ PROD_DJANGO_SUPERUSER_PASSWORD is not set"
+            errors=$((errors+1))
+          fi
+          
           if [ $errors -gt 0 ]; then
             echo "❌ $errors required secrets are missing!"
             exit 1
@@ -111,6 +116,10 @@ jobs:
             echo "# Docker Compose"
             echo "COMPOSE_PROJECT_NAME=epsm_prod"
             echo ""
+            echo "# Django Superuser (Optional - for initial setup)"
+            echo "DJANGO_SUPERUSER_USERNAME=ssanjay@chalmers.se"
+            echo "DJANGO_SUPERUSER_EMAIL=ssanjay@chalmers.se"
+            echo ""
             echo "# Secrets"
           } > .env.production
           
@@ -122,6 +131,7 @@ jobs:
           printf "REDIS_URL=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
           printf "CELERY_BROKER_URL=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
           printf "CELERY_RESULT_BACKEND=redis://:%s@redis:6379/0\n" "${{ secrets.PROD_REDIS_PASSWORD }}" >> .env.production
+          printf "DJANGO_SUPERUSER_PASSWORD=%s\n" "${{ secrets.PROD_DJANGO_SUPERUSER_PASSWORD }}" >> .env.production
           
           chmod 600 .env.production
           echo "✅ .env.production created with secrets from GitHub"
@@ -130,7 +140,7 @@ jobs:
         run: |
           cd /opt/epsm
           echo "🛑 Stopping existing containers..."
-          docker-compose -f docker-compose.production.yml down || true
+          docker-compose -f docker-compose.production.yml --env-file .env.production down || true
           echo "✅ Containers stopped"
 
       - name: Pull latest code
@@ -168,7 +178,7 @@ jobs:
           echo "📋 Using docker-compose.production.yml"
           
           # Build with explicit no-cache and force-recreate
-          docker-compose -f docker-compose.production.yml build \
+          docker-compose -f docker-compose.production.yml --env-file .env.production build \
             --no-cache \
             --pull \
             --progress=plain
@@ -176,7 +186,7 @@ jobs:
           echo "✅ Build complete"
           
           echo "🚀 Starting services..."
-          docker-compose -f docker-compose.production.yml up -d --force-recreate
+          docker-compose -f docker-compose.production.yml --env-file .env.production up -d --force-recreate
           
           echo "✅ Services started"
 
@@ -186,11 +196,11 @@ jobs:
           echo "⏳ Waiting for services to be healthy..."
           
           # Wait for database
-          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user; do sleep 2; done'
+          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml --env-file .env.production exec -T database pg_isready -U epsm_user; do sleep 2; done'
           echo "✅ Database is ready"
           
           # Wait for backend
-          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
+          timeout 120 sh -c 'until docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend curl -f http://localhost:8000/health/ 2>/dev/null; do sleep 2; done'
           echo "✅ Backend is ready"
           
           # Additional buffer
@@ -202,7 +212,7 @@ jobs:
         run: |
           cd /opt/epsm
           echo "🔄 Running database migrations..."
-          docker-compose -f docker-compose.production.yml exec -T backend python manage.py migrate --noinput
+          docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend python manage.py migrate --noinput
           echo "✅ Migrations complete"
 
       - name: Seed database
@@ -223,7 +233,7 @@ jobs:
         run: |
           cd /opt/epsm
           echo "📦 Collecting static files..."
-          docker-compose -f docker-compose.production.yml exec -T backend python manage.py collectstatic --noinput
+          docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend python manage.py collectstatic --noinput
           echo "✅ Static files collected"
 
       - name: Clean up Docker system
@@ -241,7 +251,7 @@ jobs:
           echo "==================================="
           echo "Container Status:"
           echo "==================================="
-          docker-compose -f docker-compose.production.yml ps
+          docker-compose -f docker-compose.production.yml --env-file .env.production ps
           
           echo ""
           echo "==================================="
@@ -249,28 +259,28 @@ jobs:
           echo "==================================="
           
           # Check database
-          if docker-compose -f docker-compose.production.yml exec -T database pg_isready -U epsm_user > /dev/null 2>&1; then
+          if docker-compose -f docker-compose.production.yml --env-file .env.production exec -T database pg_isready -U epsm_user > /dev/null 2>&1; then
             echo "✅ Database: HEALTHY"
           else
             echo "❌ Database: UNHEALTHY"
           fi
           
           # Check Redis
-          if docker-compose -f docker-compose.production.yml exec -T redis redis-cli ping > /dev/null 2>&1; then
+          if docker-compose -f docker-compose.production.yml --env-file .env.production exec -T redis redis-cli ping > /dev/null 2>&1; then
             echo "✅ Redis: HEALTHY"
           else
             echo "❌ Redis: UNHEALTHY"
           fi
           
           # Check backend
-          if docker-compose -f docker-compose.production.yml exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
+          if docker-compose -f docker-compose.production.yml --env-file .env.production exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; then
             echo "✅ Backend: HEALTHY"
           else
             echo "❌ Backend: UNHEALTHY"
           fi
           
           # Check Celery worker
-          if docker-compose -f docker-compose.production.yml exec -T celery_worker celery -A config inspect ping > /dev/null 2>&1; then
+          if docker-compose -f docker-compose.production.yml --env-file .env.production exec -T celery_worker celery -A config inspect ping > /dev/null 2>&1; then
             echo "✅ Celery Worker: HEALTHY"
           else
             echo "❌ Celery Worker: UNHEALTHY"
