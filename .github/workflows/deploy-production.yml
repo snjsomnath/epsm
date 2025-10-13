@@ -152,6 +152,16 @@ jobs:
           
           echo "✅ Containers stopped"
 
+      - name: Fix volume directory structure
+        run: |
+          cd /opt/epsm
+          echo "🔧 Fixing volume directory structure..."
+          
+          # Remove conflicting files/directories in media volume
+          docker run --rm -v epsm_prod_media_data_prod:/media alpine sh -c "rm -f /media/simulation_results && mkdir -p /media/simulation_files /media/simulation_results" || true
+          
+          echo "✅ Volume structure fixed"
+
       - name: Pull latest code
         run: |
           cd /opt/epsm
