@@ -126,23 +126,47 @@ docker-compose logs -f frontend
 
 ## 🚀 Production Deployment
 
-For production deployment on Chalmers infrastructure or other servers:
+### Option 1: Using Pre-built Docker Images (Fastest - Recommended)
 
-1. **Prepare environment**
-   ```bash
-   cp .env.production.example .env.production
-   # Edit .env.production with production credentials
-   ```
+Deploy instantly using pre-built images from GitHub Container Registry:
 
-2. **Deploy**
-   ```bash
-   ./scripts/deploy.sh production
-   ```
+```bash
+# 1. Configure environment
+cp .env.production.example .env.production
+# Edit .env.production with your settings
 
-3. **Setup SSL** (for HTTPS)
-   ```bash
-   ./scripts/setup_ssl.sh
-   ```
+# 2. Deploy with pre-built images (no build time!)
+docker-compose -f docker-compose.prebuilt.yml up -d
+
+# 3. (Optional) Use a specific version
+VERSION=0.2.7 docker-compose -f docker-compose.prebuilt.yml up -d
+```
+
+**Benefits**: 
+- ⚡ Zero build time - deploy in seconds
+- ✅ Consistent tested images across all environments
+- 💾 Smaller footprint - no need for build tools
+- 🔄 Easy rollback to previous versions
+
+**Available Images**:
+- `ghcr.io/snjsomnath/epsm-backend:latest` or `:0.2.7`
+- `ghcr.io/snjsomnath/epsm-frontend:latest` or `:0.2.7`
+
+### Option 2: Build from Source
+
+For customization or when you need to modify the code:
+
+```bash
+# 1. Configure environment
+cp .env.production.example .env.production
+# Edit .env.production with your settings
+
+# 2. Build and deploy
+docker-compose -f docker-compose.production.yml up -d --build
+
+# 3. Setup SSL (for HTTPS)
+./scripts/setup_ssl.sh
+```
 
 📚 See [Deployment Guide](docs/DEPLOYMENT.md) for detailed instructions.
 
