@@ -162,6 +162,33 @@ jobs:
           
           echo "✅ Volume structure fixed"
 
+      - name: Ensure SSL certificates are available
+        run: |
+          cd /opt/epsm
+          echo "🔐 Checking SSL certificates..."
+          
+          # Create nginx SSL directory if it doesn't exist
+          mkdir -p nginx/ssl
+          
+          # Check if certificates exist
+          if [ -f "/etc/letsencrypt/live/epsm.ita.chalmers.se/fullchain.pem" ]; then
+            echo "✓ Let's Encrypt certificates found"
+            # Copy certificates to nginx directory
+            sudo cp /etc/letsencrypt/live/epsm.ita.chalmers.se/fullchain.pem nginx/ssl/ 2>/dev/null || true
+            sudo cp /etc/letsencrypt/live/epsm.ita.chalmers.se/privkey.pem nginx/ssl/ 2>/dev/null || true
+            sudo chown -R $(whoami):$(whoami) nginx/ssl/ 2>/dev/null || true
+            chmod 600 nginx/ssl/privkey.pem 2>/dev/null || true
+            chmod 644 nginx/ssl/fullchain.pem 2>/dev/null || true
+            echo "✓ Certificates copied and permissions set"
+          elif [ -f "nginx/ssl/fullchain.pem" ]; then
+            echo "✓ Certificates already in nginx/ssl directory"
+          else
+            echo "⚠️  No SSL certificates found. HTTPS may not work."
+            echo "   Run: bash scripts/setup-ssl-cert.sh to create certificates"
+          fi
+          
+          echo "✅ SSL certificate check complete"
+
       - name: Pull latest code
         run: |
           cd /opt/epsm
