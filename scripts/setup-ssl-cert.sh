@@ -20,8 +20,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-DOMAIN="epsm.ita.chalmers.se"
-DOMAIN_ALT="epsm.chalmers.se"
+DOMAIN="epsm.chalmers.se"
+DOMAIN_ALT="epsm.ita.chalmers.se"
 EMAIL="ssanjay@chalmers.se"
 
 echo ""
@@ -30,7 +30,7 @@ echo "  🔐 SSL Certificate Setup for EPSM"
 echo "========================================================================"
 echo ""
 echo "Primary Domain: $DOMAIN"
-echo "Alternative Domain: $DOMAIN_ALT"
+echo "Alternative Domain: $DOMAIN_ALT (internal)"
 echo "Email: $EMAIL"
 echo ""
 
