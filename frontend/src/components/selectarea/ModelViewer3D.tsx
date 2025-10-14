@@ -397,8 +397,27 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           const zoneGroup = new THREE.Group();
           zoneGroup.name = `${zoneName}_base`;
           
-          // Add all surfaces for this zone to the base group
-          surfaces.forEach((surface: any) => {
+          // Separate walls/floors/ceilings from windows
+          const structuralSurfaces = surfaces.filter((s: any) => 
+            s.type !== 'window' && s.type !== 'glassdoor'
+          );
+          const windowSurfaces = surfaces.filter((s: any) => 
+            s.type === 'window' || s.type === 'glassdoor'
+          );
+          
+          // Add structural surfaces to the base group
+          structuralSurfaces.forEach((surface: any) => {
+            const mesh = createSurfaceMesh(surface);
+            if (mesh) {
+              zoneGroup.add(mesh);
+              successCount++;
+            } else {
+              skipCount++;
+            }
+          });
+          
+          // Add windows to the base group (they'll be instanced with their parent surfaces)
+          windowSurfaces.forEach((surface: any) => {
             const mesh = createSurfaceMesh(surface);
             if (mesh) {
               zoneGroup.add(mesh);
@@ -424,7 +443,8 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
             }
           }
           
-          console.log(`✅ Created ${multiplier} instances for zone '${zoneName}' (floor height: ${floorHeight.toFixed(2)}m)`);
+          const windowCount = windowSurfaces.length;
+          console.log(`✅ Created ${multiplier} instances for zone '${zoneName}' (floor height: ${floorHeight.toFixed(2)}m, ${windowCount} windows per floor)`);
         } else {
           // No multiplier - add surfaces directly
           surfaces.forEach((surface: any) => {
@@ -442,7 +462,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       console.log(`✅ Created ${successCount} surface meshes (${skipCount} skipped, ${instancedCount} instanced)`);
       
       if (instancedCount > 0) {
-        console.log(`⚡ Performance boost: ${instancedCount} floors instanced instead of creating duplicate geometry`);
+        console.log(`⚡ Performance boost: ${instancedCount} floors instanced (including all windows) instead of creating duplicate geometry`);
       }
     }
     // Handle old format with buildings array

@@ -155,6 +155,7 @@ class Model3DGenerator:
         
         logger.info(f"Found {len(surface_items)} surface objects in IDF")
         
+        # First pass: parse all surfaces
         for index, item in enumerate(surface_items):
             try:
                 surface = self._parse_surface_item(item, index)
@@ -171,6 +172,17 @@ class Model3DGenerator:
                 import traceback
                 logger.debug(traceback.format_exc())
                 continue
+        
+        # Second pass: assign zones to windows based on parent surfaces
+        surface_zone_map = {s['name']: s['zone'] for s in surfaces_data if s['type'] not in ['window', 'glassdoor']}
+        
+        for surface in surfaces_data:
+            if surface['type'] in ['window', 'glassdoor'] and 'parent_surface' in surface:
+                parent_name = surface['parent_surface']
+                if parent_name in surface_zone_map:
+                    original_zone = surface['zone']
+                    surface['zone'] = surface_zone_map[parent_name]
+                    logger.debug(f"Window '{surface['name']}' zone updated from '{original_zone}' to '{surface['zone']}' (from parent '{parent_name}')")
         
         return surfaces_data
     
@@ -387,6 +399,13 @@ class Model3DGenerator:
             else:
                 zone_name = 'exterior'
             
+            # For windows, extract parent surface name
+            parent_surface = None
+            if 'FenestrationSurface' in item:
+                parent_match = re.search(r'(.*?)\s*,?\s*!-\s*Building Surface Name', item, re.IGNORECASE)
+                if parent_match:
+                    parent_surface = parent_match.group(1).split(',')[-1].strip()
+            
             # Extract surface name
             name_match = re.search(r'BuildingSurface:Detailed,\s*(.*?)\s*,', item, re.IGNORECASE)
             if not name_match:
@@ -456,7 +475,7 @@ class Model3DGenerator:
             # Flag surfaces that might need triangulation (> 4 vertices)
             needs_triangulation = len(vertices) > 4
             
-            return {
+            surface_data = {
                 'name': surface_name,
                 'type': surface_type,
                 'zone': zone_name,
@@ -465,6 +484,12 @@ class Model3DGenerator:
                 'index': index,
                 'needs_triangulation': needs_triangulation
             }
+            
+            # Add parent surface reference for windows
+            if parent_surface:
+                surface_data['parent_surface'] = parent_surface
+            
+            return surface_data
             
         except Exception as e:
             logger.error(f"Error parsing surface item {index}: {e}")
