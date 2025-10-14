@@ -151,8 +151,14 @@ class Model3DGenerator:
                     surfaces_data.append(surface)
                     self.surface_types.append(surface['type'])
                     self.surface_zones.append(surface['zone'])
+                    
+                    # Log window parsing for debugging
+                    if surface['type'] == 'window':
+                        logger.info(f"Parsed window '{surface['name']}' with {len(surface['vertices'])} vertices")
             except Exception as e:
                 logger.warning(f"Failed to parse surface {index}: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 continue
         
         return surfaces_data
@@ -303,34 +309,60 @@ class Model3DGenerator:
             surface_name = name_match.group(1).strip() if name_match else f'Surface_{index}'
             
             # Extract vertices
-            # Pattern explanation: Look for "number of vertices" in the comment, then capture everything after the number until semicolon
-            # The number comes BEFORE the comment, so we need to match: <number>, <optional spaces> !- number of vertices <newline> <vertices>
-            vertices_section_match = re.search(r'(\d+)\s*,?\s*!-\s*number of vertices\s+(.*?)(?:;|\Z)', item, re.DOTALL | re.IGNORECASE)
+            # The "Number of Vertices" field in IDF can be blank (just a comma)
+            # We need to handle both cases:
+            # 1. When there's a number: "4, !- Number of Vertices"
+            # 2. When it's blank: ", !- Number of Vertices"
+            
+            # Look for the "Number of Vertices" comment, then capture everything after until semicolon
+            vertices_section_match = re.search(
+                r',\s*!-\s*number of vertices\s+(.*?)(?:;|\Z)', 
+                item, 
+                re.DOTALL | re.IGNORECASE
+            )
+            
             if not vertices_section_match:
-                logger.warning(f"No vertices found for surface {index}")
+                logger.warning(f"Surface {surface_name}: No 'Number of Vertices' comment found")
                 return None
             
-            vertices_section = vertices_section_match.group(2)  # group 2 is the vertices data
+            vertices_section = vertices_section_match.group(1)  # Everything after the comment
             
-            # Remove comments and extract coordinates
-            vertices_section = re.sub(r'!-[^,\n]*', '', vertices_section)
-            vertices_section = vertices_section.replace(';', '')
+            # Remove inline comments (anything with !- )
+            vertices_section_cleaned = re.sub(r'!-[^,\n]*', '', vertices_section)
+            vertices_section_cleaned = vertices_section_cleaned.replace(';', '')
             
-            # Split by comma and convert to floats
-            coords = [float(x.strip()) for x in vertices_section.split(',') if x.strip()]
+            # Split by comma and convert to floats, filtering out empty strings
+            coords_str = [x.strip() for x in vertices_section_cleaned.split(',') if x.strip()]
+            
+            # Log for debugging
+            logger.debug(f"Surface {surface_name}: Found {len(coords_str)} coordinate values")
+            
+            try:
+                coords = [float(x) for x in coords_str]
+            except ValueError as e:
+                logger.error(f"Surface {surface_name}: Failed to convert coordinates to float: {e}")
+                return None
             
             # Group into [x, y, z] triplets
             vertices = []
             for i in range(0, len(coords), 3):
-                if i + 3 <= len(coords):  # Fix: Need 3 coords starting at i (i, i+1, i+2)
+                if i + 2 < len(coords):  # Ensure we have all 3 coordinates
                     vertices.append([coords[i], coords[i+1], coords[i+2]])
+                else:
+                    logger.warning(f"Surface {surface_name}: Incomplete vertex at position {i} (only {len(coords) - i} values remaining)")
             
             if len(vertices) < 3:
-                logger.warning(f"Surface {index} has less than 3 vertices")
+                logger.warning(f"Surface {surface_name}: Has only {len(vertices)} vertices, need at least 3")
                 return None
+            
+            logger.debug(f"Surface {surface_name}: Successfully parsed {len(vertices)} vertices")
             
             # Get color for this surface type
             color = self.COLORS.get(surface_type, self.COLORS['undefined'])
+            
+            # Validate window geometry
+            if surface_type == 'window' and len(vertices) != 4:
+                logger.warning(f"Window '{surface_name}' has {len(vertices)} vertices (expected 4)")
             
             return {
                 'name': surface_name,
