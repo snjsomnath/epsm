@@ -86,6 +86,10 @@ class Model3DGenerator:
             # Offset windows to prevent z-fighting
             surfaces_data = self._offset_windows(surfaces_data)
             
+            # Count surfaces needing triangulation
+            triangulation_count = sum(1 for s in surfaces_data if s.get('needs_triangulation', False))
+            max_vertices = max(len(s['vertices']) for s in surfaces_data) if surfaces_data else 0
+            
             # Create model data
             model_data = {
                 'version': '1.0',
@@ -99,7 +103,9 @@ class Model3DGenerator:
                     'source': 'energyplus_idf',
                     'generated_at': str(datetime.now()),
                     'colors': self.COLORS,
-                    'uses_multipliers': len(multipliers) > 0
+                    'uses_multipliers': len(multipliers) > 0,
+                    'triangulation_needed': triangulation_count,
+                    'max_vertices': max_vertices
                 }
             }
             
@@ -113,6 +119,8 @@ class Model3DGenerator:
             logger.info(f"Generated 3D model with {len(surfaces_data)} surfaces")
             logger.info(f"Surface types: {set(self.surface_types)}")
             logger.info(f"Zones: {len(set(self.surface_zones))}")
+            if triangulation_count > 0:
+                logger.info(f"Note: {triangulation_count} surfaces with >4 vertices need triangulation (max: {max_vertices} vertices)")
             
             return str(output_file)
             
@@ -278,7 +286,11 @@ class Model3DGenerator:
             
             normal = [normal[0]/magnitude, normal[1]/magnitude, normal[2]/magnitude]
             
-            # Offset all vertices along the normal
+            # IMPORTANT: In EnergyPlus, fenestration surfaces have normals pointing inward
+            # We need to reverse the normal to offset windows outward (away from building interior)
+            normal = [-normal[0], -normal[1], -normal[2]]
+            
+            # Offset all vertices along the (reversed) normal
             offset_vertices = []
             for vertex in vertices:
                 offset_vertices.append([
@@ -441,13 +453,17 @@ class Model3DGenerator:
             if surface_type == 'window' and len(vertices) != 4:
                 logger.warning(f"Window '{surface_name}' has {len(vertices)} vertices (expected 4)")
             
+            # Flag surfaces that might need triangulation (> 4 vertices)
+            needs_triangulation = len(vertices) > 4
+            
             return {
                 'name': surface_name,
                 'type': surface_type,
                 'zone': zone_name,
                 'color': color,
                 'vertices': vertices,
-                'index': index
+                'index': index,
+                'needs_triangulation': needs_triangulation
             }
             
         except Exception as e:
