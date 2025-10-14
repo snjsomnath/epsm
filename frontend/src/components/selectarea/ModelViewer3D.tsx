@@ -8,9 +8,12 @@ import {
   Alert,
   CircularProgress,
   IconButton,
-  Tooltip
+  Tooltip,
+  FormControlLabel,
+  Checkbox,
+  FormGroup
 } from '@mui/material';
-import { Play, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Play, RotateCcw, ZoomIn, ZoomOut, Layers } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -44,6 +47,69 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     faces: number;
     buildings: number;
   } | null>(null);
+  const [layerVisibility, setLayerVisibility] = useState({
+    walls: true,
+    roofs: true,
+    floors: true,
+    windows: true,
+    doors: true,
+    ceilings: true,
+    other: true
+  });
+  const [showLayerControls, setShowLayerControls] = useState(false);
+
+  // Update mesh visibility when layer visibility changes
+  useEffect(() => {
+    if (!modelRef.current) return;
+
+    modelRef.current.traverse((child: THREE.Object3D) => {
+      if (child instanceof THREE.Mesh && child.userData.type) {
+        const surfaceType = child.userData.type.toLowerCase();
+        
+        // Map surface types to layer categories
+        let visible = true;
+        if (surfaceType.includes('wall')) {
+          visible = layerVisibility.walls;
+        } else if (surfaceType.includes('roof')) {
+          visible = layerVisibility.roofs;
+        } else if (surfaceType.includes('floor')) {
+          visible = layerVisibility.floors;
+        } else if (surfaceType.includes('window') || surfaceType.includes('glass')) {
+          visible = layerVisibility.windows;
+        } else if (surfaceType.includes('door')) {
+          visible = layerVisibility.doors;
+        } else if (surfaceType.includes('ceiling')) {
+          visible = layerVisibility.ceilings;
+        } else {
+          visible = layerVisibility.other;
+        }
+        
+        child.visible = visible;
+      }
+    });
+  }, [layerVisibility]);
+
+  const handleLayerToggle = (layer: keyof typeof layerVisibility) => {
+    setLayerVisibility(prev => ({
+      ...prev,
+      [layer]: !prev[layer]
+    }));
+  };
+
+  const handleToggleAllLayers = () => {
+    const allVisible = Object.values(layerVisibility).every(v => v);
+    const newVisibility = !allVisible;
+    
+    setLayerVisibility({
+      walls: newVisibility,
+      roofs: newVisibility,
+      floors: newVisibility,
+      windows: newVisibility,
+      doors: newVisibility,
+      ceilings: newVisibility,
+      other: newVisibility
+    });
+  };
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -561,35 +627,149 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
 
       {/* Controls */}
       {!loading && !error && (
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            position: 'absolute',
-            top: 80,
-            right: 16,
-            bgcolor: 'background.paper',
-            borderRadius: 1,
-            boxShadow: 2,
-            p: 0.5
-          }}
-        >
-          <Tooltip title="Zoom In">
-            <IconButton size="small" onClick={handleZoomIn}>
-              <ZoomIn size={18} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Zoom Out">
-            <IconButton size="small" onClick={handleZoomOut}>
-              <ZoomOut size={18} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Reset View">
-            <IconButton size="small" onClick={handleResetView}>
-              <RotateCcw size={18} />
-            </IconButton>
-          </Tooltip>
-        </Stack>
+        <>
+          {/* Zoom and Reset Controls */}
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{
+              position: 'absolute',
+              top: 80,
+              right: 16,
+              bgcolor: 'background.paper',
+              borderRadius: 1,
+              boxShadow: 2,
+              p: 0.5
+            }}
+          >
+            <Tooltip title="Toggle Layer Visibility">
+              <IconButton 
+                size="small" 
+                onClick={() => setShowLayerControls(!showLayerControls)}
+                color={showLayerControls ? 'primary' : 'default'}
+              >
+                <Layers size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Zoom In">
+              <IconButton size="small" onClick={handleZoomIn}>
+                <ZoomIn size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Zoom Out">
+              <IconButton size="small" onClick={handleZoomOut}>
+                <ZoomOut size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Reset View">
+              <IconButton size="small" onClick={handleResetView}>
+                <RotateCcw size={18} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+
+          {/* Layer Visibility Controls */}
+          {showLayerControls && (
+            <Paper
+              sx={{
+                position: 'absolute',
+                top: 130,
+                right: 16,
+                p: 2,
+                boxShadow: 3,
+                minWidth: 200
+              }}
+            >
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle2" fontWeight="600">
+                    Layer Visibility
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={handleToggleAllLayers}
+                    sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
+                  >
+                    {Object.values(layerVisibility).every(v => v) ? 'Hide All' : 'Show All'}
+                  </Button>
+                </Stack>
+                
+                <FormGroup>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.walls}
+                        onChange={() => handleLayerToggle('walls')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Walls</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.roofs}
+                        onChange={() => handleLayerToggle('roofs')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Roofs</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.floors}
+                        onChange={() => handleLayerToggle('floors')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Floors</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.windows}
+                        onChange={() => handleLayerToggle('windows')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Windows</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.doors}
+                        onChange={() => handleLayerToggle('doors')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Doors</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.ceilings}
+                        onChange={() => handleLayerToggle('ceilings')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Ceilings</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.other}
+                        onChange={() => handleLayerToggle('other')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Other</Typography>}
+                  />
+                </FormGroup>
+              </Stack>
+            </Paper>
+          )}
+        </>
       )}
 
       {/* Bottom Action Bar */}
