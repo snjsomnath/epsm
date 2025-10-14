@@ -91,6 +91,7 @@ sp_metadata.xml
 # Project documentation and cleanup directories
 cleanup/
 change_summary/
+change summary/
 
 # Environment files - Block ALL .env files except examples
 .env
