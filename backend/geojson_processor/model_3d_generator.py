@@ -83,6 +83,9 @@ class Model3DGenerator:
             # Normalize coordinates to origin
             surfaces_data = self._normalize_coordinates(surfaces_data)
             
+            # Offset windows to prevent z-fighting
+            surfaces_data = self._offset_windows(surfaces_data)
+            
             # Create model data
             model_data = {
                 'version': '1.0',
@@ -219,6 +222,79 @@ class Model3DGenerator:
             surface['vertices'] = normalized_vertices
         
         logger.info("Coordinates normalized to origin and converted to Three.js coordinate system")
+        return surfaces_data
+    
+    def _offset_windows(self, surfaces_data: List[Dict]) -> List[Dict]:
+        """
+        Offset windows slightly along their surface normal to prevent z-fighting with walls.
+        
+        Windows are coplanar with walls in EnergyPlus, which causes rendering artifacts
+        (z-fighting) in 3D viewers. This method calculates the surface normal and offsets
+        window vertices by a small amount (0.05 units) away from the wall.
+        
+        Args:
+            surfaces_data: List of surface dictionaries with vertices
+        
+        Returns:
+            Updated surfaces_data with offset window positions
+        """
+        window_count = 0
+        offset_distance = 0.05  # Small offset to prevent z-fighting (5cm in meters)
+        
+        for surface in surfaces_data:
+            # Only offset windows and glass doors
+            if surface['type'] not in ['window', 'glassdoor']:
+                continue
+            
+            vertices = surface['vertices']
+            
+            # Need at least 3 vertices to calculate normal
+            if len(vertices) < 3:
+                logger.warning(f"Window '{surface['name']}' has less than 3 vertices, skipping offset")
+                continue
+            
+            # Calculate surface normal using cross product of two edges
+            # Using first 3 vertices: v0, v1, v2
+            v0 = vertices[0]
+            v1 = vertices[1]
+            v2 = vertices[2]
+            
+            # Edge vectors
+            edge1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]]
+            edge2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]]
+            
+            # Cross product to get normal
+            normal = [
+                edge1[1] * edge2[2] - edge1[2] * edge2[1],
+                edge1[2] * edge2[0] - edge1[0] * edge2[2],
+                edge1[0] * edge2[1] - edge1[1] * edge2[0]
+            ]
+            
+            # Normalize the normal vector
+            magnitude = (normal[0]**2 + normal[1]**2 + normal[2]**2)**0.5
+            if magnitude == 0:
+                logger.warning(f"Window '{surface['name']}' has degenerate geometry, skipping offset")
+                continue
+            
+            normal = [normal[0]/magnitude, normal[1]/magnitude, normal[2]/magnitude]
+            
+            # Offset all vertices along the normal
+            offset_vertices = []
+            for vertex in vertices:
+                offset_vertices.append([
+                    vertex[0] + normal[0] * offset_distance,
+                    vertex[1] + normal[1] * offset_distance,
+                    vertex[2] + normal[2] * offset_distance
+                ])
+            
+            surface['vertices'] = offset_vertices
+            window_count += 1
+            
+            logger.debug(f"Offset window '{surface['name']}' by {offset_distance} units along normal {normal}")
+        
+        if window_count > 0:
+            logger.info(f"Offset {window_count} windows/glass doors to prevent z-fighting")
+        
         return surfaces_data
     
     def _parse_zone_multipliers(self, idf_content: str) -> Dict[str, int]:
