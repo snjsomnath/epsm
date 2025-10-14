@@ -291,66 +291,92 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     console.log('🔨 Creating Three.js model from JSON data...');
     const group = new THREE.Group();
 
+    // Check if model uses floor multipliers for instancing
+    const usesMultipliers = data.metadata?.uses_multipliers || false;
+    const multipliers = data.multipliers || {};
+    
+    if (usesMultipliers && Object.keys(multipliers).length > 0) {
+      console.log('🔄 Model uses floor multipliers - instancing enabled for better performance');
+      console.log(`📊 Multipliers:`, multipliers);
+    }
+
     // Handle IDF format with surfaces array
     if (data.surfaces && Array.isArray(data.surfaces)) {
       console.log(`📐 Processing ${data.surfaces.length} surfaces...`);
       
-      let successCount = 0;
-      let skipCount = 0;
+      // Group surfaces by zone for potential instancing
+      const surfacesByZone: { [zone: string]: any[] } = {};
       
       data.surfaces.forEach((surface: any) => {
-        if (surface.vertices && surface.vertices.length >= 3) {
-          // Create geometry from vertices
-          const geometry = new THREE.BufferGeometry();
-          const vertices: number[] = [];
+        const zoneName = surface.zone || 'exterior';
+        if (!surfacesByZone[zoneName]) {
+          surfacesByZone[zoneName] = [];
+        }
+        surfacesByZone[zoneName].push(surface);
+      });
+      
+      let successCount = 0;
+      let skipCount = 0;
+      let instancedCount = 0;
+      
+      // Process each zone
+      Object.entries(surfacesByZone).forEach(([zoneName, surfaces]) => {
+        const multiplier = multipliers[zoneName] || 1;
+        
+        if (multiplier > 1) {
+          console.log(`🔄 Zone '${zoneName}' has multiplier ${multiplier} - creating instances`);
           
-          // IDF format: [X, Y, Z] where Y is height (vertical)
-          // Three.js also uses Y as up, so coordinates match directly
-          surface.vertices.forEach((v: number[]) => {
-            vertices.push(v[0], v[1], v[2]);
+          // Create a group for the base geometry
+          const zoneGroup = new THREE.Group();
+          zoneGroup.name = `${zoneName}_base`;
+          
+          // Add all surfaces for this zone to the base group
+          surfaces.forEach((surface: any) => {
+            const mesh = createSurfaceMesh(surface);
+            if (mesh) {
+              zoneGroup.add(mesh);
+              successCount++;
+            } else {
+              skipCount++;
+            }
           });
           
-          geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+          // Get the bounding box to calculate floor height
+          const bbox = new THREE.Box3().setFromObject(zoneGroup);
+          const floorHeight = bbox.max.y - bbox.min.y || 3.0; // Default to 3m if can't calculate
           
-          // Create faces by triangulating the polygon
-          const indices: number[] = [];
-          for (let i = 1; i < surface.vertices.length - 1; i++) {
-            indices.push(0, i, i + 1);
+          // Create instances by cloning and offsetting vertically
+          for (let i = 0; i < multiplier; i++) {
+            const instance = zoneGroup.clone();
+            instance.name = `${zoneName}_floor_${i + 1}`;
+            instance.position.y = floorHeight * i;
+            group.add(instance);
+            
+            if (i > 0) {
+              instancedCount++;
+            }
           }
-          geometry.setIndex(indices);
-          geometry.computeVertexNormals();
-
-          // Use surface color from IDF
-          const color = surface.color || '#88ccff';
           
-          // Create material based on surface type
-          const isWindow = surface.type === 'window' || surface.type === 'glassdoor';
-          const material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            roughness: isWindow ? 0.1 : 0.5,
-            metalness: isWindow ? 0.8 : 0.3,
-            transparent: isWindow,
-            opacity: isWindow ? 0.4 : 1.0,
-            side: THREE.DoubleSide  // Render both sides since we don't know winding order
-          });
-
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.name = surface.name || `Surface_${surface.index}`;
-          mesh.userData = {
-            type: surface.type,
-            zone: surface.zone,
-            index: surface.index
-          };
-          mesh.castShadow = !isWindow;  // Windows don't cast shadows
-          mesh.receiveShadow = !isWindow;
-          group.add(mesh);
-          successCount++;
+          console.log(`✅ Created ${multiplier} instances for zone '${zoneName}' (floor height: ${floorHeight.toFixed(2)}m)`);
         } else {
-          skipCount++;
+          // No multiplier - add surfaces directly
+          surfaces.forEach((surface: any) => {
+            const mesh = createSurfaceMesh(surface);
+            if (mesh) {
+              group.add(mesh);
+              successCount++;
+            } else {
+              skipCount++;
+            }
+          });
         }
       });
       
-      console.log(`✅ Created ${successCount} surface meshes (${skipCount} skipped)`);
+      console.log(`✅ Created ${successCount} surface meshes (${skipCount} skipped, ${instancedCount} instanced)`);
+      
+      if (instancedCount > 0) {
+        console.log(`⚡ Performance boost: ${instancedCount} floors instanced instead of creating duplicate geometry`);
+      }
     }
     // Handle old format with buildings array
     else if (data.buildings && Array.isArray(data.buildings)) {
@@ -384,6 +410,59 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
 
     console.log(`🎯 Final group has ${group.children.length} children`);
     return group;
+    
+    // Helper function to create a mesh from a surface
+    function createSurfaceMesh(surface: any): THREE.Mesh | null {
+      if (!surface.vertices || surface.vertices.length < 3) {
+        return null;
+      }
+      
+      // Create geometry from vertices
+      const geometry = new THREE.BufferGeometry();
+      const vertices: number[] = [];
+      
+      // IDF format: [X, Y, Z] where Y is height (vertical)
+      // Three.js also uses Y as up, so coordinates match directly
+      surface.vertices.forEach((v: number[]) => {
+        vertices.push(v[0], v[1], v[2]);
+      });
+      
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+      
+      // Create faces by triangulating the polygon
+      const indices: number[] = [];
+      for (let i = 1; i < surface.vertices.length - 1; i++) {
+        indices.push(0, i, i + 1);
+      }
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      // Use surface color from IDF
+      const color = surface.color || '#88ccff';
+      
+      // Create material based on surface type
+      const isWindow = surface.type === 'window' || surface.type === 'glassdoor';
+      const material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color),
+        roughness: isWindow ? 0.1 : 0.5,
+        metalness: isWindow ? 0.8 : 0.3,
+        transparent: isWindow,
+        opacity: isWindow ? 0.4 : 1.0,
+        side: THREE.DoubleSide  // Render both sides since we don't know winding order
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = surface.name || `Surface_${surface.index}`;
+      mesh.userData = {
+        type: surface.type,
+        zone: surface.zone,
+        index: surface.index
+      };
+      mesh.castShadow = !isWindow;  // Windows don't cast shadows
+      mesh.receiveShadow = !isWindow;
+      
+      return mesh;
+    }
   };
 
   const handleResetView = () => {

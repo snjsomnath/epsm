@@ -275,7 +275,7 @@ const SelectAreaPage = () => {
         filter_height_min: 3,
         filter_height_max: 100,
         filter_area_min: 100,
-        use_multiplier: false
+        use_multiplier: true  // Enable floor multipliers for faster generation and instanced rendering
       };
 
       // Simulate step progression for better UX
