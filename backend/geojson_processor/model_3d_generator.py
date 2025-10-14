@@ -77,6 +77,9 @@ class Model3DGenerator:
                 logger.warning("No surfaces found in IDF file")
                 return None
             
+            # Parse zone multipliers for instancing
+            multipliers = self._parse_zone_multipliers(idf_content)
+            
             # Normalize coordinates to origin
             surfaces_data = self._normalize_coordinates(surfaces_data)
             
@@ -85,13 +88,15 @@ class Model3DGenerator:
                 'version': '1.0',
                 'type': 'idf',
                 'surfaces': surfaces_data,
+                'multipliers': multipliers,  # Add multiplier data for instancing
                 'metadata': {
                     'surface_count': len(surfaces_data),
                     'surface_types': list(set(self.surface_types)),
                     'zones': list(set(self.surface_zones)),
                     'source': 'energyplus_idf',
                     'generated_at': str(datetime.now()),
-                    'colors': self.COLORS
+                    'colors': self.COLORS,
+                    'uses_multipliers': len(multipliers) > 0
                 }
             }
             
@@ -154,16 +159,21 @@ class Model3DGenerator:
     
     def _normalize_coordinates(self, surfaces_data: List[Dict]) -> List[Dict]:
         """
-        Normalize coordinates to center the model at origin.
+        Normalize coordinates to center the model at origin and convert coordinate system.
         
         Large UTM coordinates cause precision issues in Three.js,
         so we translate all vertices to be centered around (0, 0, 0).
+        
+        Also converts from EnergyPlus coordinate system to Three.js:
+        - EnergyPlus: X (East), Y (North), Z (Up)
+        - Three.js: X (Right), Y (Up), Z (Forward)
+        - Conversion: [X, Y, Z] → [X, Z, Y]
         
         Args:
             surfaces_data: List of surface dictionaries with vertices
         
         Returns:
-            Updated surfaces_data with normalized coordinates
+            Updated surfaces_data with normalized and converted coordinates
         """
         if not surfaces_data:
             return surfaces_data
@@ -187,22 +197,75 @@ class Model3DGenerator:
         center_y = (min_y + max_y) / 2
         center_z = (min_z + max_z) / 2
         
-        logger.info(f"Bounding box: X[{min_x:.2f}, {max_x:.2f}] Y[{min_y:.2f}, {max_y:.2f}] Z[{min_z:.2f}, {max_z:.2f}]")
+        logger.info(f"Bounding box (EnergyPlus): X[{min_x:.2f}, {max_x:.2f}] Y[{min_y:.2f}, {max_y:.2f}] Z[{min_z:.2f}, {max_z:.2f}]")
         logger.info(f"Center point: ({center_x:.2f}, {center_y:.2f}, {center_z:.2f})")
         
-        # Translate all vertices to center
+        # Translate to center and convert coordinate system
+        # EnergyPlus [X, Y, Z] → Three.js [X, Z, Y]
         for surface in surfaces_data:
             normalized_vertices = []
             for vertex in surface['vertices']:
                 normalized_vertices.append([
-                    vertex[0] - center_x,
-                    vertex[1] - center_y,
-                    vertex[2] - center_z
+                    vertex[0] - center_x,  # X stays X
+                    vertex[2] - center_z,  # Z becomes Y (up)
+                    vertex[1] - center_y   # Y becomes Z (depth)
                 ])
             surface['vertices'] = normalized_vertices
         
-        logger.info("Coordinates normalized to origin")
+        logger.info("Coordinates normalized to origin and converted to Three.js coordinate system")
         return surfaces_data
+    
+    def _parse_zone_multipliers(self, idf_content: str) -> Dict[str, int]:
+        """
+        Parse zone multipliers from IDF content.
+        
+        When use_multiplier=True in Honeybee, zones can have multipliers
+        that indicate identical floors. This allows us to instance geometry
+        in the 3D viewer for better performance.
+        
+        Args:
+            idf_content: IDF file content as string
+        
+        Returns:
+            Dictionary mapping zone names to their multipliers
+        """
+        multipliers = {}
+        
+        # Split IDF into objects
+        items = re.split(r';', idf_content)
+        
+        # Find ZONE objects and extract multipliers
+        zone_pattern = re.compile(r'ZONE\s*,', re.IGNORECASE)
+        
+        for item in items:
+            if zone_pattern.search(item):
+                try:
+                    # Extract zone name (first field after ZONE,)
+                    name_match = re.search(r'ZONE\s*,\s*(.*?)\s*,', item, re.IGNORECASE)
+                    if not name_match:
+                        continue
+                    
+                    zone_name = name_match.group(1).strip()
+                    
+                    # Extract multiplier field (look for "Multiplier" comment)
+                    multiplier_match = re.search(r'(\d+(?:\.\d+)?)\s*,?\s*!-\s*Multiplier', item, re.IGNORECASE)
+                    
+                    if multiplier_match:
+                        multiplier = int(float(multiplier_match.group(1)))
+                        if multiplier > 1:
+                            multipliers[zone_name] = multiplier
+                            logger.info(f"Found zone '{zone_name}' with multiplier {multiplier}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to parse multiplier for zone: {e}")
+                    continue
+        
+        if multipliers:
+            logger.info(f"Found {len(multipliers)} zones with multipliers: {multipliers}")
+        else:
+            logger.info("No zone multipliers found (model not using floor multipliers)")
+        
+        return multipliers
     
     def _parse_surface_item(self, item: str, index: int) -> Optional[Dict]:
         """
