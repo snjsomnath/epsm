@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import earcut from 'earcut';
 
 interface ModelViewer3DProps {
@@ -370,6 +371,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     // Handle IDF format with surfaces array
     if (data.surfaces && Array.isArray(data.surfaces)) {
       console.log(`📐 Processing ${data.surfaces.length} surfaces...`);
+      console.log(`⚡ Using geometry merging for performance optimization...`);
       
       // Group surfaces by zone for potential instancing
       const surfacesByZone: { [zone: string]: any[] } = {};
@@ -385,15 +387,16 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       let successCount = 0;
       let skipCount = 0;
       let instancedCount = 0;
+      let mergedCount = 0;
       
       // Process each zone
       Object.entries(surfacesByZone).forEach(([zoneName, surfaces]) => {
         const multiplier = multipliers[zoneName] || 1;
         
         if (multiplier > 1) {
-          console.log(`🔄 Zone '${zoneName}' has multiplier ${multiplier} - creating instances`);
+          console.log(`🔄 Zone '${zoneName}' has multiplier ${multiplier} - creating instances with merged geometry`);
           
-          // Create a group for the base geometry
+          // Create a group for the base geometry with merging
           const zoneGroup = new THREE.Group();
           zoneGroup.name = `${zoneName}_base`;
           
@@ -405,27 +408,23 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
             s.type === 'window' || s.type === 'glassdoor'
           );
           
-          // Add structural surfaces to the base group
-          structuralSurfaces.forEach((surface: any) => {
-            const mesh = createSurfaceMesh(surface);
-            if (mesh) {
-              zoneGroup.add(mesh);
-              successCount++;
-            } else {
-              skipCount++;
-            }
+          // Merge structural surfaces by type
+          const mergedMeshes = createMergedMeshesByType(structuralSurfaces);
+          mergedMeshes.forEach(mesh => {
+            zoneGroup.add(mesh);
+            mergedCount++;
           });
+          successCount += structuralSurfaces.length;
           
-          // Add windows to the base group (they'll be instanced with their parent surfaces)
-          windowSurfaces.forEach((surface: any) => {
-            const mesh = createSurfaceMesh(surface);
-            if (mesh) {
+          // Merge windows separately (they need transparency)
+          if (windowSurfaces.length > 0) {
+            const mergedWindows = createMergedMeshesByType(windowSurfaces);
+            mergedWindows.forEach(mesh => {
               zoneGroup.add(mesh);
-              successCount++;
-            } else {
-              skipCount++;
-            }
-          });
+              mergedCount++;
+            });
+            successCount += windowSurfaces.length;
+          }
           
           // Get the bounding box to calculate floor height
           const bbox = new THREE.Box3().setFromObject(zoneGroup);
@@ -446,23 +445,22 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           const windowCount = windowSurfaces.length;
           console.log(`✅ Created ${multiplier} instances for zone '${zoneName}' (floor height: ${floorHeight.toFixed(2)}m, ${windowCount} windows per floor)`);
         } else {
-          // No multiplier - add surfaces directly
-          surfaces.forEach((surface: any) => {
-            const mesh = createSurfaceMesh(surface);
-            if (mesh) {
-              group.add(mesh);
-              successCount++;
-            } else {
-              skipCount++;
-            }
+          // No multiplier - merge surfaces by type
+          const mergedMeshes = createMergedMeshesByType(surfaces);
+          mergedMeshes.forEach(mesh => {
+            mesh.name = `${zoneName}_${mesh.userData.type}`;
+            group.add(mesh);
+            mergedCount++;
           });
+          successCount += surfaces.length;
         }
       });
       
-      console.log(`✅ Created ${successCount} surface meshes (${skipCount} skipped, ${instancedCount} instanced)`);
+      console.log(`✅ Processed ${successCount} surfaces into ${mergedCount} merged meshes (${skipCount} skipped, ${instancedCount} instanced)`);
+      console.log(`⚡ Performance boost: Reduced from ${successCount} draw calls to ${mergedCount} draw calls!`);
       
       if (instancedCount > 0) {
-        console.log(`⚡ Performance boost: ${instancedCount} floors instanced (including all windows) instead of creating duplicate geometry`);
+        console.log(`⚡ Additional boost: ${instancedCount} floors instanced instead of creating duplicate geometry`);
       }
     }
     // Handle old format with buildings array
@@ -498,8 +496,92 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     console.log(`🎯 Final group has ${group.children.length} children`);
     return group;
     
-    // Helper function to create a mesh from a surface
-    function createSurfaceMesh(surface: any): THREE.Mesh | null {
+    // Helper function to create merged meshes by surface type
+    function createMergedMeshesByType(surfaces: any[]): THREE.Mesh[] {
+      // Group surfaces by type
+      const surfacesByType: { [type: string]: any[] } = {};
+      
+      surfaces.forEach((surface: any) => {
+        const type = surface.type || 'undefined';
+        if (!surfacesByType[type]) {
+          surfacesByType[type] = [];
+        }
+        surfacesByType[type].push(surface);
+      });
+      
+      const mergedMeshes: THREE.Mesh[] = [];
+      
+      // Create merged geometry for each type
+      Object.entries(surfacesByType).forEach(([type, typeSurfaces]) => {
+        const geometries: THREE.BufferGeometry[] = [];
+        
+        typeSurfaces.forEach((surface: any) => {
+          const geom = createSurfaceGeometry(surface);
+          if (geom) {
+            geometries.push(geom);
+          }
+        });
+        
+        if (geometries.length === 0) return;
+        
+        // Merge all geometries of this type
+        let mergedGeometry: THREE.BufferGeometry;
+        
+        if (geometries.length === 1) {
+          mergedGeometry = geometries[0];
+        } else {
+          try {
+            mergedGeometry = BufferGeometryUtils.mergeGeometries(geometries, false);
+          } catch (error) {
+            console.warn(`Failed to merge ${type} geometries, using individual meshes:`, error);
+            // Fallback: create individual meshes
+            geometries.forEach((geom, idx) => {
+              const material = createMaterialForType(type);
+              const mesh = new THREE.Mesh(geom, material);
+              mesh.name = `${type}_${idx}`;
+              mesh.userData = { type };
+              mesh.castShadow = type !== 'window' && type !== 'glassdoor';
+              mesh.receiveShadow = type !== 'window' && type !== 'glassdoor';
+              mergedMeshes.push(mesh);
+            });
+            return;
+          }
+        }
+        
+        // Create material based on surface type
+        const material = createMaterialForType(type);
+        
+        const mesh = new THREE.Mesh(mergedGeometry, material);
+        mesh.name = type;
+        mesh.userData = { type, count: typeSurfaces.length };
+        mesh.castShadow = type !== 'window' && type !== 'glassdoor';
+        mesh.receiveShadow = type !== 'window' && type !== 'glassdoor';
+        
+        mergedMeshes.push(mesh);
+        
+        console.log(`🔗 Merged ${typeSurfaces.length} ${type} surfaces into 1 mesh`);
+      });
+      
+      return mergedMeshes;
+    }
+    
+    // Helper function to create material for a surface type
+    function createMaterialForType(type: string): THREE.Material {
+      const color = data.metadata?.colors?.[type] || '#88ccff';
+      const isWindow = type === 'window' || type === 'glassdoor';
+      
+      return new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color),
+        roughness: isWindow ? 0.1 : 0.5,
+        metalness: isWindow ? 0.8 : 0.3,
+        transparent: isWindow,
+        opacity: isWindow ? 0.4 : 1.0,
+        side: THREE.DoubleSide
+      });
+    }
+    
+    // Helper function to create geometry from a surface (without material)
+    function createSurfaceGeometry(surface: any): THREE.BufferGeometry | null {
       if (!surface.vertices || surface.vertices.length < 3) {
         return null;
       }
@@ -508,8 +590,6 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       const geometry = new THREE.BufferGeometry();
       const vertices: number[] = [];
       
-      // IDF format: [X, Y, Z] where Y is height (vertical)
-      // Three.js also uses Y as up, so coordinates match directly
       surface.vertices.forEach((v: number[]) => {
         vertices.push(v[0], v[1], v[2]);
       });
@@ -527,10 +607,6 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         indices.push(0, 1, 2, 0, 2, 3);
       } else {
         // Complex polygon - use earcut for proper triangulation
-        // earcut requires a flat array of coordinates and works in 2D
-        // We need to project to 2D first
-        
-        // Calculate surface normal to determine projection plane
         const v0 = new THREE.Vector3(surface.vertices[0][0], surface.vertices[0][1], surface.vertices[0][2]);
         const v1 = new THREE.Vector3(surface.vertices[1][0], surface.vertices[1][1], surface.vertices[1][2]);
         const v2 = new THREE.Vector3(surface.vertices[2][0], surface.vertices[2][1], surface.vertices[2][2]);
@@ -540,62 +616,43 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
         
         // Determine which axes to use for 2D projection
-        const absX = Math.abs(normal.x);
-        const absY = Math.abs(normal.y);
-        const absZ = Math.abs(normal.z);
+        const absNormal = new THREE.Vector3(Math.abs(normal.x), Math.abs(normal.y), Math.abs(normal.z));
+        let skipAxis = 0; // Default: skip X axis (project to YZ plane)
         
-        const flatVertices: number[] = [];
-        
-        if (absZ >= absX && absZ >= absY) {
-          // Project onto XY plane (ignore Z)
-          surface.vertices.forEach((v: number[]) => {
-            flatVertices.push(v[0], v[1]);
-          });
-        } else if (absY >= absX && absY >= absZ) {
-          // Project onto XZ plane (ignore Y)
-          surface.vertices.forEach((v: number[]) => {
-            flatVertices.push(v[0], v[2]);
-          });
-        } else {
-          // Project onto YZ plane (ignore X)
-          surface.vertices.forEach((v: number[]) => {
-            flatVertices.push(v[1], v[2]);
-          });
+        if (absNormal.y > absNormal.x && absNormal.y > absNormal.z) {
+          skipAxis = 1; // Skip Y axis (project to XZ plane) - horizontal surfaces
+        } else if (absNormal.z > absNormal.x && absNormal.z > absNormal.y) {
+          skipAxis = 2; // Skip Z axis (project to XY plane)
         }
         
-        // Triangulate using earcut
-        const triangleIndices = earcut(flatVertices);
-        indices.push(...triangleIndices);
+        // Create 2D coordinates for earcut
+        const coords2D: number[] = [];
+        surface.vertices.forEach((v: number[]) => {
+          if (skipAxis === 0) {
+            coords2D.push(v[1], v[2]); // Y, Z
+          } else if (skipAxis === 1) {
+            coords2D.push(v[0], v[2]); // X, Z
+          } else {
+            coords2D.push(v[0], v[1]); // X, Y
+          }
+        });
+        
+        try {
+          const triangles = earcut(coords2D);
+          indices.push(...triangles);
+        } catch (error) {
+          console.warn(`Earcut triangulation failed for surface, using fallback`, error);
+          // Fallback: fan triangulation from first vertex
+          for (let i = 1; i < surface.vertices.length - 1; i++) {
+            indices.push(0, i, i + 1);
+          }
+        }
       }
       
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
-
-      // Use surface color from IDF
-      const color = surface.color || '#88ccff';
       
-      // Create material based on surface type
-      const isWindow = surface.type === 'window' || surface.type === 'glassdoor';
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        roughness: isWindow ? 0.1 : 0.5,
-        metalness: isWindow ? 0.8 : 0.3,
-        transparent: isWindow,
-        opacity: isWindow ? 0.4 : 1.0,
-        side: THREE.DoubleSide  // Render both sides since we don't know winding order
-      });
-
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.name = surface.name || `Surface_${surface.index}`;
-      mesh.userData = {
-        type: surface.type,
-        zone: surface.zone,
-        index: surface.index
-      };
-      mesh.castShadow = !isWindow;  // Windows don't cast shadows
-      mesh.receiveShadow = !isWindow;
-      
-      return mesh;
+      return geometry;
     }
   };
 

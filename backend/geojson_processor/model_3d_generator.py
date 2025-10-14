@@ -231,17 +231,18 @@ class Model3DGenerator:
         
         # Translate to center and convert coordinate system
         # EnergyPlus [X, Y, Z] → Three.js [X, Z, Y]
+        # Also reduce precision to 2 decimal places for smaller file size and better performance
         for surface in surfaces_data:
             normalized_vertices = []
             for vertex in surface['vertices']:
                 normalized_vertices.append([
-                    vertex[0] - center_x,  # X stays X
-                    vertex[2] - center_z,  # Z becomes Y (up)
-                    vertex[1] - center_y   # Y becomes Z (depth)
+                    round(vertex[0] - center_x, 2),  # X stays X, reduced precision
+                    round(vertex[2] - center_z, 2),  # Z becomes Y (up), reduced precision
+                    round(vertex[1] - center_y, 2)   # Y becomes Z (depth), reduced precision
                 ])
             surface['vertices'] = normalized_vertices
         
-        logger.info("Coordinates normalized to origin and converted to Three.js coordinate system")
+        logger.info("Coordinates normalized to origin, converted to Three.js coordinate system, and precision reduced to 2 decimals")
         return surfaces_data
     
     def _offset_windows(self, surfaces_data: List[Dict]) -> List[Dict]:
