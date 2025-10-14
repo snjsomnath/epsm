@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import earcut from 'earcut';
 
 interface ModelViewer3DProps {
   modelUrl: string;
@@ -495,11 +496,58 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
       
-      // Create faces by triangulating the polygon
+      // Triangulate the polygon using earcut for proper handling of non-convex shapes
       const indices: number[] = [];
-      for (let i = 1; i < surface.vertices.length - 1; i++) {
-        indices.push(0, i, i + 1);
+      
+      if (surface.vertices.length === 3) {
+        // Triangle - no triangulation needed
+        indices.push(0, 1, 2);
+      } else if (surface.vertices.length === 4) {
+        // Quad - simple triangulation (two triangles)
+        indices.push(0, 1, 2, 0, 2, 3);
+      } else {
+        // Complex polygon - use earcut for proper triangulation
+        // earcut requires a flat array of coordinates and works in 2D
+        // We need to project to 2D first
+        
+        // Calculate surface normal to determine projection plane
+        const v0 = new THREE.Vector3(surface.vertices[0][0], surface.vertices[0][1], surface.vertices[0][2]);
+        const v1 = new THREE.Vector3(surface.vertices[1][0], surface.vertices[1][1], surface.vertices[1][2]);
+        const v2 = new THREE.Vector3(surface.vertices[2][0], surface.vertices[2][1], surface.vertices[2][2]);
+        
+        const edge1 = new THREE.Vector3().subVectors(v1, v0);
+        const edge2 = new THREE.Vector3().subVectors(v2, v0);
+        const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
+        
+        // Determine which axes to use for 2D projection
+        const absX = Math.abs(normal.x);
+        const absY = Math.abs(normal.y);
+        const absZ = Math.abs(normal.z);
+        
+        const flatVertices: number[] = [];
+        
+        if (absZ >= absX && absZ >= absY) {
+          // Project onto XY plane (ignore Z)
+          surface.vertices.forEach((v: number[]) => {
+            flatVertices.push(v[0], v[1]);
+          });
+        } else if (absY >= absX && absY >= absZ) {
+          // Project onto XZ plane (ignore Y)
+          surface.vertices.forEach((v: number[]) => {
+            flatVertices.push(v[0], v[2]);
+          });
+        } else {
+          // Project onto YZ plane (ignore X)
+          surface.vertices.forEach((v: number[]) => {
+            flatVertices.push(v[1], v[2]);
+          });
+        }
+        
+        // Triangulate using earcut
+        const triangleIndices = earcut(flatVertices);
+        indices.push(...triangleIndices);
       }
+      
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
 
