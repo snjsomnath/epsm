@@ -38,6 +38,17 @@ export default defineConfig({
           });
         },
       },
+      '/admin': {
+        target: backendHost,
+        changeOrigin: true,
+        secure: false,
+        xfwd: true,
+      },
+      '/static': {
+        target: backendHost,
+        changeOrigin: true,
+        secure: false,
+      },
       '/ws': {
         target: backendHost.replace('http', 'ws'),
         ws: true,

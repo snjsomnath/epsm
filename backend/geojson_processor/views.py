@@ -18,6 +18,7 @@ from pyproj import Transformer
 
 from .dtcc_service import DTCCService
 from .geojson_to_idf import GeoJSONToIDFConverter
+from .model_3d_generator import Model3DGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +136,49 @@ def process_geojson(request):
                 'details': 'Check server logs for detailed traceback'
             }, status=500)
         
+        # Step 4: Generate 3D model for preview from IDF file
+        logger.info("=" * 60)
+        logger.info("STEP 4: Generating 3D model for preview...")
+        logger.info("=" * 60)
+        model_3d_path = None
+        try:
+            # Use the IDF file that was just created
+            if idf_path and idf_path.exists():
+                logger.info(f"IDF file exists at: {idf_path}")
+                logger.info(f"IDF file size: {idf_path.stat().st_size} bytes")
+                
+                model_generator = Model3DGenerator(str(work_dir))
+                logger.info("Model3DGenerator initialized")
+                
+                model_3d_path = model_generator.generate_from_idf(
+                    str(idf_path)
+                )
+                
+                if model_3d_path:
+                    logger.info(f"✅ Generated 3D model at: {model_3d_path}")
+                    model_path_obj = Path(model_3d_path)
+                    if model_path_obj.exists():
+                        logger.info(f"✅ 3D model file exists, size: {model_path_obj.stat().st_size} bytes")
+                    else:
+                        logger.error(f"❌ 3D model file NOT found at {model_3d_path}")
+                else:
+                    logger.warning("⚠️ 3D model generation returned None")
+            else:
+                logger.warning(f"❌ IDF file not found at {idf_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to generate 3D model: {e}")
+            import traceback
+            traceback.print_exc()
+        
         # Return results
         relative_work_dir = Path('geojson_processing') / work_id
         relative_idf_path = relative_work_dir / 'city.idf'
         relative_geojson_path = relative_work_dir / 'city_enriched.geojson'
+        relative_model_path = relative_work_dir / 'model_3d.json' if model_3d_path else None
         
         logger.info(f"Successfully generated IDF at {idf_path}")
         
-        return JsonResponse({
+        response_data = {
             'success': True,
             'message': 'IDF files generated successfully',
             'idf_path': str(relative_idf_path),
@@ -150,7 +186,24 @@ def process_geojson(request):
             'work_dir': str(relative_work_dir),
             'idf_url': f'/media/{relative_idf_path}',
             'geojson_url': f'/media/{relative_geojson_path}'
-        })
+        }
+        
+        # Add 3D model URL if available
+        if relative_model_path:
+            response_data['model_url'] = f'/media/{relative_model_path}'
+            logger.info(f"✅ Returning model_url: {response_data['model_url']}")
+        else:
+            logger.warning("⚠️ No 3D model path available - model_url not included in response")
+        
+        logger.info("=" * 60)
+        logger.info("FINAL RESPONSE DATA:")
+        logger.info(f"  - success: {response_data.get('success')}")
+        logger.info(f"  - idf_path: {response_data.get('idf_path')}")
+        logger.info(f"  - model_url: {response_data.get('model_url', 'NOT SET')}")
+        logger.info(f"  - geojson_path: {response_data.get('geojson_path')}")
+        logger.info("=" * 60)
+        
+        return JsonResponse(response_data)
     
     except Exception as e:
         logger.error(f"Unexpected error in process_geojson: {e}")
