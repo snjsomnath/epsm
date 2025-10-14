@@ -314,9 +314,10 @@ class Model3DGenerator:
             # 1. When there's a number: "4, !- Number of Vertices"
             # 2. When it's blank: ", !- Number of Vertices"
             
-            # Look for the "Number of Vertices" comment, then capture everything after until semicolon
+            # Look for the "Number of Vertices" comment, then capture everything after (including newlines)
+            # The pattern should match the comma and comment, then capture all vertices until semicolon
             vertices_section_match = re.search(
-                r',\s*!-\s*number of vertices\s+(.*?)(?:;|\Z)', 
+                r'!-\s*number of vertices\s*\n?(.*?)(?:;|\Z)', 
                 item, 
                 re.DOTALL | re.IGNORECASE
             )
