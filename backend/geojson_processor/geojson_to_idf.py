@@ -305,12 +305,51 @@ class GeoJSONToIDFConverter:
             with open(geojson_path, 'r', encoding='utf-8') as f:
                 geojson_data = json.load(f)
             
+            # Calculate bounding box centroid in EPSG:4326 (WGS84 lat/lon)
+            logger.info("Calculating bounding box centroid...")
+            all_coords = []
+            for feature in geojson_data['features']:
+                if feature['geometry']['type'] == 'Polygon':
+                    for ring in feature['geometry']['coordinates']:
+                        all_coords.extend(ring)
+                elif feature['geometry']['type'] == 'MultiPolygon':
+                    for polygon in feature['geometry']['coordinates']:
+                        for ring in polygon:
+                            all_coords.extend(ring)
+            
+            if not all_coords:
+                raise ValueError("No coordinates found in GeoJSON")
+            
+            # Calculate centroid (lon, lat in EPSG:4326)
+            lons = [c[0] for c in all_coords]
+            lats = [c[1] for c in all_coords]
+            centroid_lon = (min(lons) + max(lons)) / 2
+            centroid_lat = (min(lats) + max(lats)) / 2
+            
+            logger.info(f"Centroid: lon={centroid_lon:.6f}, lat={centroid_lat:.6f}")
+            
+            # Create Location object for the centroid
+            from ladybug_geometry.geometry2d.pointvector import Point2D
+            from ladybug.location import Location
+            
+            # Create a Location object at the centroid (for sun position, climate data, etc.)
+            location_obj = Location(
+                city='Sweden',
+                latitude=centroid_lat,
+                longitude=centroid_lon,
+                time_zone=1,  # UTC+1 for Sweden
+                elevation=0
+            )
+            
             # Create Dragonfly model from GeoJSON
+            # GeoJSON is in EPSG:4326 (WGS84 lat/lon) - DTCC outputs CRS84 which is WGS84
+            # location: Geographic location (lat/lon) for climate/sun calculations
+            # point: Position in 3D scene (meters) - use (0,0) to center at origin
             logger.info("Creating Dragonfly model...")
             model, location = Model.from_geojson(
                 str(geojson_path),
-                location=None,
-                point=Point2D(0, 0),
+                location=location_obj,
+                point=Point2D(0, 0),  # Place at origin (0,0) in 3D scene
                 all_polygons_to_buildings=False,
                 existing_to_context=True,
                 units='Meters',
@@ -326,20 +365,28 @@ class GeoJSONToIDFConverter:
             dfjson_path = self.work_dir / 'city.dfjson'
             model.to_dfjson('city', str(self.work_dir), 2, None)
             logger.info(f"Saved Dragonfly model to {dfjson_path}")
+
+            # Validate Dragonfly model
+            logger.info("Validating Dragonfly model...")
+            validation_result = self.validate_dragonfly_model(model)
+            logger.info(f"Validation result: {validation_result}")
             
             # Convert to Honeybee model
             logger.info("Converting to Honeybee model...")
+            logger.info("Parameters: object_per_model='District', exclude_plenums=True, solve_ceiling_adjacencies=False")
             hb_models = model.to_honeybee(
                 object_per_model='District',
                 shade_distance=None,
                 use_multiplier=use_multiplier,
-                exclude_plenums=True,  # Exclude plenum zones
+                exclude_plenums=True,  # Exclude plenum zones (API changed from add_plenum)
                 cap=False,
                 solve_ceiling_adjacencies=True,
                 tolerance=None,
                 enforce_adj=False
             )
             hb_model = hb_models[0]
+            logger.info("✅ Honeybee model conversion completed successfully")
+            logger.info(f"✅ Generated Honeybee model with {len(hb_model.rooms)} rooms")
             
             # Convert to IDF
             logger.info("Generating IDF file...")
@@ -480,6 +527,133 @@ class GeoJSONToIDFConverter:
         except Exception as e:
             logger.error(f"Error adjusting building properties: {e}")
             raise
+    
+    def validate_dragonfly_model(
+        self,
+        model,
+        check_function: str = 'check_all',
+        check_args: Optional[List] = None,
+        json_output: bool = False
+    ) -> str:
+        """
+        Validate a Dragonfly Model and generate a validation report.
+        
+        Args:
+            model: A Dragonfly Model object to validate. This can also be the file path
+                   to a DFJSON or a JSON string representation of a Dragonfly Model.
+            check_function: Name of a check function on the Model (e.g., 'check_all',
+                           'check_rooms_solid'). Default: 'check_all'
+            check_args: Optional list of arguments to pass to the check function.
+            json_output: If True, return JSON formatted report instead of plain text.
+        
+        Returns:
+            Validation report as a string (plain text or JSON)
+        """
+        try:
+            from dragonfly.model import Model
+            import dragonfly.config as df_folders
+            
+            # Process the input model if it's not already a Model object
+            report = ''
+            if isinstance(model, str):
+                try:
+                    if model.startswith('{'):
+                        model = Model.from_dict(json.loads(model))
+                    elif os.path.isfile(model):
+                        model = Model.from_file(model)
+                    else:
+                        report = 'Input Model for validation is not a Model object, ' \
+                            'file path to a Model or a Model DFJSON string.'
+                except Exception as e:
+                    report = str(e)
+            elif not isinstance(model, Model):
+                report = 'Input Model for validation is not a Model object, ' \
+                    'file path to a Model or a Model DFJSON string.'
+
+            if report == '':  # Get the function to call to do checks
+                if '.' in check_function:  # nested attribute
+                    attributes = check_function.split('.')
+                    check_func = model
+                    for attribute in attributes:
+                        if check_func is None:
+                            continue
+                        check_func = getattr(check_func, attribute, None)
+                else:
+                    check_func = getattr(model, check_function, None)
+                
+                if check_func is None:
+                    raise ValueError(f'Dragonfly Model class has no method {check_function}')
+                
+                # Process the arguments and options
+                args = [] if check_args is None else list(check_args)
+                kwargs = {'raise_exception': False}
+
+            # Create the report
+            if not json_output:  # Plain text report
+                # Add version information
+                try:
+                    c_ver = df_folders.dragonfly_core_version_str
+                    s_ver = df_folders.dragonfly_schema_version_str
+                except AttributeError:
+                    c_ver = 'unknown'
+                    s_ver = 'unknown'
+                
+                ver_msg = f'Validating Model using dragonfly-core=={c_ver} and ' \
+                    f'dragonfly-schema=={s_ver}'
+                
+                # Run the check function
+                if report == '':
+                    kwargs['detailed'] = False
+                    report = check_func(*args, **kwargs)
+                
+                # Format the results
+                if report == '':
+                    full_msg = ver_msg + '\n✅ Congratulations! Your Model is valid!'
+                else:
+                    full_msg = ver_msg + \
+                        '\n❌ Your Model is invalid for the following reasons:\n' + report
+                return full_msg
+            else:  # JSON report
+                # Add version information
+                try:
+                    c_ver = df_folders.dragonfly_core_version_str
+                    s_ver = df_folders.dragonfly_schema_version_str
+                except AttributeError:
+                    c_ver = 'unknown'
+                    s_ver = 'unknown'
+                
+                out_dict = {
+                    'type': 'ValidationReport',
+                    'app_name': 'Dragonfly',
+                    'app_version': c_ver,
+                    'schema_version': s_ver,
+                    'fatal_error': report
+                }
+                
+                if report == '':
+                    kwargs['detailed'] = True
+                    errors = check_func(*args, **kwargs)
+                    out_dict['errors'] = errors
+                    out_dict['valid'] = len(errors) == 0
+                else:
+                    out_dict['errors'] = []
+                    out_dict['valid'] = False
+                
+                return json.dumps(out_dict, indent=4)
+                
+        except Exception as e:
+            error_msg = f"Error during model validation: {str(e)}"
+            logger.error(error_msg)
+            if json_output:
+                return json.dumps({
+                    'type': 'ValidationReport',
+                    'app_name': 'Dragonfly',
+                    'valid': False,
+                    'fatal_error': error_msg,
+                    'errors': []
+                }, indent=4)
+            else:
+                return f"❌ Validation failed: {error_msg}"
     
     def process(
         self,
