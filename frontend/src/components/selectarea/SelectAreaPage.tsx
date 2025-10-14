@@ -155,6 +155,9 @@ const SelectAreaPage = () => {
   const [processingStep, setProcessingStep] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [idfPath, setIdfPath] = useState<string | null>(null);
+  const [idfUrl, setIdfUrl] = useState<string | null>(null);
+  const [geojsonPath, setGeojsonPath] = useState<string | null>(null);
+  const [geojsonUrl, setGeojsonUrl] = useState<string | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -338,12 +341,23 @@ const SelectAreaPage = () => {
             setIdfPath(data.idf_path);
           }
           
+          if (data.idf_url) {
+            console.log('📄 IDF URL:', data.idf_url);
+            setIdfUrl(data.idf_url);
+          }
+          
           if (data.model_url) {
             console.log('🎨 3D Model File:', data.model_url);
           }
           
           if (data.geojson_path) {
             console.log('🗺️ GeoJSON File:', data.geojson_path);
+            setGeojsonPath(data.geojson_path);
+          }
+          
+          if (data.geojson_url) {
+            console.log('🗺️ GeoJSON URL:', data.geojson_url);
+            setGeojsonUrl(data.geojson_url);
           }
           
           if (data.buildings_count) {
@@ -457,7 +471,7 @@ const SelectAreaPage = () => {
   };
 
   const handleSimulateBaseline = async () => {
-    if (!idfPath) {
+    if (!idfUrl) {
       alert('No IDF file available');
       return;
     }
@@ -470,6 +484,9 @@ const SelectAreaPage = () => {
       navigate('/baseline', { 
         state: { 
           idfPath: idfPath,
+          idfUrl: idfUrl,
+          geojsonPath: geojsonPath,
+          geojsonUrl: geojsonUrl,
           fromGeoJSON: true
         } 
       });
