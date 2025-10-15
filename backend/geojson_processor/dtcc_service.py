@@ -7,6 +7,7 @@ Uses the DTCC (Digital Twin Cities Centre) library to fetch building data.
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class DTCCService:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         
     def download_city_data(self, west: float, south: float, east: float, north: float, 
-                          epsg: int = 3006) -> Path:
+                          epsg: int = 3006) -> tuple[Path, Optional[Path]]:
         """
         Download building footprints and pointcloud for the specified bounds.
         
@@ -37,7 +38,8 @@ class DTCCService:
             epsg: EPSG code for coordinate system (default: 3006 for SWEREF99 TM)
             
         Returns:
-            Path to generated city.geojson file
+            Tuple of (geojson_path, terrain_stl_path)
+            terrain_stl_path may be None if terrain export fails
         """
         try:
             from dtcc import City, Bounds
@@ -71,6 +73,28 @@ class DTCCService:
             logger.info("Building LOD1 buildings...")
             city.build_lod1_buildings()
             
+            # Export terrain mesh to STL for 3D visualization
+            terrain_stl_path = self.work_dir / 'terrain.stl'
+            logger.info(f"Exporting terrain mesh to STL: {terrain_stl_path}")
+            
+            try:
+                # Export terrain mesh using DTCC's terrain.mesh.save() method
+                if hasattr(city, 'terrain') and city.terrain is not None:
+                    if hasattr(city.terrain, 'mesh') and city.terrain.mesh is not None:
+                        city.terrain.mesh.save(str(terrain_stl_path))
+                        logger.info(f"Successfully exported terrain mesh to {terrain_stl_path}")
+                    else:
+                        logger.warning("No terrain mesh available in city.terrain.mesh")
+                        terrain_stl_path = None
+                else:
+                    logger.warning("No terrain object available in city")
+                    terrain_stl_path = None
+            except Exception as e:
+                logger.warning(f"Failed to export terrain mesh: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
+                terrain_stl_path = None
+            
             # Export to GeoJSON
             geojson_path = self.work_dir / 'city.geojson'
             logger.info(f"Exporting to GeoJSON: {geojson_path}")
@@ -81,7 +105,7 @@ class DTCCService:
             save_footprints(city, str(geojson_path))
             
             logger.info(f"Successfully downloaded city data to {geojson_path}")
-            return geojson_path
+            return geojson_path, terrain_stl_path
             
         except ImportError as e:
             logger.error(f"DTCC library not available: {e}")

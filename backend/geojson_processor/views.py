@@ -112,7 +112,7 @@ def process_geojson(request):
         dtcc_service = DTCCService(str(work_dir))
         
         try:
-            geojson_path = dtcc_service.download_city_data(
+            geojson_path, terrain_stl_path = dtcc_service.download_city_data(
                 west=west_3006,
                 south=south_3006,
                 east=east_3006,
@@ -207,6 +207,7 @@ def process_geojson(request):
         relative_idf_path = relative_work_dir / 'city.idf'
         relative_geojson_path = relative_work_dir / 'city_enriched.geojson'
         relative_model_path = relative_work_dir / 'model_3d.json' if model_3d_path else None
+        relative_terrain_path = relative_work_dir / 'terrain.stl' if terrain_stl_path else None
         
         logger.info(f"Successfully generated IDF at {idf_path}")
         
@@ -227,11 +228,19 @@ def process_geojson(request):
         else:
             logger.warning("⚠️ No 3D model path available - model_url not included in response")
         
+        # Add terrain mesh URL if available
+        if relative_terrain_path:
+            response_data['terrain_url'] = f'/media/{relative_terrain_path}'
+            logger.info(f"✅ Returning terrain_url: {response_data['terrain_url']}")
+        else:
+            logger.warning("⚠️ No terrain mesh available - terrain_url not included in response")
+        
         logger.info("=" * 60)
         logger.info("FINAL RESPONSE DATA:")
         logger.info(f"  - success: {response_data.get('success')}")
         logger.info(f"  - idf_path: {response_data.get('idf_path')}")
         logger.info(f"  - model_url: {response_data.get('model_url', 'NOT SET')}")
+        logger.info(f"  - terrain_url: {response_data.get('terrain_url', 'NOT SET')}")
         logger.info(f"  - geojson_path: {response_data.get('geojson_path')}")
         logger.info("=" * 60)
         
