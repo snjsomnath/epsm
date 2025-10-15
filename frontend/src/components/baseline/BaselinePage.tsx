@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField } from '@mui/material';
+import { Box, Typography, Paper, Grid, Card, CardContent, Button, Alert, LinearProgress, Stack, Tooltip, Tabs, Tab, IconButton, TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField, Chip } from '@mui/material';
 import { Play, FileText, AlertCircle, BarChart2, Edit3, Trash2, Zap, Thermometer, Snowflake, Clock } from 'lucide-react';
 import IdfUploadArea from './IdfUploadArea';
 import { authenticatedFetch } from '../../lib/auth-api';
@@ -27,6 +27,24 @@ const BaselinePage = () => {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+
+  // Auto-detect running simulations on page load
+  useEffect(() => {
+    if (baselineHistory && baselineHistory.length > 0) {
+      // Find the most recent running simulation
+      const runningSim = baselineHistory.find((run: any) => {
+        const progress = run.kpis?.progress ?? 0;
+        return progress > 0 && progress < 100;
+      });
+      
+      if (runningSim) {
+        console.log('🔍 Detected running simulation on page load:', runningSim.id);
+        setSimulating(true);
+        setProgress(runningSim.kpis?.progress ?? 0);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineHistory]); // Only run when baselineHistory changes
 
   // hydrate last baseline run when returning to page
   useEffect(() => {
@@ -318,10 +336,12 @@ const BaselinePage = () => {
                     </span>
                   </Tooltip>
                   {simulating && (
-                    <Box sx={{ width: '100%', mt: 2 }}>
-                      <LinearProgress variant="determinate" value={progress} />
-                      <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>Simulating... {Math.round(progress)}%</Typography>
-                    </Box>
+                    <>
+                      <Box sx={{ width: '100%', mt: 2 }}>
+                        <LinearProgress variant="determinate" value={progress} />
+                        <Typography variant="caption" align="center" sx={{ display: 'block', mt: 1 }}>Simulating... {Math.round(progress)}%</Typography>
+                      </Box>
+                    </>
                   )}
                 </Box>
               </Stack>
@@ -352,11 +372,22 @@ const BaselinePage = () => {
                         const idfFile = run.metadata?.fileName || (typeof run.title === 'string' && run.title.includes('-') ? run.title.split('-').slice(0, -1).join('-') : run.metadata?.fileBase || '—');
                         const ts = new Date(run.ts).toLocaleString();
                         const prog = typeof run.kpis?.progress === 'number' ? Math.min(Math.max(run.kpis.progress, 0), 100) : null;
+                        const status = run.kpis?.status || (prog === 100 ? 'completed' : prog !== null && prog > 0 ? 'running' : 'unknown');
+                        const isComplete = status === 'completed' || prog === 100;
+                        const isRunning = !isComplete && (status === 'running' || (prog !== null && prog > 0));
                         const kpis = run.kpis || {};
                         const isSelected = selectedRunId === run.id;
+                        
                         return (
                           <TableRow key={run.id} sx={{ backgroundColor: isSelected ? 'action.selected' : undefined }}>
-                            <TableCell sx={{ fontWeight: 600 }}>{simName}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                {simName}
+                                {isComplete && <Chip label="Complete" size="small" color="success" sx={{ height: 20 }} />}
+                                {isRunning && <Chip label="Running" size="small" color="warning" sx={{ height: 20 }} />}
+                                {!isComplete && !isRunning && <Chip label="Incomplete" size="small" color="error" sx={{ height: 20 }} />}
+                              </Box>
+                            </TableCell>
                             <TableCell>{idfFile}</TableCell>
                             <TableCell>
                               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -377,7 +408,7 @@ const BaselinePage = () => {
                             <TableCell><Typography variant="caption" color="text.secondary">{ts}</Typography></TableCell>
                             <TableCell align="right">
                               <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                                <Button size="small" onClick={async () => {
+                                <Button size="small" disabled={!isComplete} onClick={async () => {
                                   try {
                                     setSelectedRunId(run.id);
                                     let data = null;

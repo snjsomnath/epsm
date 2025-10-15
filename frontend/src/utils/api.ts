@@ -121,8 +121,9 @@ export const parseIdfFiles = async (files: File[]) => {
           return true;
         }
         // Basic IDF content validation for smaller files
+        // Check for common IDF objects - Version is optional (GeoJSON-generated IDFs may not have it)
         const content = await file.text();
-        return content.includes('Version,') && content.includes('Building,');
+        return content.includes('Building,') || content.includes('Zone,') || content.includes('SimulationControl,');
       }
     });
 
