@@ -47,7 +47,14 @@ def process_geojson(request):
         "filter_height_min": float (optional, default: 3),
         "filter_height_max": float (optional, default: 100),
         "filter_area_min": float (optional, default: 100),
-        "use_multiplier": bool (optional, default: false)
+        "use_multiplier": bool (optional, default: false),
+        "simulation_params": {  // Optional - simulation performance settings
+            "timestep": int (optional, default: 1, range: 1-60),
+            "do_zone_sizing": bool (optional, default: false),
+            "do_system_sizing": bool (optional, default: false),
+            "winter_design_temp": float (optional, default: -10, in °C),
+            "summer_design_temp": float (optional, default: 30, in °C)
+        }
     }
     
     Returns:
@@ -83,6 +90,19 @@ def process_geojson(request):
         filter_height_max = data.get('filter_height_max', 100)
         filter_area_min = data.get('filter_area_min', 100)
         use_multiplier = data.get('use_multiplier', False)
+        
+        # Simulation parameters (optimized defaults for fast execution)
+        sim_params = data.get('simulation_params', {})
+        timestep = sim_params.get('timestep', 1)  # Default: 1 timestep/hour (6x faster than 6)
+        do_zone_sizing = sim_params.get('do_zone_sizing', False)  # Default: disabled for speed
+        do_system_sizing = sim_params.get('do_system_sizing', False)  # Default: disabled for speed
+        
+        # Design day temperatures for HVAC sizing (optional)
+        winter_design_temp = sim_params.get('winter_design_temp', -10)  # Default: -10°C for Sweden
+        summer_design_temp = sim_params.get('summer_design_temp', 30)   # Default: 30°C for Sweden
+        
+        logger.info(f"Simulation parameters: timestep={timestep}, zone_sizing={do_zone_sizing}, system_sizing={do_system_sizing}")
+        logger.info(f"Design temperatures: winter={winter_design_temp}°C, summer={summer_design_temp}°C")
         
         logger.info(f"Processing download area: N={north}, S={south}, E={east}, W={west}")
         if simulation_bounds:
@@ -157,7 +177,12 @@ def process_geojson(request):
                 filter_height_max=filter_height_max,
                 filter_area_min=filter_area_min,
                 use_multiplier=use_multiplier,
-                simulation_bounds=simulation_bounds_3006  # Pass simulation bounds
+                simulation_bounds=simulation_bounds_3006,  # Pass simulation bounds
+                timestep=timestep,  # Pass simulation parameters
+                do_zone_sizing=do_zone_sizing,
+                do_system_sizing=do_system_sizing,
+                winter_design_temp=winter_design_temp,  # Pass design temperatures
+                summer_design_temp=summer_design_temp
             )
         except Exception as e:
             logger.error(f"IDF conversion failed: {e}")

@@ -18,11 +18,23 @@ import json
 import logging
 import os
 import shutil
+import sys
 from math import ceil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Import the IDF optimizer for post-processing
+try:
+    # Add parent directory to path for idf_optimizer import
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from idf_optimizer import IDFOptimizer
+    HAS_OPTIMIZER = True
+    logger.info("✅ IDFOptimizer loaded successfully")
+except ImportError as e:
+    HAS_OPTIMIZER = False
+    logger.warning(f"⚠️  idf_optimizer not available - post-processing optimization disabled: {e}")
 
 # Constants
 DEFAULT_CLIMATE_ZONE = 'ClimateZone6'
@@ -90,7 +102,35 @@ BUILDING_PROGRAM_DICT = {
     "Övrig byggnad; Ospecificerad": "SmallOffice"
 }
 
+# Mapping from building type to appropriate space type for program type identifier
+# Format: BuildingType -> SpaceType (for creating "2019::BuildingType::SpaceType")
+SPACE_TYPE_DICT = {
+    "HighriseApartment": "Apartment",
+    "MidriseApartment": "Apartment",
+    "Warehouse": "Bulk",
+    "SmallOffice": "OpenOffice",
+    "LargeOffice": "OpenOffice",
+    "PrimarySchool": "Classroom",
+    "SecondarySchool": "Classroom",
+    "Hospital": "PatRoom",
+    "LargeHotel": "GuestRoom",
+    "SmallHotel": "GuestRoom",
+    "SuperMarket": "Sales",
+    "Outpatient": "Exam",
+    "Courthouse": "Courtroom",
+    "Laboratory": "Open lab",  # Note: Different from "Lab"
+    "LargeDataCenterHighITE": "IT_Room",
+    "LargeDataCenterLowITE": "IT_Room",
+    "SmallDataCenterHighITE": "IT_Room",
+    "SmallDataCenterLowITE": "IT_Room",
+    "QuickServiceRestaurant": "Dining",
+    "FullServiceRestaurant": "Dining",
+    "Retail": "Sales",
+    "StripMall": "Sales"
+}
+
 DEFAULT_PROGRAM_TYPE = "HighriseApartment"
+DEFAULT_SPACE_TYPE = "Apartment"
 
 
 class GeoJSONToIDFConverter:
@@ -105,6 +145,83 @@ class GeoJSONToIDFConverter:
         """
         self.work_dir = Path(work_dir)
         self.work_dir.mkdir(parents=True, exist_ok=True)
+    
+    def create_simple_design_days(self, location, winter_temp: float = -10, summer_temp: float = 30):
+        """
+        Create simple design days for HVAC sizing without EPW or DDY files.
+        
+        Args:
+            location: Ladybug Location object
+            winter_temp: Winter design temperature in °C (default: -10)
+            summer_temp: Summer design temperature in °C (default: 30)
+            
+        Returns:
+            List of DesignDay objects [winter_dd, summer_dd]
+        """
+        from ladybug.designday import DesignDay
+        
+        # Create IDF strings for design days, then parse them
+        winter_idf = f"""SizingPeriod:DesignDay,
+    Winter Design Day,       !- Name
+    1,                       !- Month
+    21,                      !- Day of Month
+    WinterDesignDay,         !- Day Type
+    {winter_temp},           !- Maximum Dry-Bulb Temperature {{C}}
+    0.0,                     !- Daily Dry-Bulb Temperature Range {{deltaC}}
+    DefaultMultipliers,      !- Dry-Bulb Temperature Range Modifier Type
+    ,                        !- Dry-Bulb Temperature Range Modifier Day Schedule Name
+    Wetbulb,                 !- Humidity Condition Type
+    {winter_temp},           !- Wetbulb or DewPoint at Maximum Dry-Bulb {{C}}
+    ,                        !- Humidity Condition Day Schedule Name
+    ,                        !- Humidity Ratio at Maximum Dry-Bulb {{kgWater/kgDryAir}}
+    ,                        !- Enthalpy at Maximum Dry-Bulb {{J/kg}}
+    ,                        !- Daily Wet-Bulb Temperature Range {{deltaC}}
+    101325,                  !- Barometric Pressure {{Pa}}
+    4.5,                     !- Wind Speed {{m/s}}
+    270,                     !- Wind Direction {{deg}}
+    No,                      !- Rain Indicator
+    No,                      !- Snow Indicator
+    No,                      !- Daylight Saving Time Indicator
+    ASHRAEClearSky,          !- Solar Model Indicator
+    ,                        !- Beam Solar Day Schedule Name
+    ,                        !- Diffuse Solar Day Schedule Name
+    ,                        !- ASHRAE Clear Sky Optical Depth for Beam Irradiance (taub) {{dimensionless}}
+    ,                        !- ASHRAE Clear Sky Optical Depth for Diffuse Irradiance (taud) {{dimensionless}}
+    0.0;                     !- Sky Clearness"""
+        
+        summer_idf = f"""SizingPeriod:DesignDay,
+    Summer Design Day,       !- Name
+    7,                       !- Month
+    21,                      !- Day of Month
+    SummerDesignDay,         !- Day Type
+    {summer_temp},           !- Maximum Dry-Bulb Temperature {{C}}
+    10.0,                    !- Daily Dry-Bulb Temperature Range {{deltaC}}
+    DefaultMultipliers,      !- Dry-Bulb Temperature Range Modifier Type
+    ,                        !- Dry-Bulb Temperature Range Modifier Day Schedule Name
+    Wetbulb,                 !- Humidity Condition Type
+    {summer_temp - 12},      !- Wetbulb or DewPoint at Maximum Dry-Bulb {{C}}
+    ,                        !- Humidity Condition Day Schedule Name
+    ,                        !- Humidity Ratio at Maximum Dry-Bulb {{kgWater/kgDryAir}}
+    ,                        !- Enthalpy at Maximum Dry-Bulb {{J/kg}}
+    ,                        !- Daily Wet-Bulb Temperature Range {{deltaC}}
+    101325,                  !- Barometric Pressure {{Pa}}
+    3.5,                     !- Wind Speed {{m/s}}
+    180,                     !- Wind Direction {{deg}}
+    No,                      !- Rain Indicator
+    No,                      !- Snow Indicator
+    No,                      !- Daylight Saving Time Indicator
+    ASHRAEClearSky,          !- Solar Model Indicator
+    ,                        !- Beam Solar Day Schedule Name
+    ,                        !- Diffuse Solar Day Schedule Name
+    ,                        !- ASHRAE Clear Sky Optical Depth for Beam Irradiance (taub) {{dimensionless}}
+    ,                        !- ASHRAE Clear Sky Optical Depth for Diffuse Irradiance (taud) {{dimensionless}}
+    1.0;                     !- Sky Clearness"""
+        
+        # Parse IDF strings to DesignDay objects
+        winter_dd = DesignDay.from_idf(winter_idf, location)
+        summer_dd = DesignDay.from_idf(summer_idf, location)
+        
+        return [winter_dd, summer_dd]
     
     def filter_buildings(
         self,
@@ -322,7 +439,12 @@ class GeoJSONToIDFConverter:
     def convert_to_idf(
         self,
         geojson_path: Path,
-        use_multiplier: bool = False
+        use_multiplier: bool = False,
+        timestep: int = 1,
+        do_zone_sizing: bool = False,
+        do_system_sizing: bool = False,
+        winter_design_temp: float = -10,
+        summer_design_temp: float = 30
     ) -> Tuple[Path, Optional[Path]]:
         """
         Convert enriched GeoJSON to IDF and GBXML formats.
@@ -330,6 +452,11 @@ class GeoJSONToIDFConverter:
         Args:
             geojson_path: Path to enriched GeoJSON file
             use_multiplier: Whether to use floor multipliers
+            timestep: Number of timesteps per hour (default: 1 for fast simulation)
+            do_zone_sizing: Whether to do zone sizing calculations (default: False for speed)
+            do_system_sizing: Whether to do system sizing calculations (default: False for speed)
+            winter_design_temp: Winter design temperature in °C (default: -10)
+            summer_design_temp: Summer design temperature in °C (default: 30)
             
         Returns:
             Tuple of (idf_path, gbxml_path)
@@ -433,10 +560,50 @@ class GeoJSONToIDFConverter:
             logger.info("✅ Honeybee model conversion completed successfully")
             logger.info(f"✅ Generated Honeybee model with {len(hb_model.rooms)} rooms")
             
+            # Log HVAC assignment status (ideal air was added at Dragonfly Room2D level)
+            if ADD_DEFAULT_IDEAL_AIR:
+                from honeybee_energy.hvac.idealair import IdealAirSystem
+                rooms_with_hvac = sum(1 for room in hb_model.rooms 
+                                     if isinstance(room.properties.energy.hvac, IdealAirSystem))
+                logger.info(f"✅ Honeybee model has {rooms_with_hvac}/{len(hb_model.rooms)} rooms with ideal air systems")
+                if rooms_with_hvac == 0:
+                    logger.warning("⚠️  NO rooms have ideal air systems! Check if rooms are conditioned.")
+            
             # Convert to IDF
             logger.info("Generating IDF file...")
             idf_path = self.work_dir / 'city.idf'
+            
+            # Create optimized simulation parameters for faster execution
             sim_par = SimulationParameter()
+            
+            # Apply user-specified or optimized defaults
+            # Optimize timestep: Use parameter or default to 1 (6x faster than default 6)
+            sim_par.timestep = timestep
+            logger.info(f"Timestep set to {timestep} timesteps/hour")
+            
+            # Always add simple design days (useful for peak load analysis even without sizing)
+            logger.info("Adding design days for HVAC sizing and peak load analysis...")
+            
+            # Use helper method to create simple design days
+            design_days = self.create_simple_design_days(
+                location_obj, 
+                winter_temp=winter_design_temp, 
+                summer_temp=summer_design_temp
+            )
+            
+            for dd in design_days:
+                sim_par.sizing_parameter.add_design_day(dd)
+            
+            logger.info(f"✅ Added {len(design_days)} design days: Winter ({winter_design_temp}°C), Summer ({summer_design_temp}°C)")
+            
+            # Sizing calculations: Use parameters or default to disabled for speed
+            sim_par.simulation_control.do_zone_sizing = do_zone_sizing
+            sim_par.simulation_control.do_system_sizing = do_system_sizing
+            # Keep plant sizing enabled as it's useful for HVAC systems
+            sim_par.simulation_control.do_plant_sizing = True
+            logger.info(f"Zone sizing: {do_zone_sizing}, System sizing: {do_system_sizing}, Plant sizing: True")
+            
+            # Add output reports
             sim_par.output.add_zone_energy_use()
             sim_par.output.add_hvac_energy_use()
             
@@ -449,7 +616,7 @@ class GeoJSONToIDFConverter:
             model_str = hb_model.to.idf(
                 hb_model,
                 schedule_directory=None,
-                use_ideal_air_equivalent=True
+                use_ideal_air_equivalent=False  # Changed to False - we have real IdealAirSystem objects now
             )
             logger.info(f"Model string: {model_str is not None}")
             
@@ -461,6 +628,30 @@ class GeoJSONToIDFConverter:
                 f.write(idf_content)
             
             logger.info(f"Successfully generated IDF file: {idf_path}")
+            
+            # Post-process optimization using IDFOptimizer if enabled
+            if HAS_OPTIMIZER:
+                logger.info("Applying post-generation optimization...")
+                try:
+                    optimizer = IDFOptimizer()
+                    
+                    # Create optimization profile from parameters
+                    opt_profile = optimizer.create_optimization_config(
+                        timestep=timestep,
+                        do_zone_sizing=do_zone_sizing,
+                        do_system_sizing=do_system_sizing,
+                        do_plant_sizing=True  # Always keep plant sizing
+                    )
+                    
+                    # Apply optimization profile (overwrites the file)
+                    optimizer.apply_optimization_profile(
+                        str(idf_path),
+                        opt_profile,
+                        output_path=str(idf_path)  # Overwrite original
+                    )
+                    logger.info("✅ Post-generation optimization complete")
+                except Exception as e:
+                    logger.warning(f"Post-generation optimization failed (continuing anyway): {e}")
             
             # For now, skip GBXML generation (can be added later if needed)
             gbxml_path = None
@@ -490,7 +681,7 @@ class GeoJSONToIDFConverter:
         try:
             from ladybug_geometry.geometry3d.pointvector import Vector3D
             from dragonfly.windowparameter import RepeatingWindowRatio
-            from honeybee_energy.lib.programtypes import ProgramType
+            from honeybee_energy.lib.programtypes import program_type_by_identifier
             from honeybee_energy.lib.constructionsets import construction_set_by_identifier
             
             # Separate buildings and context
@@ -535,17 +726,41 @@ class GeoJSONToIDFConverter:
                         if construction_set:
                             room.properties.energy.construction_set = construction_set
                         
-                        # Set program type
+                        # Set program type (MUST be done before adding HVAC)
                         building_program = BUILDING_PROGRAM_DICT.get(building_type, DEFAULT_PROGRAM_TYPE)
-                        try:
-                            program = ProgramType(building_program)
-                            room.properties.energy.program_type = program
-                        except:
-                            logger.warning(f"Could not load program type: {building_program}")
+                        space_type = SPACE_TYPE_DICT.get(building_program, DEFAULT_SPACE_TYPE)
                         
-                        # Add ideal air system
+                        try:
+                            # Use the standardized DOE program types: 2019::BuildingType::SpaceType
+                            program_identifier = f"2019::{building_program}::{space_type}"
+                            program_type = program_type_by_identifier(program_identifier)
+                            room.properties.energy.program_type = program_type
+                            logger.debug(f"Set program type {program_identifier} for room {room.display_name}")
+                        except Exception as e:
+                            logger.warning(f"Could not load program type {program_identifier}: {e}")
+                            # Try fallback to default
+                            try:
+                                fallback_id = f"2019::{DEFAULT_PROGRAM_TYPE}::{DEFAULT_SPACE_TYPE}"
+                                program_type = program_type_by_identifier(fallback_id)
+                                room.properties.energy.program_type = program_type
+                                logger.info(f"Using fallback program type {fallback_id} for room {room.display_name}")
+                            except Exception as e2:
+                                logger.error(f"Could not load fallback program type: {e2}")
+                        
+                        # Add ideal air system to all rooms
+                        # NOTE: Room2D doesn't have is_conditioned property like Honeybee Room
+                        # The program type sets up the thermostats, so all rooms should be conditioned
                         if ADD_DEFAULT_IDEAL_AIR:
-                            room.properties.energy.add_default_ideal_air()
+                            try:
+                                from honeybee_energy.hvac.idealair import IdealAirSystem
+                                # Check if already has HVAC (shouldn't, but be safe)
+                                if not hasattr(room.properties.energy, 'hvac') or room.properties.energy.hvac is None:
+                                    room.properties.energy.add_default_ideal_air()
+                                    logger.debug(f"Added ideal air to room: {room.display_name}")
+                                else:
+                                    logger.debug(f"Room {room.display_name} already has HVAC")
+                            except Exception as e:
+                                logger.warning(f"Failed to add ideal air to {room.display_name}: {e}")
                     
                     # Set window parameters
                     storey.set_outdoor_window_parameters(
@@ -707,7 +922,12 @@ class GeoJSONToIDFConverter:
         filter_height_max: float = 100,
         filter_area_min: float = 100,
         use_multiplier: bool = False,
-        simulation_bounds: Optional[Dict] = None
+        simulation_bounds: Optional[Dict] = None,
+        timestep: int = 1,
+        do_zone_sizing: bool = False,
+        do_system_sizing: bool = False,
+        winter_design_temp: float = -10,
+        summer_design_temp: float = 30
     ) -> Tuple[Path, Optional[Path]]:
         """
         Complete pipeline: filter → enrich → convert to IDF.
@@ -720,6 +940,11 @@ class GeoJSONToIDFConverter:
             use_multiplier: Use floor multipliers in model
             simulation_bounds: Optional dict with keys 'north', 'south', 'east', 'west' in EPSG:3006
                              Buildings inside are simulated, others are context shading
+            timestep: Number of timesteps per hour (default: 1 for fast simulation, 6 for detailed)
+            do_zone_sizing: Whether to do zone sizing calculations (default: False for speed)
+            do_system_sizing: Whether to do system sizing calculations (default: False for speed)
+            winter_design_temp: Winter design temperature in °C (default: -10)
+            summer_design_temp: Summer design temperature in °C (default: 30)
             
         Returns:
             Tuple of (idf_path, gbxml_path)
@@ -737,8 +962,16 @@ class GeoJSONToIDFConverter:
         # Step 2: Enrich with metadata and mark simulation vs context buildings
         enriched_path = self.enrich_geojson(filtered_path, simulation_bounds)
         
-        # Step 3: Convert to IDF
-        idf_path, gbxml_path = self.convert_to_idf(enriched_path, use_multiplier)
+        # Step 3: Convert to IDF with specified simulation parameters
+        idf_path, gbxml_path = self.convert_to_idf(
+            enriched_path, 
+            use_multiplier,
+            timestep=timestep,
+            do_zone_sizing=do_zone_sizing,
+            do_system_sizing=do_system_sizing,
+            winter_design_temp=winter_design_temp,
+            summer_design_temp=summer_design_temp
+        )
         
         logger.info("GeoJSON to IDF conversion complete")
         return idf_path, gbxml_path
