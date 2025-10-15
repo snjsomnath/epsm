@@ -82,19 +82,9 @@ interface SimulationProviderProps {
 export const SimulationProvider = ({ children }: SimulationProviderProps) => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
-  const [weatherFile, setWeatherFile] = useState<File | null>(() => {
-    try {
-      const savedName = localStorage.getItem('simulation_weather_file_name');
-      if (savedName) {
-        // Create a placeholder File object - actual file will be re-uploaded if needed
-        const blob = new Blob([''], { type: 'text/plain' });
-        return new File([blob], savedName, { type: 'text/plain' });
-      }
-    } catch (e) {
-      console.warn('Failed to restore weather file from localStorage', e);
-    }
-    return null;
-  });
+  // Don't restore weather file from localStorage - files can't be persisted across sessions
+  // User must re-upload the weather file each session for security reasons
+  const [weatherFile, setWeatherFile] = useState<File | null>(null);
   const [cachedResults, setCachedResults] = useState<Record<string, any>>(() => {
     try {
       const raw = localStorage.getItem('simulation_cached_results');
@@ -133,25 +123,11 @@ export const SimulationProvider = ({ children }: SimulationProviderProps) => {
     setUploadedFiles([]);
     setParsedData(null);
     setWeatherFile(null);
-    try {
-      localStorage.removeItem('simulation_weather_file_name');
-    } catch (e) {
-      // ignore
-    }
   };
 
-  // Wrapper for setWeatherFile that persists the filename
+  // No need to persist weather file to localStorage - files can't be safely restored
   const handleSetWeatherFile = (file: File | null) => {
     setWeatherFile(file);
-    try {
-      if (file) {
-        localStorage.setItem('simulation_weather_file_name', file.name);
-      } else {
-        localStorage.removeItem('simulation_weather_file_name');
-      }
-    } catch (e) {
-      console.warn('Failed to persist weather file name', e);
-    }
   };
 
   const [lastResults, setLastResults] = useState<any[]>(() => {
