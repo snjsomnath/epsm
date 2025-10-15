@@ -29,6 +29,68 @@ import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import { FeatureGroup as LeafletFeatureGroup } from 'leaflet';
 import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
+import { buildUrl } from '../../lib/auth-api';
+
+// Helper to get CSRF token
+const getCSRFToken = async (): Promise<string> => {
+  try {
+    const response = await fetch(buildUrl('/api/auth/csrf/'), {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      console.warn('Failed to fetch CSRF token, status:', response.status);
+      return '';
+    }
+    const data = await response.json();
+    return data.csrfToken || '';
+  } catch (error) {
+    console.warn('Failed to get CSRF token:', error);
+    return '';
+  }
+};
+
+// Helper function to call backend validation API
+const validateAreasAPI = async (downloadArea: DrawnArea | null, simulationArea: DrawnArea | null) => {
+  try {
+    const csrfToken = await getCSRFToken();
+    
+    const response = await fetch(buildUrl('/api/geojson/validate-areas/'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken && { 'X-CSRFToken': csrfToken }),
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        download_area: downloadArea ? {
+          type: downloadArea.type,
+          coordinates: downloadArea.coordinates,
+          bounds: downloadArea.bounds
+        } : null,
+        simulation_area: simulationArea ? {
+          type: simulationArea.type,
+          coordinates: simulationArea.coordinates,
+          bounds: simulationArea.bounds
+        } : null
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Validation API returned ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Validation API error:', error);
+    return {
+      valid: false,
+      errors: [`Validation service error: ${error instanceof Error ? error.message : 'Unknown error'}`],
+      warnings: [],
+      details: {}
+    };
+  }
+};
 import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import '@geoman-io/leaflet-geoman-free';
@@ -63,6 +125,11 @@ interface DrawnArea {
   layer?: L.Layer;
 }
 
+interface AreaSelection {
+  downloadArea: DrawnArea | null;  // Outer box - area to download from DTCC
+  simulationArea: DrawnArea | null;  // Inner box - area to simulate
+}
+
 // Basemap configurations (all free, no API keys needed)
 const basemapConfigs = {
   osm: {
@@ -95,11 +162,13 @@ const basemapConfigs = {
 // Component to handle drawing controls
 const DrawingControls = ({ 
   onDrawCreated, 
-  onDrawDeleted, 
+  onDrawDeleted,
+  onDrawEdited,
   featureGroupRef 
 }: { 
   onDrawCreated: (layer: L.Layer, type: string) => void;
-  onDrawDeleted: () => void;
+  onDrawDeleted: (e?: any) => void;
+  onDrawEdited: (e?: any) => void;
   featureGroupRef: React.RefObject<LeafletFeatureGroup>;
 }) => {
   const map = useMap();
@@ -123,25 +192,40 @@ const DrawingControls = ({
       const layer = e.layer;
       const shape = e.shape;
       
+      // Add to feature group without clearing (so we can have both areas visible)
       if (featureGroupRef.current) {
-        featureGroupRef.current.clearLayers();
         featureGroupRef.current.addLayer(layer);
       }
       
       onDrawCreated(layer, shape);
     });
 
-    // Handle layer removal
-    map.on('pm:remove', () => {
-      onDrawDeleted();
+    // Handle layer removal - pass the event with layer info
+    map.on('pm:remove', (e: any) => {
+      onDrawDeleted(e);
+    });
+
+    // Handle layer edit in progress - fires while dragging vertices
+    map.on('pm:edit', (e: any) => {
+      console.log('✏️ Edit in progress (pm:edit event)', e);
+      console.log('   Layer being edited:', e.layer);
+      console.log('   Shape:', e.shape);
+    });
+
+    // Handle layer edit completion - fires when user clicks "Finish" button
+    map.on('pm:update', (e: any) => {
+      console.log('🔄 Edit finished (pm:update event)');
+      onDrawEdited(e);
     });
 
     return () => {
       map.pm.removeControls();
       map.off('pm:create');
       map.off('pm:remove');
+      map.off('pm:edit');
+      map.off('pm:update');
     };
-  }, [map, onDrawCreated, onDrawDeleted, featureGroupRef]);
+  }, [map, onDrawCreated, onDrawDeleted, onDrawEdited, featureGroupRef]);
 
   return null;
 };
@@ -149,11 +233,15 @@ const DrawingControls = ({
 const SelectAreaPage = () => {
   const navigate = useNavigate();
   const [basemapType, setBasemapType] = useState<BasemapType>('osm');
-  const [drawnArea, setDrawnArea] = useState<DrawnArea | null>(null);
+  const [downloadArea, setDownloadArea] = useState<DrawnArea | null>(null);
+  const [simulationArea, setSimulationArea] = useState<DrawnArea | null>(null);
+  const [currentDrawingMode, setCurrentDrawingMode] = useState<'download' | 'simulation'>('download');
   const [processing, setProcessing] = useState(false);
   const [processComplete, setProcessComplete] = useState(false);
   const [processingStep, setProcessingStep] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [idfPath, setIdfPath] = useState<string | null>(null);
   const [idfUrl, setIdfUrl] = useState<string | null>(null);
   const [geojsonPath, setGeojsonPath] = useState<string | null>(null);
@@ -163,6 +251,67 @@ const SelectAreaPage = () => {
   const [isSimulating, setIsSimulating] = useState(false);
   const featureGroupRef = useRef<LeafletFeatureGroup>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+
+  // Constants
+  const MAX_DOWNLOAD_AREA_KM2 = 5;  // Maximum download area in km²
+  const MIN_SIMULATION_AREA_M2 = 100;  // Minimum simulation area in m²
+
+  // Validation function - calls backend API for accurate geospatial validation
+  // Note: This function directly uses the state variables, not via useCallback,
+  // to ensure it always gets the latest values when called
+  const validateAreas = async (): Promise<string[]> => {
+    try {
+      console.log('🔍 Calling backend validation API...');
+      console.log('   Download area coordinates:', downloadArea?.coordinates);
+      console.log('   Simulation area coordinates:', simulationArea?.coordinates);
+      
+      const result = await validateAreasAPI(downloadArea, simulationArea);
+      
+      console.log('✅ Validation result:', result);
+      
+      // Update area details if provided by backend
+      if (result.details) {
+        if (result.details.download_area_km2 !== undefined && downloadArea) {
+          console.log(`📊 Download area (backend): ${result.details.download_area_km2} km²`);
+        }
+        if (result.details.simulation_area_km2 !== undefined && simulationArea) {
+          console.log(`📊 Simulation area (backend): ${result.details.simulation_area_km2} km²`);
+        }
+        if (result.details.containment_check !== undefined) {
+          console.log(`🔒 Containment check: ${result.details.containment_check}`);
+        }
+      }
+      
+      return result.errors || [];
+    } catch (error) {
+      console.error('❌ Validation error:', error);
+      return [`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`];
+    }
+  };
+
+  // Auto-validate whenever areas change
+  React.useEffect(() => {
+    if (downloadArea || simulationArea) {
+      console.log('🔍 Areas changed, running validation...');
+      console.log('Download area:', downloadArea?.bounds);
+      console.log('Simulation area:', simulationArea?.bounds);
+      
+      // Call async validation
+      validateAreas().then(errors => {
+        setValidationErrors(errors);
+        
+        if (errors.length > 0) {
+          console.warn('⚠️ Validation errors detected:', errors);
+        } else {
+          console.log('✅ All validations passed');
+        }
+      });
+    } else {
+      // Clear validation errors when both areas are cleared
+      setValidationErrors([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [downloadArea, simulationArea]); // Re-run whenever areas change
 
   // Processing steps for animation
   const processingSteps = [
@@ -211,7 +360,37 @@ const SelectAreaPage = () => {
     }
   };
 
+  // Helper function for point-in-polygon check (no longer used but kept for reference)
+  const isPolygonInsidePolygon = (inner: [number, number][], outer: [number, number][]): boolean => {
+    // Simple point-in-polygon check for all inner points
+    const pointInPolygon = (point: [number, number], polygon: [number, number][]): boolean => {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i][1], yi = polygon[i][0];  // [lat, lon] -> use lon for x
+        const xj = polygon[j][1], yj = polygon[j][0];
+        const x = point[1], y = point[0];  // point is [lat, lon]
+        
+        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+    
+    // Check if all points of inner polygon are inside outer polygon
+    return inner.every(point => pointInPolygon(point, outer));
+  };
+
   const handleDrawCreated = (layer: L.Layer, type: string) => {
+    // Check if we already have 2 areas drawn
+    if (downloadArea && simulationArea) {
+      // Remove the extra layer immediately
+      if (featureGroupRef.current && layer) {
+        featureGroupRef.current.removeLayer(layer);
+      }
+      setValidationErrors(['Maximum 2 areas allowed. Please clear existing areas first if you want to redraw.']);
+      return;
+    }
+
     let coordinates: [number, number][] = [];
     let bounds;
     let area = 0;
@@ -220,15 +399,17 @@ const SelectAreaPage = () => {
       const latLngs = layer.getLatLngs()[0] as L.LatLng[];
       coordinates = latLngs.map(latLng => [latLng.lat, latLng.lng]);
       bounds = layer.getBounds();
-      area = (L as any).GeometryUtil?.geodesicArea?.(latLngs) || 0;
+      // Calculate area using bounds (more reliable)
+      area = calculateAreaFromBounds(bounds);
     } else if (type === 'Polygon' && layer instanceof L.Polygon) {
       const latLngs = layer.getLatLngs()[0] as L.LatLng[];
       coordinates = latLngs.map(latLng => [latLng.lat, latLng.lng]);
       bounds = layer.getBounds();
-      area = (L as any).GeometryUtil?.geodesicArea?.(latLngs) || 0;
+      // Try geodesic area first, fallback to bounds calculation
+      area = (L as any).GeometryUtil?.geodesicArea?.(latLngs) || calculateAreaFromBounds(bounds);
     }
 
-    setDrawnArea({
+    const drawnAreaData: DrawnArea = {
       type: type.toLowerCase() as 'rectangle' | 'polygon',
       coordinates,
       bounds: bounds ? {
@@ -239,23 +420,234 @@ const SelectAreaPage = () => {
       } : undefined,
       area,
       layer
-    });
+    };
+
+    // Determine which area to set based on what's already drawn
+    if (!downloadArea) {
+      // First drawing - set as download area (orange)
+      if (layer instanceof L.Path) {
+        layer.setStyle({ color: '#ff6b35', fillColor: '#ff6b35', fillOpacity: 0.2, weight: 3 });
+      }
+      
+      // Add layer-specific event listeners to capture edits
+      (layer as any).on('pm:edit', () => {
+        console.log('📝 Download area being edited (layer pm:edit)');
+      });
+      
+      (layer as any).on('pm:update', () => {
+        console.log('✅ Download area edit finished (layer pm:update)');
+        // Call the edit handler with the layer
+        handleDrawEdited({ layer });
+      });
+      
+      setDownloadArea(drawnAreaData);
+      setCurrentDrawingMode('simulation');
+      console.log('✅ Download area set (orange)', `Area: ${(area / 1_000_000).toFixed(3)} km²`);
+    } else if (!simulationArea) {
+      // Second drawing - set as simulation area (green)
+      if (layer instanceof L.Path) {
+        layer.setStyle({ color: '#4caf50', fillColor: '#4caf50', fillOpacity: 0.3, weight: 3 });
+      }
+      
+      // Add layer-specific event listeners to capture edits
+      (layer as any).on('pm:edit', () => {
+        console.log('📝 Simulation area being edited (layer pm:edit)');
+      });
+      
+      (layer as any).on('pm:update', () => {
+        console.log('✅ Simulation area edit finished (layer pm:update)');
+        // Call the edit handler with the layer
+        handleDrawEdited({ layer });
+      });
+      
+      setSimulationArea(drawnAreaData);
+      console.log('✅ Simulation area set (green)', `Area: ${(area / 1_000_000).toFixed(3)} km²`);
+    }
+
+    // Validation will happen automatically via useEffect
   };
 
-  const handleDrawDeleted = () => {
-    setDrawnArea(null);
+  // Helper function to calculate area from bounds (approximate, in square meters)
+  const calculateAreaFromBounds = (bounds: L.LatLngBounds): number => {
+    const north = bounds.getNorth();
+    const south = bounds.getSouth();
+    const east = bounds.getEast();
+    const west = bounds.getWest();
+    
+    // Convert to approximate meters (rough calculation for small areas)
+    const latDiff = north - south;
+    const lonDiff = east - west;
+    
+    // Average latitude for more accurate calculation
+    const avgLat = (north + south) / 2;
+    const latToMeters = 111320; // meters per degree latitude
+    const lonToMeters = 111320 * Math.cos(avgLat * Math.PI / 180); // meters per degree longitude
+    
+    const heightMeters = latDiff * latToMeters;
+    const widthMeters = lonDiff * lonToMeters;
+    
+    return heightMeters * widthMeters; // area in square meters
+  };
+
+  const handleDrawDeleted = (e?: any) => {
+    // More sophisticated delete handling
+    if (!e || !e.layer) {
+      // If no specific layer info, clear everything
+      setDownloadArea(null);
+      setSimulationArea(null);
+      setCurrentDrawingMode('download');
+      setValidationErrors([]);
+      return;
+    }
+
+    const deletedLayer = e.layer;
+    
+    // Check which area was deleted by comparing layer references
+    if (downloadArea?.layer === deletedLayer) {
+      console.log('🗑️ Download area deleted');
+      setDownloadArea(null);
+      // If download area is deleted, also clear simulation area (it depends on download area)
+      if (simulationArea?.layer && featureGroupRef.current) {
+        featureGroupRef.current.removeLayer(simulationArea.layer);
+      }
+      setSimulationArea(null);
+      setCurrentDrawingMode('download');
+    } else if (simulationArea?.layer === deletedLayer) {
+      console.log('🗑️ Simulation area deleted');
+      setSimulationArea(null);
+      // Don't change mode - still in simulation mode, can redraw simulation area
+    }
+    
+    setValidationErrors([]);
+  };
+
+  const handleDrawEdited = (e?: any) => {
+    if (!e || !e.layer) {
+      console.warn('⚠️ Edit event missing layer info:', e);
+      return;
+    }
+
+    const editedLayer = e.layer;
+    console.log('✏️ Area editing finished (pm:update), updating bounds and revalidating...');
+    console.log('Edited layer:', editedLayer);
+
+    // Helper function to update area data from layer
+    const updateAreaFromLayer = (layer: L.Layer): DrawnArea | null => {
+      let coordinates: [number, number][] = [];
+      let bounds;
+      let area = 0;
+      let type: 'rectangle' | 'polygon' = 'polygon';
+
+      if (layer instanceof L.Rectangle) {
+        const latLngs = layer.getLatLngs()[0] as L.LatLng[];
+        coordinates = latLngs.map(latLng => [latLng.lat, latLng.lng]);
+        bounds = layer.getBounds();
+        area = calculateAreaFromBounds(bounds);
+        type = 'rectangle';
+        console.log('📐 Rectangle area calculated:', area, 'm²');
+      } else if (layer instanceof L.Polygon) {
+        const latLngs = layer.getLatLngs()[0] as L.LatLng[];
+        coordinates = latLngs.map(latLng => [latLng.lat, latLng.lng]);
+        bounds = layer.getBounds();
+        area = (L as any).GeometryUtil?.geodesicArea?.(latLngs) || calculateAreaFromBounds(bounds);
+        type = 'polygon';
+        console.log('📐 Polygon area calculated:', area, 'm²');
+      } else {
+        console.warn('⚠️ Unknown layer type:', layer);
+      }
+
+      if (!bounds) {
+        console.error('❌ Failed to get bounds from layer');
+        return null;
+      }
+
+      return {
+        type,
+        coordinates,
+        bounds: {
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest()
+        },
+        area,
+        layer
+      };
+    };
+
+    // Check which area was edited and update it
+    let updated = false;
+    
+    // Try to identify which area was edited by layer reference or color
+    const layerColor = (editedLayer as any).options?.color;
+    console.log('🎨 Layer color:', layerColor);
+    console.log('🔍 Checking layer match...');
+    console.log('   downloadArea layer:', downloadArea?.layer);
+    console.log('   simulationArea layer:', simulationArea?.layer);
+    console.log('   editedLayer:', editedLayer);
+    console.log('   Layer match (download):', downloadArea?.layer === editedLayer);
+    console.log('   Layer match (simulation):', simulationArea?.layer === editedLayer);
+    
+    // Match by layer reference OR by color (orange = download, green = simulation)
+    const isDownloadArea = (downloadArea?.layer === editedLayer) || layerColor === '#ff6b35';
+    const isSimulationArea = (simulationArea?.layer === editedLayer) || layerColor === '#4caf50';
+    
+    if (isDownloadArea) {
+      const updatedArea = updateAreaFromLayer(editedLayer);
+      if (updatedArea) {
+        const areaKm2 = ((updatedArea.area || 0) / 1_000_000).toFixed(3);
+        console.log(`✅ Download area updated - New area: ${areaKm2} km²`);
+        console.log('Old coordinates:', downloadArea?.coordinates);
+        console.log('New coordinates:', updatedArea.coordinates);
+        // Force a new object to trigger React re-render
+        setDownloadArea({ ...updatedArea });
+        updated = true;
+      }
+    } else if (isSimulationArea) {
+      const updatedArea = updateAreaFromLayer(editedLayer);
+      if (updatedArea) {
+        const areaKm2 = ((updatedArea.area || 0) / 1_000_000).toFixed(3);
+        console.log(`✅ Simulation area updated - New area: ${areaKm2} km²`);
+        console.log('Old coordinates:', simulationArea?.coordinates);
+        console.log('New coordinates:', updatedArea.coordinates);
+        // Force a new object to trigger React re-render
+        setSimulationArea({ ...updatedArea });
+        updated = true;
+      }
+    } else {
+      console.warn('⚠️ Edited layer does not match any tracked area');
+      console.warn('Layer color:', layerColor);
+    }
+
+    if (!updated) {
+      console.error('❌ Failed to update area after edit');
+      return;
+    }
+
+    // Validation will happen automatically via useEffect when state updates
   };
 
   const handleClearDrawing = () => {
     if (featureGroupRef.current) {
       featureGroupRef.current.clearLayers();
     }
-    setDrawnArea(null);
+    setDownloadArea(null);
+    setSimulationArea(null);
+    setCurrentDrawingMode('download');
+    setValidationErrors([]);
   };
 
   const handleFetchArea = async () => {
-    if (!drawnArea || !drawnArea.bounds) {
-      alert('Please draw an area first');
+    // Validate that we have at least a download area
+    if (!downloadArea || !downloadArea.bounds) {
+      setValidationErrors(['Please draw a download area first (orange box).']);
+      return;
+    }
+
+    // Run validation checks (async)
+    const errors = await validateAreas();
+    if (errors.length > 0) {
+      setValidationErrors(errors);
       return;
     }
 
@@ -267,13 +659,13 @@ const SelectAreaPage = () => {
 
       const backendUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       
-      // Prepare payload with bounds
-      const payload = {
+      // Prepare payload with download area bounds and optional simulation area
+      const payload: any = {
         bounds: {
-          north: drawnArea.bounds.north,
-          south: drawnArea.bounds.south,
-          east: drawnArea.bounds.east,
-          west: drawnArea.bounds.west
+          north: downloadArea.bounds.north,
+          south: downloadArea.bounds.south,
+          east: downloadArea.bounds.east,
+          west: downloadArea.bounds.west
         },
         filter_height_min: 3,
         filter_height_max: 100,
@@ -281,9 +673,25 @@ const SelectAreaPage = () => {
         use_multiplier: true  // Enable floor multipliers for faster generation and instanced rendering
       };
 
+      // If simulation area exists, add it to payload
+      if (simulationArea && simulationArea.bounds) {
+        payload.simulation_bounds = {
+          north: simulationArea.bounds.north,
+          south: simulationArea.bounds.south,
+          east: simulationArea.bounds.east,
+          west: simulationArea.bounds.west
+        };
+      }
+
       // Simulate step progression for better UX
       console.log('🚀 Starting 3D model building process...');
-      console.log('📍 Area bounds:', payload.bounds);
+      console.log('📍 Download area bounds:', payload.bounds);
+      if (payload.simulation_bounds) {
+        console.log('📍 Simulation area bounds:', payload.simulation_bounds);
+        console.log('✅ Two-area mode: Buildings inside green box will be simulated, others will be context shading');
+      } else {
+        console.log('ℹ️ Single-area mode: All buildings will be simulated');
+      }
       
       let stepInterval: NodeJS.Timeout | null = setInterval(() => {
         setProcessingStep(prev => {
@@ -446,33 +854,59 @@ const SelectAreaPage = () => {
   };
 
   const handleExportGeometry = () => {
-    if (!drawnArea) return;
+    if (!downloadArea && !simulationArea) return;
     
+    const features = [];
+    
+    if (downloadArea) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [downloadArea.coordinates.map((c: [number, number]) => [c[1], c[0]])]
+        },
+        properties: {
+          type: downloadArea.type,
+          area_type: 'download',
+          bounds: downloadArea.bounds,
+          area_sqm: downloadArea.area
+        }
+      });
+    }
+    
+    if (simulationArea) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [simulationArea.coordinates.map((c: [number, number]) => [c[1], c[0]])]
+        },
+        properties: {
+          type: simulationArea.type,
+          area_type: 'simulation',
+          bounds: simulationArea.bounds,
+          area_sqm: simulationArea.area
+        }
+      });
+    }
+
     const geojson = {
-      type: 'Feature',
-      geometry: {
-        type: 'Polygon',
-        coordinates: [drawnArea.coordinates.map(c => [c[1], c[0]])] // [lng, lat] for GeoJSON
-      },
-      properties: {
-        type: drawnArea.type,
-        bounds: drawnArea.bounds,
-        area_sqm: drawnArea.area
-      }
+      type: 'FeatureCollection',
+      features
     };
 
     const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'selected-area.geojson';
+    a.download = 'selected-areas.geojson';
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const handleSimulateBaseline = async () => {
     if (!idfUrl) {
-      alert('No IDF file available');
+      setValidationErrors(['No IDF file available. Please fetch area first.']);
       return;
     }
 
@@ -494,10 +928,9 @@ const SelectAreaPage = () => {
   };
 
   const formatArea = (area: number) => {
-    if (area > 1000000) {
-      return `${(area / 1000000).toFixed(2)} km²`;
-    }
-    return `${area.toFixed(0)} m²`;
+    // Always display in km² with comma separators
+    const areaKm2 = area / 1_000_000;
+    return `${areaKm2.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km²`;
   };
 
   return (
@@ -862,6 +1295,13 @@ const SelectAreaPage = () => {
         </Alert>
       )}
 
+      {/* Success Alert */}
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+          ✅ {successMessage}
+        </Alert>
+      )}
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="h6" sx={{ flexGrow: 1, minWidth: 200 }}>
@@ -889,17 +1329,36 @@ const SelectAreaPage = () => {
           <Divider orientation="vertical" flexItem />
 
           <Stack direction="row" spacing={1}>
-            {drawnArea && (
+            {(downloadArea || simulationArea) && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<CheckCircle size={18} />}
+                onClick={async () => {
+                  const errors = await validateAreas();
+                  setValidationErrors(errors);
+                  if (errors.length === 0) {
+                    setSuccessMessage('All validations passed! You can proceed to fetch the area.');
+                    setTimeout(() => setSuccessMessage(null), 5000);
+                  } else {
+                    setSuccessMessage(null);
+                  }
+                }}
+              >
+                Validate Selection
+              </Button>
+            )}
+            {(downloadArea || simulationArea) && (
               <Button
                 variant="outlined"
                 color="error"
                 startIcon={<Trash2 size={18} />}
                 onClick={handleClearDrawing}
               >
-                Clear
+                Clear All
               </Button>
             )}
-            {drawnArea && (
+            {(downloadArea || simulationArea) && (
               <Button
                 variant="outlined"
                 startIcon={<Download size={18} />}
@@ -913,57 +1372,127 @@ const SelectAreaPage = () => {
               color="primary"
               startIcon={<MapIcon size={18} />}
               onClick={handleFetchArea}
-              disabled={!drawnArea}
+              disabled={!downloadArea || validationErrors.length > 0}
             >
               Fetch Area
             </Button>
           </Stack>
         </Stack>
 
+        {/* Instructions and Validation */}
         <Alert severity="info" sx={{ mt: 2 }}>
-          Use the drawing tools on the map (top-left) to draw a rectangle or polygon. 
-          The tools will appear once the map is loaded.
+          <strong>Step 1:</strong> Draw a rectangle or polygon for the <strong style={{ color: '#ff6b35' }}>download area</strong> (orange, max 5 km²).
+          <br />
+          <strong>Step 2 (Optional):</strong> Draw a second shape for the <strong style={{ color: '#4caf50' }}>simulation area</strong> (green, must be inside orange area).
+          <br />
+          <em>If you only draw one area, all buildings will be simulated. If you draw two areas, only buildings in the green area will be simulated; others will provide shading context.</em>
         </Alert>
 
-        {drawnArea && (
-          <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
-            <Chip
-              label={`Type: ${drawnArea.type.toUpperCase()}`}
-              color="primary"
-              size="small"
-            />
-            <Chip
-              label={`Points: ${drawnArea.coordinates.length}`}
-              size="small"
-            />
-            {drawnArea.area && (
+        {/* Validation Errors - Stacked Display */}
+        {validationErrors.length > 0 && (
+          <Box sx={{ mt: 2 }}>
+            {validationErrors.map((error, idx) => (
+              <Alert 
+                key={idx}
+                severity="error" 
+                sx={{ mb: 1 }}
+                onClose={() => {
+                  setValidationErrors(prev => prev.filter((_, i) => i !== idx));
+                }}
+              >
+                <strong>⚠️ Validation Error {validationErrors.length > 1 ? `${idx + 1}/${validationErrors.length}` : ''}:</strong>
+                <br />
+                {error}
+              </Alert>
+            ))}
+          </Box>
+        )}
+
+        {/* Download Area Info */}
+        {downloadArea && (
+          <Box sx={{ mt: 2 }} key={`download-${downloadArea.area || 0}`}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: '#ff6b35', fontWeight: 600 }}>
+              📍 Download Area
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Chip
-                label={`Area: ${formatArea(drawnArea.area)}`}
+                label={`Type: ${downloadArea.type.toUpperCase()}`}
+                sx={{ bgcolor: '#ff6b3520', color: '#ff6b35', borderColor: '#ff6b35' }}
+                variant="outlined"
                 size="small"
-                color="success"
               />
-            )}
-            {drawnArea.bounds && (
-              <>
+              <Chip
+                label={`Points: ${downloadArea.coordinates.length}`}
+                size="small"
+              />
+              {downloadArea.area !== undefined && downloadArea.area > 0 && (
                 <Chip
-                  label={`N: ${drawnArea.bounds.north.toFixed(4)}°`}
+                  label={`Area: ${formatArea(downloadArea.area)}`}
                   size="small"
+                  color={downloadArea.area / 1_000_000 > MAX_DOWNLOAD_AREA_KM2 ? 'error' : 'success'}
+                  icon={downloadArea.area / 1_000_000 > MAX_DOWNLOAD_AREA_KM2 ? 
+                    <span style={{ fontSize: '16px' }}>⚠️</span> : 
+                    <span style={{ fontSize: '16px' }}>✓</span>
+                  }
                 />
+              )}
+              {downloadArea.bounds && (
+                <>
+                  <Chip label={`N: ${downloadArea.bounds.north.toFixed(4)}°`} size="small" />
+                  <Chip label={`S: ${downloadArea.bounds.south.toFixed(4)}°`} size="small" />
+                  <Chip label={`E: ${downloadArea.bounds.east.toFixed(4)}°`} size="small" />
+                  <Chip label={`W: ${downloadArea.bounds.west.toFixed(4)}°`} size="small" />
+                </>
+              )}
+            </Stack>
+          </Box>
+        )}
+
+        {/* Simulation Area Info */}
+        {simulationArea && (
+          <Box sx={{ mt: 2 }} key={`simulation-${simulationArea.area || 0}`}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: '#4caf50', fontWeight: 600 }}>
+              🎯 Simulation Area
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip
+                label={`Type: ${simulationArea.type.toUpperCase()}`}
+                sx={{ bgcolor: '#4caf5020', color: '#4caf50', borderColor: '#4caf50' }}
+                variant="outlined"
+                size="small"
+              />
+              <Chip
+                label={`Points: ${simulationArea.coordinates.length}`}
+                size="small"
+              />
+              {simulationArea.area !== undefined && simulationArea.area > 0 && (
                 <Chip
-                  label={`S: ${drawnArea.bounds.south.toFixed(4)}°`}
+                  label={`Area: ${formatArea(simulationArea.area)}`}
                   size="small"
+                  color={simulationArea.area < MIN_SIMULATION_AREA_M2 ? 'error' : 'success'}
+                  icon={simulationArea.area < MIN_SIMULATION_AREA_M2 ? 
+                    <span style={{ fontSize: '16px' }}>⚠️</span> : 
+                    <span style={{ fontSize: '16px' }}>✓</span>
+                  }
                 />
-                <Chip
-                  label={`E: ${drawnArea.bounds.east.toFixed(4)}°`}
-                  size="small"
-                />
-                <Chip
-                  label={`W: ${drawnArea.bounds.west.toFixed(4)}°`}
-                  size="small"
-                />
-              </>
-            )}
-          </Stack>
+              )}
+              {simulationArea.bounds && (
+                <>
+                  <Chip label={`N: ${simulationArea.bounds.north.toFixed(4)}°`} size="small" />
+                  <Chip label={`S: ${simulationArea.bounds.south.toFixed(4)}°`} size="small" />
+                  <Chip label={`E: ${simulationArea.bounds.east.toFixed(4)}°`} size="small" />
+                  <Chip label={`W: ${simulationArea.bounds.west.toFixed(4)}°`} size="small" />
+                </>
+              )}
+            </Stack>
+          </Box>
+        )}
+
+        {/* Drawing Mode Indicator */}
+        {downloadArea && !simulationArea && (
+          <Alert severity="success" sx={{ mt: 2 }}>
+            <strong>Ready for Step 2:</strong> You can now draw the simulation area (green) or click "Fetch Area" to simulate all buildings.
+          </Alert>
         )}
       </Paper>
 
@@ -1032,6 +1561,7 @@ const SelectAreaPage = () => {
             <DrawingControls
               onDrawCreated={handleDrawCreated}
               onDrawDeleted={handleDrawDeleted}
+              onDrawEdited={handleDrawEdited}
               featureGroupRef={featureGroupRef}
             />
           </FeatureGroup>

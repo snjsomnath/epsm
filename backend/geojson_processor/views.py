@@ -38,6 +38,12 @@ def process_geojson(request):
             "east": float,
             "west": float
         },
+        "simulation_bounds": {  // Optional - if provided, only buildings in this area are simulated
+            "north": float,
+            "south": float,
+            "east": float,
+            "west": float
+        },
         "filter_height_min": float (optional, default: 3),
         "filter_height_max": float (optional, default: 100),
         "filter_area_min": float (optional, default: 100),
@@ -59,6 +65,7 @@ def process_geojson(request):
         # Parse request data - use request.data for DRF
         data = request.data
         bounds = data.get('bounds')
+        simulation_bounds = data.get('simulation_bounds', None)  # Optional simulation area
         
         if not bounds:
             return JsonResponse({'error': 'Missing bounds in request'}, status=400)
@@ -77,7 +84,11 @@ def process_geojson(request):
         filter_area_min = data.get('filter_area_min', 100)
         use_multiplier = data.get('use_multiplier', False)
         
-        logger.info(f"Processing area: N={north}, S={south}, E={east}, W={west}")
+        logger.info(f"Processing download area: N={north}, S={south}, E={east}, W={west}")
+        if simulation_bounds:
+            logger.info(f"Simulation area specified: N={simulation_bounds.get('north')}, S={simulation_bounds.get('south')}, E={simulation_bounds.get('east')}, W={simulation_bounds.get('west')}")
+        else:
+            logger.info("No simulation area specified - all buildings will be simulated")
         
         # Create work directory
         work_id = str(uuid.uuid4())
@@ -119,13 +130,34 @@ def process_geojson(request):
         logger.info("Converting GeoJSON to IDF...")
         converter = GeoJSONToIDFConverter(str(work_dir))
         
+        # Convert simulation_bounds to EPSG:3006 if provided
+        simulation_bounds_3006 = None
+        if simulation_bounds:
+            transformer = Transformer.from_crs('EPSG:4326', 'EPSG:3006', always_xy=True)
+            sim_west_3006, sim_south_3006 = transformer.transform(
+                simulation_bounds.get('west'), 
+                simulation_bounds.get('south')
+            )
+            sim_east_3006, sim_north_3006 = transformer.transform(
+                simulation_bounds.get('east'), 
+                simulation_bounds.get('north')
+            )
+            simulation_bounds_3006 = {
+                'north': sim_north_3006,
+                'south': sim_south_3006,
+                'east': sim_east_3006,
+                'west': sim_west_3006
+            }
+            logger.info(f"Simulation bounds in EPSG:3006: {simulation_bounds_3006}")
+        
         try:
             idf_path, gbxml_path = converter.process(
                 geojson_path,
                 filter_height_min=filter_height_min,
                 filter_height_max=filter_height_max,
                 filter_area_min=filter_area_min,
-                use_multiplier=use_multiplier
+                use_multiplier=use_multiplier,
+                simulation_bounds=simulation_bounds_3006  # Pass simulation bounds
             )
         except Exception as e:
             logger.error(f"IDF conversion failed: {e}")
@@ -244,4 +276,156 @@ def health_check(request):
         return JsonResponse({
             'status': 'unhealthy',
             'error': str(e)
+        }, status=500)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def validate_areas(request):
+    """
+    Validate download and simulation areas using proper geospatial operations.
+    
+    Expects JSON payload:
+    {
+        "download_area": {
+            "type": "rectangle" | "polygon",
+            "coordinates": [[lat, lon], ...],
+            "bounds": {"north": float, "south": float, "east": float, "west": float}
+        },
+        "simulation_area": {  // Optional
+            "type": "rectangle" | "polygon",
+            "coordinates": [[lat, lon], ...],
+            "bounds": {"north": float, "south": float, "east": float, "west": float}
+        }
+    }
+    
+    Returns:
+    {
+        "valid": bool,
+        "errors": [str, ...],
+        "warnings": [str, ...],
+        "details": {
+            "download_area_km2": float,
+            "simulation_area_km2": float,
+            "containment_check": bool
+        }
+    }
+    """
+    try:
+        from shapely.geometry import Polygon
+        from shapely.ops import transform
+        from pyproj import Transformer
+        import math
+        
+        data = request.data
+        download_area = data.get('download_area')
+        simulation_area = data.get('simulation_area')
+        
+        errors = []
+        warnings = []
+        details = {}
+        
+        # Constants
+        MAX_DOWNLOAD_AREA_KM2 = 5.0
+        MIN_SIMULATION_AREA_M2 = 100.0
+        
+        # Validate download area
+        if not download_area:
+            return JsonResponse({
+                'valid': False,
+                'errors': ['Download area is required'],
+                'warnings': [],
+                'details': {}
+            })
+        
+        # Create Shapely polygon from coordinates (lat, lon -> lon, lat for Shapely)
+        download_coords = download_area.get('coordinates', [])
+        if len(download_coords) < 3:
+            errors.append('Download area must have at least 3 points')
+        else:
+            # Convert [lat, lon] to [lon, lat] for Shapely
+            download_coords_xy = [(lon, lat) for lat, lon in download_coords]
+            download_polygon_4326 = Polygon(download_coords_xy)
+            
+            # Transform to EPSG:3006 (SWEREF99 TM) for accurate area calculation
+            transformer_to_3006 = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
+            download_polygon_3006 = transform(transformer_to_3006.transform, download_polygon_4326)
+            
+            # Calculate area in m²
+            download_area_m2 = download_polygon_3006.area
+            download_area_km2 = download_area_m2 / 1_000_000
+            details['download_area_km2'] = round(download_area_km2, 6)
+            
+            # Check max area limit
+            if download_area_km2 > MAX_DOWNLOAD_AREA_KM2:
+                errors.append(
+                    f'Download area is too large: {download_area_km2:.3f} km² '
+                    f'(max: {MAX_DOWNLOAD_AREA_KM2} km²). Please draw a smaller area.'
+                )
+        
+        # Validate simulation area if provided
+        if simulation_area:
+            simulation_coords = simulation_area.get('coordinates', [])
+            if len(simulation_coords) < 3:
+                errors.append('Simulation area must have at least 3 points')
+            else:
+                # Convert [lat, lon] to [lon, lat] for Shapely
+                simulation_coords_xy = [(lon, lat) for lat, lon in simulation_coords]
+                simulation_polygon_4326 = Polygon(simulation_coords_xy)
+                
+                # Transform to EPSG:3006
+                simulation_polygon_3006 = transform(transformer_to_3006.transform, simulation_polygon_4326)
+                
+                # Calculate area in m²
+                simulation_area_m2 = simulation_polygon_3006.area
+                simulation_area_km2 = simulation_area_m2 / 1_000_000
+                details['simulation_area_km2'] = round(simulation_area_km2, 6)
+                details['simulation_area_m2'] = round(simulation_area_m2, 2)
+                
+                # Check min area limit
+                if simulation_area_m2 < MIN_SIMULATION_AREA_M2:
+                    errors.append(
+                        f'Simulation area is too small: {simulation_area_m2:.2f} m² '
+                        f'(min: {MIN_SIMULATION_AREA_M2} m²). Please draw a larger area.'
+                    )
+                
+                # Check containment: simulation must be within download area
+                if download_coords and len(download_coords) >= 3:
+                    # Use the projected polygons for accurate containment check
+                    is_contained = download_polygon_3006.contains(simulation_polygon_3006)
+                    details['containment_check'] = is_contained
+                    
+                    if not is_contained:
+                        # Calculate overlap percentage for better error message
+                        intersection = download_polygon_3006.intersection(simulation_polygon_3006)
+                        overlap_percent = (intersection.area / simulation_polygon_3006.area) * 100
+                        
+                        errors.append(
+                            f'Simulation area (green) must be completely inside the download area (orange). '
+                            f'Currently only {overlap_percent:.1f}% is inside. '
+                            f'Please redraw or edit the simulation area to fit within the download area.'
+                        )
+                    else:
+                        details['overlap_percent'] = 100.0
+        
+        # Determine overall validity
+        valid = len(errors) == 0
+        
+        logger.info(f"Area validation: valid={valid}, errors={errors}, details={details}")
+        
+        return JsonResponse({
+            'valid': valid,
+            'errors': errors,
+            'warnings': warnings,
+            'details': details
+        })
+        
+    except Exception as e:
+        logger.error(f"Error validating areas: {str(e)}", exc_info=True)
+        return JsonResponse({
+            'valid': False,
+            'errors': [f'Validation error: {str(e)}'],
+            'warnings': [],
+            'details': {}
         }, status=500)

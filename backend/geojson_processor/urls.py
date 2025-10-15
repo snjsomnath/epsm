@@ -7,5 +7,6 @@ from . import views
 
 urlpatterns = [
     path('process-geojson/', views.process_geojson, name='process_geojson'),
+    path('validate-areas/', views.validate_areas, name='validate_areas'),
     path('health/', views.health_check, name='geojson_health'),
 ]

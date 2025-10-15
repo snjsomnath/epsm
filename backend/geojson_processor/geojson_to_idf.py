@@ -166,20 +166,29 @@ class GeoJSONToIDFConverter:
             logger.error(f"Error filtering buildings: {e}")
             raise
     
-    def enrich_geojson(self, geojson_path: Path) -> Path:
+    def enrich_geojson(self, geojson_path: Path, simulation_bounds: Optional[Dict] = None) -> Path:
         """
         Add building properties required for Dragonfly model.
         
         Args:
             geojson_path: Path to input GeoJSON file
+            simulation_bounds: Optional dict with keys 'north', 'south', 'east', 'west' in EPSG:3006
+                             If provided, buildings inside these bounds are marked as 'Building',
+                             others are marked as 'Existing' (context shading only)
             
         Returns:
             Path to enriched GeoJSON file
         """
         try:
             import geopandas as gpd
+            from shapely.geometry import box
             
             logger.info(f"Enriching GeoJSON: {geojson_path}")
+            if simulation_bounds:
+                logger.info(f"Simulation bounds provided: {simulation_bounds}")
+                logger.info("Buildings inside simulation bounds will be simulated, others will be context shading")
+            else:
+                logger.info("No simulation bounds - all buildings will be simulated")
             
             with open(geojson_path, 'r', encoding='utf-8') as f:
                 city_geojson = json.load(f)
@@ -188,6 +197,19 @@ class GeoJSONToIDFConverter:
             city_gdf = gpd.read_file(geojson_path)
             city_bounds = city_gdf.bounds
             lon_min, lat_min = city_bounds.minx.min(), city_bounds.miny.min()
+            
+            # Create simulation bounds polygon if provided (in EPSG:3006)
+            simulation_polygon = None
+            if simulation_bounds:
+                # GeoJSON from DTCC is in CRS84 (WGS84), need to transform to EPSG:3006 for comparison
+                gdf_3006 = city_gdf.to_crs('EPSG:3006')
+                simulation_polygon = box(
+                    simulation_bounds['west'],
+                    simulation_bounds['south'],
+                    simulation_bounds['east'],
+                    simulation_bounds['north']
+                )
+                logger.info(f"Created simulation polygon: {simulation_polygon.bounds}")
             
             # Add project metadata
             city_geojson['project'] = {
@@ -205,7 +227,6 @@ class GeoJSONToIDFConverter:
                 
                 properties['id'] = f"Building{i}"
                 properties['name'] = f"Building{i}"
-                properties['building_status'] = 'Building'
                 properties['type'] = 'Building'
                 properties['maximum_roof_height'] = height
                 properties['number_of_stories'] = number_of_stories
@@ -215,6 +236,23 @@ class GeoJSONToIDFConverter:
                 if 'ground_height' not in properties:
                     properties['ground_height'] = 0
                 
+                # Determine if building should be simulated or just context shading
+                if simulation_polygon:
+                    # Check if building centroid is inside simulation bounds
+                    # Get building geometry in EPSG:3006 for comparison
+                    building_geom_3006 = gdf_3006.iloc[i].geometry
+                    centroid = building_geom_3006.centroid
+                    
+                    if simulation_polygon.contains(centroid):
+                        properties['building_status'] = 'Building'  # Simulate
+                        logger.debug(f"Building {i} inside simulation area - will be simulated")
+                    else:
+                        properties['building_status'] = 'Existing'  # Context shading only
+                        logger.debug(f"Building {i} outside simulation area - context shading only")
+                else:
+                    # No simulation bounds - all buildings are simulated
+                    properties['building_status'] = 'Building'
+                
                 building['properties'] = properties
             
             # Save enriched GeoJSON
@@ -222,7 +260,14 @@ class GeoJSONToIDFConverter:
             with open(enriched_path, 'w', encoding='utf-8') as f:
                 json.dump(city_geojson, f, ensure_ascii=False, indent=4)
             
-            logger.info(f"Enriched GeoJSON saved to {enriched_path}")
+            # Log statistics
+            building_count = sum(1 for f in city_geojson.get('features', []) 
+                               if f.get('properties', {}).get('building_status') == 'Building')
+            context_count = sum(1 for f in city_geojson.get('features', []) 
+                              if f.get('properties', {}).get('building_status') == 'Existing')
+            logger.info(f"✅ Enriched GeoJSON: {building_count} buildings to simulate, {context_count} context shades")
+            logger.info(f"Saved to {enriched_path}")
+            
             return enriched_path
             
         except Exception as e:
@@ -661,7 +706,8 @@ class GeoJSONToIDFConverter:
         filter_height_min: float = 3,
         filter_height_max: float = 100,
         filter_area_min: float = 100,
-        use_multiplier: bool = False
+        use_multiplier: bool = False,
+        simulation_bounds: Optional[Dict] = None
     ) -> Tuple[Path, Optional[Path]]:
         """
         Complete pipeline: filter → enrich → convert to IDF.
@@ -672,6 +718,8 @@ class GeoJSONToIDFConverter:
             filter_height_max: Maximum building height
             filter_area_min: Minimum building area
             use_multiplier: Use floor multipliers in model
+            simulation_bounds: Optional dict with keys 'north', 'south', 'east', 'west' in EPSG:3006
+                             Buildings inside are simulated, others are context shading
             
         Returns:
             Tuple of (idf_path, gbxml_path)
@@ -686,8 +734,8 @@ class GeoJSONToIDFConverter:
             filter_area_min
         )
         
-        # Step 2: Enrich with metadata
-        enriched_path = self.enrich_geojson(filtered_path)
+        # Step 2: Enrich with metadata and mark simulation vs context buildings
+        enriched_path = self.enrich_geojson(filtered_path, simulation_bounds)
         
         # Step 3: Convert to IDF
         idf_path, gbxml_path = self.convert_to_idf(enriched_path, use_multiplier)
