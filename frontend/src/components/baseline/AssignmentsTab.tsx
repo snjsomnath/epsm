@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, 
   Typography, 
@@ -27,13 +27,35 @@ import {
   MenuItem,
   Grid,
   Stack,
-  LinearProgress
+  LinearProgress,
+  Card,
+  CardContent
 } from '@mui/material';
-import { Save, Database, ArrowRight, ArrowLeft, X, Check } from 'lucide-react';
+import { Save, Database, ArrowRight, ArrowLeft, X, Check, Package } from 'lucide-react';
 import type { ParsedData } from '../../types/simulation';
 import { useDatabase } from '../../context/DatabaseContext';
 import { useAuth } from '../../context/AuthContext';
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import type { MaterialInsert, ConstructionInsert } from '../../lib/database.types';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 // Create a new component for the confirmation dialog
 interface ConfirmationDialogProps {
@@ -303,6 +325,43 @@ interface AssignmentsTabProps {
   parsedData: ParsedData | null;
 }
 
+// Calculate material stock volumes
+const calculateMaterialStock = (parsedData: ParsedData | null) => {
+  if (!parsedData) return [];
+
+  const materialVolumes: Record<string, { volume: number; mass: number; area: number }> = {};
+
+  // Iterate through constructions to calculate material volumes
+  parsedData.constructions.forEach(construction => {
+    const totalArea = construction.properties?.totalArea || 0;
+    const layers = construction.properties?.layers || [];
+
+    // For each layer in the construction, find the material and calculate volume
+    layers.forEach((layerName: string) => {
+      const material = parsedData.materials.find(m => m.name === layerName);
+      if (material && totalArea > 0) {
+        const thickness = material.properties?.thickness || 0; // in meters
+        const density = material.properties?.density || 0; // kg/m³
+        const volume = totalArea * thickness; // m³
+        const mass = volume * density; // kg
+
+        if (!materialVolumes[layerName]) {
+          materialVolumes[layerName] = { volume: 0, mass: 0, area: 0 };
+        }
+
+        materialVolumes[layerName].volume += volume;
+        materialVolumes[layerName].mass += mass;
+        materialVolumes[layerName].area += totalArea;
+      }
+    });
+  });
+
+  // Convert to array and sort by volume
+  return Object.entries(materialVolumes)
+    .map(([name, data]) => ({ name, ...data }))
+    .sort((a, b) => b.volume - a.volume);
+};
+
 const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
   const { isAuthenticated, user } = useAuth();
   const { 
@@ -325,6 +384,67 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
   const [currentItemIndex, setCurrentItemIndex] = useState(0);
   const [confirmedItems, setConfirmedItems] = useState<any[]>([]);
   const [editedValues, setEditedValues] = useState<Record<number, any>>({});
+
+  // Calculate material stock data
+  const materialStockData = useMemo(() => calculateMaterialStock(parsedData), [parsedData]);
+
+  // Better categorical palette (distinct colors)
+  const palette = [
+    '#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC949', '#AF7AA1', '#FF9DA7', '#9C755F', '#BAB0AC'
+  ];
+
+  // Helper: convert hex to rgba
+  const hexToRgba = (hex: string, alpha = 1) => {
+    const h = hex.replace('#', '');
+    const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // Helper: ensure color with alpha (supports hex and other css color strings)
+  const withAlpha = (color: string, alpha = 0.75) => {
+    if (!color) return `rgba(100,100,100,${alpha})`;
+    const c = String(color).trim();
+    if (c.startsWith('#')) return hexToRgba(c, alpha);
+    if (c.startsWith('rgb(')) return c.replace('rgb(', 'rgba(').replace(')', `, ${alpha})`);
+    if (c.startsWith('rgba(')) return c;
+    if (c.startsWith('hsl(')) return c.replace('hsl(', 'hsla(').replace(')', `, ${alpha})`);
+    // fallback
+    return c;
+  };
+
+  // Number formatting with comma separators
+  const formatNumber = (value: number, decimals = 2) => {
+    if (typeof value !== 'number' || !isFinite(value)) return '-';
+    // Use en-US to ensure comma thousands separators (1,234.56)
+    return value.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  };
+
+  // Material list with curated colors (prefer material property, else palette)
+  const materialStockWithColors = useMemo(() => {
+    return materialStockData.map((m, idx) => {
+      const matPropColor = parsedData?.materials.find(mat => mat.name === m.name)?.properties?.color;
+      const color = matPropColor || palette[idx % palette.length];
+      return { ...m, color };
+    });
+  }, [materialStockData, parsedData]);
+
+  // Floor area used for normalization (sum of parsedData.zones area)
+  const totalFloorArea = useMemo(() => {
+    if (!parsedData) return 0;
+    return parsedData.zones.reduce((s, z) => s + (z.properties?.area || 0), 0);
+  }, [parsedData]);
+
+  // Normalization toggle state
+  const [normalizeByFloor, setNormalizeByFloor] = useState(false);
+
+  // Data used for display (normalized or raw)
+  const displayData = useMemo(() => {
+    if (!normalizeByFloor || !totalFloorArea) return materialStockWithColors;
+    return materialStockWithColors.map(m => ({ ...m, volume: m.volume / totalFloorArea, mass: m.mass / totalFloorArea }));
+  }, [normalizeByFloor, materialStockWithColors, totalFloorArea]);
 
   // Add effect to check database for newly added materials/constructions
   useEffect(() => {
@@ -797,7 +917,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
       } else if (skippedItems.length > 0) {
         setFeedback({
           message: `All ${skippedItems.length} items already existed in the database.`,
-          type: 'info'
+          type: 'success'
         });
       } else {
         setFeedback({
@@ -837,6 +957,7 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
         <Tab label="Materials" />
         <Tab label="Constructions" />
         <Tab label="Zones" />
+        <Tab label="Material Stock" icon={<Package size={16} />} iconPosition="start" />
       </Tabs>
 
       {tabIndex === 0 && (
@@ -1031,6 +1152,195 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
               </TableBody>
             </Table>
           </TableContainer>
+        </Box>
+      )}
+
+      {tabIndex === 3 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                Material Stock Analysis
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Visualizes the volume and mass of each material used in the IDF based on construction areas and material thicknesses.
+              </Typography>
+            </Box>
+            <Box>
+              <Button size="small" variant={normalizeByFloor ? 'contained' : 'outlined'} onClick={() => setNormalizeByFloor(v => !v)}>
+                {normalizeByFloor ? 'Normalized by floor area' : 'Normalize by floor area'}
+              </Button>
+            </Box>
+          </Box>
+
+          {materialStockData.length === 0 ? (
+            <Alert severity="info">
+              No material stock data available. Ensure constructions have valid surface areas and materials have thickness properties.
+            </Alert>
+          ) : (
+            <Grid container spacing={3}>
+              {/* Summary Cards */}
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Total Volume
+                    </Typography>
+                    <Typography variant="h4" color="primary">
+                      {formatNumber(materialStockData.reduce((sum, m) => sum + m.volume, 0), 2)} m³
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Total Mass
+                    </Typography>
+                    <Typography variant="h4" color="primary">
+                      {formatNumber(materialStockData.reduce((sum, m) => sum + m.mass, 0) / 1000, 2)} tonnes
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Unique Materials
+                    </Typography>
+                    <Typography variant="h4" color="primary">
+                      {materialStockData.length}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Volume Chart */}
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Material Volume Distribution
+                    </Typography>
+                    <Box sx={{ height: 400 }}>
+                      <Bar
+                        data={{
+                          labels: displayData.map(m => m.name),
+                          datasets: [
+                            {
+                              label: normalizeByFloor ? 'Volume (m³ / m² floor)' : 'Volume (m³)',
+                              data: displayData.map(m => m.volume),
+                              backgroundColor: displayData.map(m => withAlpha(m.color, 0.85)),
+                              borderColor: displayData.map(m => withAlpha(m.color, 1)),
+                              borderWidth: 1,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: false,
+                            },
+                            title: {
+                              display: false,
+                            },
+                            tooltip: {
+                              callbacks: {
+                                afterLabel: (context) => {
+                                  const material = materialStockWithColors[context.dataIndex];
+                                  return [
+                                    `Mass: ${formatNumber(material.mass / 1000, 2)} tonnes`,
+                                    `Area: ${formatNumber(material.area, 2)} m²`
+                                  ];
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              title: {
+                                display: true,
+                                text: normalizeByFloor ? 'Volume per floor area (m³ / m²)' : 'Volume (m³)',
+                              },
+                            },
+                            x: {
+                              title: {
+                                display: true,
+                                text: 'Material',
+                              },
+                            },
+                          },
+                        }}
+                      />
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Detailed Table */}
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Detailed Material Stock
+                    </Typography>
+                    <TableContainer component={Paper} sx={{ mt: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Material Name</TableCell>
+                            <TableCell align="right">Volume (m³)</TableCell>
+                            <TableCell align="right">Mass (tonnes)</TableCell>
+                            <TableCell align="right">Total Area (m²)</TableCell>
+                            <TableCell align="right">% of Total Volume</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {displayData.map((material, index) => {
+                            const totalVolume = displayData.reduce((sum, m) => sum + m.volume, 0) || 0.0000001;
+                            const percentage = (material.volume / totalVolume) * 100;
+                            
+                            return (
+                              <TableRow key={`material-stock-${index}-${material.name}`}>
+                                <TableCell>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Box sx={{ width: 14, height: 14, backgroundColor: material.color, borderRadius: 1 }} />
+                                    <Typography>{material.name}</Typography>
+                                  </Box>
+                                </TableCell>
+                                <TableCell align="right">{formatNumber(material.volume, 3)}</TableCell>
+                                <TableCell align="right">{formatNumber(material.mass / 1000, 3)}</TableCell>
+                                <TableCell align="right">{formatNumber(material.area, 2)}</TableCell>
+                                <TableCell align="right">
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <LinearProgress 
+                                      variant="determinate" 
+                                      value={percentage} 
+                                      sx={{ flexGrow: 1, height: 8, borderRadius: 4 }}
+                                    />
+                                    <Typography variant="caption">
+                                      {percentage.toFixed(1)}%
+                                    </Typography>
+                                  </Box>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
         </Box>
       )}
 
