@@ -80,9 +80,6 @@ def parse_idf(request):
             'window_area': 0.0
         }
         
-        # Track construction surface data across all files
-        all_construction_surfaces = {}
-        
         for file_index, file in enumerate(files):
             print("Processing file:", file.name)
             content = file.read().decode('utf-8')
@@ -95,16 +92,6 @@ def parse_idf(request):
             file_element_quantities = file_data.get('element_quantities', {})
             for key in total_element_quantities:
                 total_element_quantities[key] += file_element_quantities.get(key, 0.0)
-            
-            # Get construction surface data from this file
-            construction_surfaces = parser._calculate_construction_surfaces()
-            
-            # Aggregate construction surface data
-            for const_name, surf_data in construction_surfaces.items():
-                if const_name not in all_construction_surfaces:
-                    all_construction_surfaces[const_name] = {'count': 0, 'area': 0.0}
-                all_construction_surfaces[const_name]['count'] += surf_data.get('count', 0)
-                all_construction_surfaces[const_name]['area'] += surf_data.get('area', 0.0)
             
             # Add database comparison for materials
             for material in file_data.get('materials', []):
@@ -129,10 +116,11 @@ def parse_idf(request):
                     return None
 
                 props = {}
+                # Parser returns camelCase keys, check those first
                 props['thickness'] = _get_numeric(material, ['thickness', 'Thickness', 'thickness_m', 'Thickness_m'])
                 props['conductivity'] = _get_numeric(material, ['conductivity', 'Conductivity', 'conductivity_w_mk'])
                 props['density'] = _get_numeric(material, ['density', 'Density', 'density_kg_m3', 'density_kg/m3'])
-                props['specificHeat'] = _get_numeric(material, ['specific_heat', 'Specific_Heat', 'specificHeat', 'specific_heat_j_kgk'])
+                props['specificHeat'] = _get_numeric(material, ['specificHeat', 'specific_heat', 'Specific_Heat', 'specific_heat_j_kgk'])
 
                 # Non-numeric properties (fall back to nested properties as well)
                 def _get_str(obj, keys):
@@ -143,9 +131,10 @@ def parse_idf(request):
                     return None
 
                 props['roughness'] = _get_str(material, ['roughness', 'Roughness'])
-                props['thermalAbsorptance'] = _get_str(material, ['thermal_absorptance', 'Thermal_Absorptance'])
-                props['solarAbsorptance'] = _get_str(material, ['solar_absorptance', 'Solar_Absorptance'])
-                props['visibleAbsorptance'] = _get_str(material, ['visible_absorptance', 'Visible_Absorptance'])
+                # Parser returns camelCase, check those first
+                props['thermalAbsorptance'] = _get_str(material, ['thermalAbsorptance', 'thermal_absorptance', 'Thermal_Absorptance'])
+                props['solarAbsorptance'] = _get_str(material, ['solarAbsorptance', 'solar_absorptance', 'Solar_Absorptance'])
+                props['visibleAbsorptance'] = _get_str(material, ['visibleAbsorptance', 'visible_absorptance', 'Visible_Absorptance'])
 
                 normalized_material = {
                     'name': material_name,
@@ -187,11 +176,16 @@ def parse_idf(request):
                             if isinstance(k, str) and k.lower().startswith('layer') and v:
                                 layers.append(v)
 
+                # Preserve surface data from the original construction if present
+                original_props = construction.get('properties', {})
                 normalized_construction = {
                     'name': construction_name,
                     'type': construction.get('type', 'Construction'),
                     'properties': {
-                        'layers': layers
+                        'layers': layers,
+                        # Preserve surfaceCount and totalArea from parser output
+                        'surfaceCount': original_props.get('surfaceCount', 0),
+                        'totalArea': original_props.get('totalArea', 0.0)
                     }
                 }
 
@@ -214,12 +208,6 @@ def parse_idf(request):
                 
                 if zone_name not in zones_dict:
                     zones_dict[zone_name] = zone
-        
-        # Add surface data to constructions
-        for const_name, const_data in constructions_dict.items():
-            surf_info = all_construction_surfaces.get(const_name, {'count': 0, 'area': 0.0})
-            const_data['properties']['surfaceCount'] = surf_info['count']
-            const_data['properties']['totalArea'] = surf_info['area']
         
         # Convert dictionaries to lists for the response
         parsed_data['materials'] = list(materials_dict.values())
