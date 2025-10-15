@@ -18,11 +18,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import earcut from 'earcut';
 
 interface ModelViewer3DProps {
   modelUrl: string;
+  terrainUrl?: string;
   modelType?: 'gltf' | 'obj' | 'json';
   onSimulate?: () => void;
   isSimulating?: boolean;
@@ -30,6 +32,7 @@ interface ModelViewer3DProps {
 
 const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   modelUrl,
+  terrainUrl,
   modelType = 'gltf',
   onSimulate,
   isSimulating = false
@@ -40,6 +43,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
+  const terrainRef = useRef<THREE.Object3D | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -56,6 +60,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     windows: true,
     doors: true,
     ceilings: true,
+    terrain: true,
     other: true
   });
   const [showLayerControls, setShowLayerControls] = useState(false);
@@ -89,6 +94,11 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         child.visible = visible;
       }
     });
+    
+    // Handle terrain visibility separately
+    if (terrainRef.current) {
+      terrainRef.current.visible = layerVisibility.terrain;
+    }
   }, [layerVisibility]);
 
   const handleLayerToggle = (layer: keyof typeof layerVisibility) => {
@@ -109,6 +119,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       windows: newVisibility,
       doors: newVisibility,
       ceilings: newVisibility,
+      terrain: newVisibility,
       other: newVisibility
     });
   };
@@ -219,6 +230,14 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       controls.dispose();
     };
   }, []);
+
+  // Separate effect for loading terrain when terrainUrl changes
+  useEffect(() => {
+    if (!terrainUrl || !sceneRef.current) return;
+    
+    console.log('🗺️ terrainUrl changed, loading terrain:', terrainUrl);
+    loadTerrain(terrainUrl, sceneRef.current);
+  }, [terrainUrl]);
 
   const loadModel = async (
     url: string,
@@ -355,6 +374,94 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     }
   };
 
+  const loadTerrain = async (url: string, scene: THREE.Scene) => {
+    try {
+      console.group('🗺️ 3D Model Viewer - Loading Terrain');
+      console.log('📍 Terrain URL:', url);
+      console.log('⏰ Load started at:', new Date().toISOString());
+      
+      // Load STL file
+      const loader = new STLLoader();
+      const geometry = await loader.loadAsync(url);
+      
+      // Normalize geometry to origin and apply coordinate system transformation
+      // Buildings are transformed: EnergyPlus [X, Y, Z] → Three.js [X, Z, Y]
+      // Need to apply same transformation to terrain for alignment
+      geometry.computeBoundingBox();
+      const bbox = geometry.boundingBox!;
+      const center = new THREE.Vector3();
+      bbox.getCenter(center);
+      
+      console.log('🗺️ Original terrain bounding box:', {
+        min: { x: bbox.min.x, y: bbox.min.y, z: bbox.min.z },
+        max: { x: bbox.max.x, y: bbox.max.y, z: bbox.max.z },
+        center: { x: center.x, y: center.y, z: center.z }
+      });
+      
+      // Step 1: Translate to origin
+      geometry.translate(-center.x, -center.y, -center.z);
+      
+      // Step 2: Apply coordinate transformation [X, Y, Z] → [X, Z, Y]
+      // This matches the transformation applied to buildings in model_3d_generator.py
+      const positionAttribute = geometry.getAttribute('position');
+      for (let i = 0; i < positionAttribute.count; i++) {
+        const x = positionAttribute.getX(i);
+        const y = positionAttribute.getY(i);
+        const z = positionAttribute.getZ(i);
+        
+        // Transform: X stays X, Y becomes Z, Z becomes Y
+        positionAttribute.setXYZ(i, x, z, y);
+      }
+      
+      // Recalculate normals and bounding box after transformation
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      const newBbox = geometry.boundingBox!;
+      
+      // Step 3: Translate so lowest point is at ground level (y=0)
+      const minY = newBbox.min.y;
+      geometry.translate(0, -minY, 0);
+      
+      // Final bounding box
+      geometry.computeBoundingBox();
+      const finalBbox = geometry.boundingBox!;
+      console.log('🗺️ Final terrain bounding box (ground-aligned):', {
+        min: { x: finalBbox.min.x, y: finalBbox.min.y, z: finalBbox.min.z },
+        max: { x: finalBbox.max.x, y: finalBbox.max.y, z: finalBbox.max.z }
+      });
+      
+      // Create terrain material with clean white appearance
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xFFFFFF, // White terrain for clean visualization
+        roughness: 0.8,   // Slightly rough for realistic light interaction
+        metalness: 0.0,   // Non-metallic
+        flatShading: false,
+        side: THREE.DoubleSide // Make visible from both sides
+      });
+      
+      // Create mesh
+      const terrain = new THREE.Mesh(geometry, material);
+      terrain.name = 'terrain';
+      terrain.userData.type = 'terrain';
+      terrain.receiveShadow = true;
+      terrain.castShadow = false; // Terrain doesn't need to cast shadows
+      
+      // Add to scene
+      scene.add(terrain);
+      terrainRef.current = terrain;
+      
+      console.log('✅ Terrain loaded successfully!');
+      console.log('⏰ Load completed at:', new Date().toISOString());
+      console.groupEnd();
+      
+    } catch (err) {
+      console.error('❌ Error loading terrain:', err);
+      console.groupEnd();
+      // Don't set error state for terrain - it's optional
+      console.warn('Terrain loading failed, continuing without terrain');
+    }
+  };
+
   const createModelFromJSON = (data: any): THREE.Object3D => {
     console.log('🔨 Creating Three.js model from JSON data...');
     const group = new THREE.Group();
@@ -435,6 +542,26 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
             const instance = zoneGroup.clone();
             instance.name = `${zoneName}_floor_${i + 1}`;
             instance.position.y = floorHeight * i;
+            
+            // For the topmost floor, convert ceilings to roofs for better visualization
+            if (i === multiplier - 1) {
+              instance.traverse((child: THREE.Object3D) => {
+                if (child instanceof THREE.Mesh && child.userData.type === 'ceiling') {
+                  // Update material to use roof color
+                  const roofColor = data.metadata?.colors?.['roof'] || '#8B4513';
+                  child.material = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(roofColor),
+                    roughness: 0.7,
+                    metalness: 0.0,
+                    side: THREE.DoubleSide
+                  });
+                  // Update userData to reflect it's now a roof
+                  child.userData.type = 'roof';
+                  child.userData.originalType = 'ceiling';
+                }
+              });
+            }
+            
             group.add(instance);
             
             if (i > 0) {
@@ -572,10 +699,10 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       
       return new THREE.MeshStandardMaterial({
         color: new THREE.Color(color),
-        roughness: isWindow ? 0.1 : 0.5,
-        metalness: isWindow ? 0.8 : 0.3,
-        transparent: isWindow,
-        opacity: isWindow ? 0.4 : 1.0,
+        roughness: isWindow ? 0.3 : 0.7,       // Windows slightly smoother than other surfaces
+        metalness: isWindow ? 0.0 : 0.0,       // No metallic properties
+        transparent: false,                     // No transparency - solid colors
+        opacity: 1.0,                           // Full opacity for all surfaces
         side: THREE.DoubleSide
       });
     }
@@ -879,6 +1006,16 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
                       />
                     }
                     label={<Typography variant="body2">Ceilings</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.terrain}
+                        onChange={() => handleLayerToggle('terrain')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Terrain</Typography>}
                   />
                   <FormControlLabel
                     control={

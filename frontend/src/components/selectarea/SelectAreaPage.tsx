@@ -247,6 +247,7 @@ const SelectAreaPage = () => {
   const [geojsonPath, setGeojsonPath] = useState<string | null>(null);
   const [geojsonUrl, setGeojsonUrl] = useState<string | null>(null);
   const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [terrainUrl, setTerrainUrl] = useState<string | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const featureGroupRef = useRef<LeafletFeatureGroup>(null);
@@ -811,6 +812,18 @@ const SelectAreaPage = () => {
             }, 2000); // Wait for dialog to close
           } else {
             console.warn('⚠️ No model_url in response data');
+          }
+          
+          // Set the terrain URL if available
+          if (data.terrain_url) {
+            const fullTerrainUrl = data.terrain_url.startsWith('http')
+              ? data.terrain_url
+              : `${backendUrl}${data.terrain_url}`;
+            
+            console.log('✅ Terrain mesh ready for display:', fullTerrainUrl);
+            setTerrainUrl(fullTerrainUrl);
+          } else {
+            console.log('ℹ️ No terrain_url in response data (optional)');
           }
           
           // Close the dialog after showing success
@@ -1520,6 +1533,7 @@ const SelectAreaPage = () => {
             >
               <ModelViewer3D
                 modelUrl={modelUrl}
+                terrainUrl={terrainUrl || undefined}
                 modelType="json"
                 onSimulate={handleSimulateBaseline}
                 isSimulating={isSimulating}

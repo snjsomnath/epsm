@@ -20,18 +20,18 @@ logger = logging.getLogger(__name__)
 class Model3DGenerator:
     """Generate 3D model files for visualization by parsing IDF files."""
     
-    # Surface type colors (matching Spider IDF viewer)
+    # Surface type colors (aesthetic and logical)
     COLORS = {
-        'ceiling': '#ff8080',
-        'door': '#f00000',
-        'floor': '#40b4ff',
-        'glassdoor': '#8888ff',
-        'wall': '#ffb400',
-        'roof': '#800000',
-        'roofceiling': '#aa4444',
-        'shade': '#888888',
-        'window': '#444444',
-        'undefined': '#00ff00',
+        'ceiling': '#f5f5f5',      # Light gray (interior ceiling)
+        'door': '#8B4513',         # Saddle brown (wood door)
+        'floor': '#D2B48C',        # Tan (flooring material)
+        'glassdoor': '#87CEEB',    # Sky blue (glass with tint)
+        'wall': '#F5DEB3',         # Wheat/beige (typical wall color)
+        'roof': '#8B4513',         # Saddle brown (roof material)
+        'roofceiling': '#CD853F',  # Peru (roof/ceiling combo)
+        'shade': '#A9A9A9',        # Dark gray (context buildings)
+        'window': '#B0E0E6',       # Powder blue (glass/transparent)
+        'undefined': '#FF69B4',    # Hot pink (to highlight errors)
     }
     
     def __init__(self, work_dir: str):
