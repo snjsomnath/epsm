@@ -424,7 +424,7 @@ class GeoJSONToIDFConverter:
                 shade_distance=None,
                 use_multiplier=use_multiplier,
                 exclude_plenums=True,  # Exclude plenum zones (API changed from add_plenum)
-                cap=False,
+                cap=True,
                 solve_ceiling_adjacencies=True,
                 tolerance=None,
                 enforce_adj=False

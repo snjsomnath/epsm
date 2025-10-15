@@ -184,7 +184,226 @@ class Model3DGenerator:
                     surface['zone'] = surface_zone_map[parent_name]
                     logger.debug(f"Window '{surface['name']}' zone updated from '{original_zone}' to '{surface['zone']}' (from parent '{parent_name}')")
         
+        # Third pass: Generate caps for shade/context buildings
+        shade_surfaces = [s for s in surfaces_data if s['type'] == 'shade']
+        if shade_surfaces:
+            logger.info(f"Generating caps for {len(shade_surfaces)} shade surfaces...")
+            cap_surfaces = self._generate_shade_caps(shade_surfaces)
+            if cap_surfaces:
+                surfaces_data.extend(cap_surfaces)
+                logger.info(f"Added {len(cap_surfaces)} cap surfaces for context buildings")
+        
         return surfaces_data
+    
+    def _generate_shade_caps(self, shade_surfaces: List[Dict]) -> List[Dict]:
+        """
+        Generate top and bottom cap surfaces for shade/context buildings.
+        
+        Shade surfaces are typically named like Building0_0, Building0_1, etc.
+        where the number before underscore is the building ID and after is the wall index.
+        This method groups surfaces by building and creates horizontal caps.
+        
+        Args:
+            shade_surfaces: List of shade surface dictionaries
+        
+        Returns:
+            List of cap surface dictionaries (top and bottom for each building)
+        """
+        import re
+        
+        # Group shade surfaces by building (extract building ID from name)
+        buildings = {}
+        for surface in shade_surfaces:
+            name = surface['name']
+            # Match pattern like "Building0_0" or "Building123_5"
+            match = re.match(r'(Building\d+)_\d+', name)
+            if match:
+                building_id = match.group(1)
+                if building_id not in buildings:
+                    buildings[building_id] = []
+                buildings[building_id].append(surface)
+            else:
+                # If name doesn't match pattern, use as-is (e.g., generic shading)
+                if 'other' not in buildings:
+                    buildings['other'] = []
+                buildings['other'].append(surface)
+        
+        logger.info(f"Found {len(buildings)} context buildings to cap")
+        
+        cap_surfaces = []
+        
+        for building_id, surfaces in buildings.items():
+            # Collect all Z-coordinates to find min/max height
+            all_z = []
+            
+            for surface in surfaces:
+                for vertex in surface['vertices']:
+                    all_z.append(vertex[2])
+            
+            if len(all_z) < 4:
+                continue
+            
+            min_z = min(all_z)
+            max_z = max(all_z)
+            height = max_z - min_z
+            
+            # Extract footprint by tracing edges at each height level
+            bottom_polygon = self._trace_building_footprint(surfaces, min_z)
+            top_polygon = self._trace_building_footprint(surfaces, max_z)
+            
+            # Create bottom cap (floor)
+            if bottom_polygon and len(bottom_polygon) >= 3:
+                bottom_cap = self._create_cap_polygon(
+                    bottom_polygon, min_z, f"{building_id}_cap_bottom", reverse=True
+                )
+                if bottom_cap:
+                    cap_surfaces.append(bottom_cap)
+            
+            # Create top cap (roof)
+            if top_polygon and len(top_polygon) >= 3:
+                top_cap = self._create_cap_polygon(
+                    top_polygon, max_z, f"{building_id}_cap_top", reverse=False
+                )
+                if top_cap:
+                    cap_surfaces.append(top_cap)
+            
+            logger.info(f"{building_id}: height={height:.2f}m, bottom_pts={len(bottom_polygon) if bottom_polygon else 0}, top_pts={len(top_polygon) if top_polygon else 0}")
+        
+        return cap_surfaces
+    
+    def _trace_building_footprint(self, wall_surfaces: List[Dict], z_height: float) -> Optional[List[tuple]]:
+        """
+        Trace the building footprint at a given height by following connected edges.
+        
+        This method extracts horizontal edges from vertical wall surfaces at the specified
+        height and orders them to form a proper polygon outline (works for concave shapes).
+        
+        Args:
+            wall_surfaces: List of wall surface dictionaries
+            z_height: Z-coordinate to extract footprint at
+        
+        Returns:
+            Ordered list of (x, y) points forming the footprint, or None if failed
+        """
+        tolerance = 0.1
+        edges = []
+        
+        # Extract all edges at the specified height from wall surfaces
+        # Wall surfaces typically have vertices in a pattern like: top1, bottom1, bottom2, top2
+        # So we need to check ALL vertex pairs, not just consecutive ones
+        for surface in wall_surfaces:
+            vertices = surface['vertices']
+            
+            # Check all possible edges between vertices at the target height
+            height_vertices = []
+            for i, v in enumerate(vertices):
+                if abs(v[2] - z_height) < tolerance:
+                    height_vertices.append((i, v))
+            
+            # If we have 2 vertices at this height, they form an edge
+            if len(height_vertices) == 2:
+                v1 = height_vertices[0][1]
+                v2 = height_vertices[1][1]
+                edge = ((v1[0], v1[1]), (v2[0], v2[1]))
+                edges.append(edge)
+        
+        logger.debug(f"Found {len(edges)} edges at height {z_height:.2f}")
+        
+        if len(edges) < 3:
+            logger.warning(f"Not enough edges ({len(edges)}) to form polygon at height {z_height:.2f}")
+            return None
+        
+        # Build polygon by connecting edges in order
+        polygon = []
+        remaining_edges = edges.copy()
+        
+        # Start with first edge
+        current_edge = remaining_edges.pop(0)
+        polygon.append(current_edge[0])
+        polygon.append(current_edge[1])
+        current_point = current_edge[1]
+        
+        # Connect edges by finding matching endpoints
+        max_iterations = len(edges) * 2  # Safety limit
+        iterations = 0
+        
+        while remaining_edges and iterations < max_iterations:
+            iterations += 1
+            found = False
+            
+            for i, edge in enumerate(remaining_edges):
+                # Check if edge connects to current point (with small tolerance)
+                if self._points_equal(edge[0], current_point, tolerance=0.01):
+                    polygon.append(edge[1])
+                    current_point = edge[1]
+                    remaining_edges.pop(i)
+                    found = True
+                    break
+                elif self._points_equal(edge[1], current_point, tolerance=0.01):
+                    polygon.append(edge[0])
+                    current_point = edge[0]
+                    remaining_edges.pop(i)
+                    found = True
+                    break
+            
+            if not found:
+                # Can't find connecting edge, might be complete
+                logger.debug(f"Could not find connecting edge after {len(polygon)} points")
+                break
+        
+        # Remove duplicate points (first and last should be same)
+        if len(polygon) > 0 and self._points_equal(polygon[0], polygon[-1], tolerance=0.01):
+            polygon = polygon[:-1]
+        
+        logger.debug(f"Traced polygon with {len(polygon)} points")
+        
+        return polygon if len(polygon) >= 3 else None
+    
+    def _points_equal(self, p1: tuple, p2: tuple, tolerance: float = 0.01) -> bool:
+        """Check if two 2D points are equal within tolerance."""
+        return abs(p1[0] - p2[0]) < tolerance and abs(p1[1] - p2[1]) < tolerance
+    
+    def _create_cap_polygon(
+        self, 
+        points_2d: List[tuple], 
+        z_height: float, 
+        name: str,
+        reverse: bool = False
+    ) -> Optional[Dict]:
+        """
+        Create a horizontal cap surface from ordered 2D footprint points.
+        
+        Args:
+            points_2d: Ordered list of (x, y) tuples forming the footprint perimeter
+            z_height: Z-coordinate for the cap
+            name: Name for the surface
+            reverse: If True, reverse vertex order (for bottom face pointing down)
+        
+        Returns:
+            Surface dictionary or None if creation failed
+        """
+        if len(points_2d) < 3:
+            return None
+        
+        # Points are already ordered from edge tracing, no need to sort
+        ordered_points = list(points_2d)
+        
+        # Reverse winding order for bottom faces (normal pointing down)
+        if reverse:
+            ordered_points = ordered_points[::-1]
+        
+        # Create 3D vertices with the height
+        vertices = [[x, y, z_height] for x, y in ordered_points]
+        
+        return {
+            'name': name,
+            'type': 'shade',
+            'zone': 'exterior',
+            'color': self.COLORS.get('shade', '#888888'),
+            'vertices': vertices,
+            'index': -1,  # Special index for generated surfaces
+            'needs_triangulation': len(vertices) > 4
+        }
     
     def _normalize_coordinates(self, surfaces_data: List[Dict]) -> List[Dict]:
         """
