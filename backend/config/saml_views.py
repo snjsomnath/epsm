@@ -4,6 +4,7 @@ Overrides djangosaml2 views to ensure correct signing algorithm is used
 """
 
 import logging
+from django.conf import settings
 from djangosaml2.views import LoginView as BaseLoginView, LogoutInitView as BaseLogoutInitView
 
 logger = logging.getLogger(__name__)
@@ -24,26 +25,24 @@ class LoginView(BaseLoginView):
     """
     
     def get(self, request, *args, **kwargs):
-        """Override GET to inject SHA256 signature algorithm into SAML client"""
-        # Get config and client
-        conf = self.get_conf()
-        
-        # CRITICAL: Force SHA256 before creating SAML client
-        # pysaml2 defaults to SHA1 if not explicitly overridden here
-        if 'service' in conf and 'sp' in conf['service']:
-            # Inject signing algorithm at the SP service level
-            conf['service']['sp']['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
-            conf['service']['sp']['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
-        
-        # Also set at config root level (belt and suspenders approach)
-        conf['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
-        conf['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
-        
-        logger.info(
-            "Enforcing SHA256 signature algorithm for SAML AuthnRequest: "
-            "sign_alg=http://www.w3.org/2001/04/xmldsig-more#rsa-sha256, "
-            "digest_alg=http://www.w3.org/2001/04/xmlenc#sha256"
-        )
+        """Override GET to inject SHA256 signature algorithm into SAML config"""
+        # Modify the SAML_CONFIG directly before the parent class uses it
+        # This ensures SHA256 is used when creating the AuthnRequest
+        if hasattr(settings, 'SAML_CONFIG'):
+            # Force SHA256 at config root level
+            settings.SAML_CONFIG['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+            settings.SAML_CONFIG['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
+            
+            # Also set at SP service level for redundancy
+            if 'service' in settings.SAML_CONFIG and 'sp' in settings.SAML_CONFIG['service']:
+                settings.SAML_CONFIG['service']['sp']['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+                settings.SAML_CONFIG['service']['sp']['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
+            
+            logger.info(
+                "Enforcing SHA256 signature algorithm for SAML AuthnRequest: "
+                "sign_alg=http://www.w3.org/2001/04/xmldsig-more#rsa-sha256, "
+                "digest_alg=http://www.w3.org/2001/04/xmlenc#sha256"
+            )
         
         # Continue with parent implementation
         return super().get(request, *args, **kwargs)
@@ -55,22 +54,20 @@ class LogoutInitView(BaseLogoutInitView):
     """
     
     def get(self, request, *args, **kwargs):
-        """Override GET to inject SHA256 signature algorithm into SAML client"""
-        # Get config and client
-        conf = self.get_conf()
-        
-        # CRITICAL: Force SHA256 before creating SAML client
-        if 'service' in conf and 'sp' in conf['service']:
-            conf['service']['sp']['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
-            conf['service']['sp']['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
-        
-        conf['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
-        conf['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
-        
-        logger.info(
-            "Enforcing SHA256 signature algorithm for SAML LogoutRequest: "
-            "sign_alg=http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
-        )
+        """Override GET to inject SHA256 signature algorithm into SAML config"""
+        # Modify the SAML_CONFIG directly before the parent class uses it
+        if hasattr(settings, 'SAML_CONFIG'):
+            settings.SAML_CONFIG['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+            settings.SAML_CONFIG['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
+            
+            if 'service' in settings.SAML_CONFIG and 'sp' in settings.SAML_CONFIG['service']:
+                settings.SAML_CONFIG['service']['sp']['signing_algorithm'] = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+                settings.SAML_CONFIG['service']['sp']['digest_algorithm'] = 'http://www.w3.org/2001/04/xmlenc#sha256'
+            
+            logger.info(
+                "Enforcing SHA256 signature algorithm for SAML LogoutRequest: "
+                "sign_alg=http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+            )
         
         # Continue with parent implementation
         return super().get(request, *args, **kwargs)
