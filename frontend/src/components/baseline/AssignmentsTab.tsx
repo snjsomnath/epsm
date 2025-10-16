@@ -1102,10 +1102,10 @@ const AssignmentsTab = ({ uploadedFiles, parsedData }: AssignmentsTabProps) => {
                       ))}
                     </TableCell>
                     <TableCell align="right">
-                      {construction?.properties?.surfaceCount ?? '-'}
+                      {typeof construction?.properties?.surfaceCount === 'number' ? construction.properties.surfaceCount : '-'}
                     </TableCell>
                     <TableCell align="right">
-                      {construction?.properties?.totalArea 
+                      {typeof construction?.properties?.totalArea === 'number'
                         ? construction.properties.totalArea.toFixed(2)
                         : '-'}
                     </TableCell>

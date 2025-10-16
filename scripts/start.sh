@@ -87,6 +87,19 @@ else:
     print('Superuser already exists')
 "
 
+# Restart backend to pick up any code changes
+echo "🔄 Restarting backend to ensure all changes are loaded..."
+docker-compose restart backend
+
+# Wait for backend to be healthy
+echo "⏳ Waiting for backend to be ready..."
+sleep 3
+until docker-compose exec -T backend curl -f http://localhost:8000/health/ > /dev/null 2>&1; do
+    echo "   Backend is starting up..."
+    sleep 2
+done
+echo "✅ Backend is ready!"
+
 # Show running services
 echo "📊 Application Status:"
 docker-compose ps
