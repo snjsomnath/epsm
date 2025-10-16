@@ -1,0 +1,809 @@
+{
+  "materials": [
+    {
+      "id": "6 in. Normalweight Concrete Floor",
+      "name": "6 in. Normalweight Concrete Floor",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "8 in. Concrete Block Basement Wall",
+      "name": "8 in. Concrete Block Basement Wall",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Dry Dust",
+      "name": "Dry Dust",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Dry Sand",
+      "name": "Dry Sand",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "F08 Metal surface",
+      "name": "F08 Metal surface",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic 25mm Insulation",
+      "name": "Generic 25mm Insulation",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic 25mm Wood",
+      "name": "Generic 25mm Wood",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic 50mm Insulation",
+      "name": "Generic 50mm Insulation",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Acoustic Tile",
+      "name": "Generic Acoustic Tile",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Brick",
+      "name": "Generic Brick",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Ceiling Air Gap",
+      "name": "Generic Ceiling Air Gap",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Gypsum Board",
+      "name": "Generic Gypsum Board",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic HW Concrete",
+      "name": "Generic HW Concrete",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic LW Concrete",
+      "name": "Generic LW Concrete",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Painted Metal",
+      "name": "Generic Painted Metal",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Roof Membrane",
+      "name": "Generic Roof Membrane",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Generic Wall Air Gap",
+      "name": "Generic Wall Air Gap",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "M15 200mm heavyweight concrete",
+      "name": "M15 200mm heavyweight concrete",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Material 1",
+      "name": "Material 1",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Material 2",
+      "name": "Material 2",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Wall Insulation [31]",
+      "name": "Wall Insulation [31]",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Typical Carpet Pad",
+      "name": "Typical Carpet Pad",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Typical Insulation",
+      "name": "Typical Insulation",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Typical Insulation-R1",
+      "name": "Typical Insulation-R1",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    },
+    {
+      "id": "Typical Insulation-R2",
+      "name": "Typical Insulation-R2",
+      "type": "Material",
+      "properties": {
+        "thickness": 0.01,
+        "conductivity": 0.5,
+        "density": 800.0,
+        "specificHeat": 900.0,
+        "roughness": "MediumRough",
+        "thermalAbsorptance": 0.9,
+        "solarAbsorptance": 0.7,
+        "visibleAbsorptance": 0.7
+      }
+    }
+  ],
+  "constructions": [
+    {
+      "id": "ceiling",
+      "name": "ceiling",
+      "type": "roof",
+      "properties": {
+        "layers": [
+          "M15 200mm heavyweight concrete",
+          "Generic 50mm Insulation",
+          "Generic LW Concrete",
+          "Dry Sand",
+          "Generic 25mm Wood"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 50.0
+      }
+    },
+    {
+      "id": "external roof",
+      "name": "external roof",
+      "type": "roof",
+      "properties": {
+        "layers": [
+          "Generic 50mm Insulation",
+          "Dry Dust",
+          "M15 200mm heavyweight concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "External wall",
+      "name": "External wall",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Brick",
+          "Generic Wall Air Gap",
+          "Wall Insulation [31]",
+          "M15 200mm heavyweight concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 40.0
+      }
+    },
+    {
+      "id": "Floor Slab",
+      "name": "Floor Slab",
+      "type": "floor",
+      "properties": {
+        "layers": [
+          "Generic 25mm Wood",
+          "Dry Sand",
+          "Generic LW Concrete",
+          "Generic 50mm Insulation",
+          "M15 200mm heavyweight concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 50.0
+      }
+    },
+    {
+      "id": "Generic Context",
+      "name": "Generic Context",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Material 2"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "Generic Double Pane",
+      "name": "Generic Double Pane",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Low-e Glass",
+          "Generic Window Air Gap",
+          "Generic Clear Glass"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Generic Exposed Floor",
+      "name": "Generic Exposed Floor",
+      "type": "floor",
+      "properties": {
+        "layers": [
+          "Generic Painted Metal",
+          "Generic Ceiling Air Gap",
+          "Generic 50mm Insulation",
+          "Generic LW Concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 40.0
+      }
+    },
+    {
+      "id": "Generic Exterior Door",
+      "name": "Generic Exterior Door",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Painted Metal",
+          "Generic 25mm Insulation",
+          "Generic Painted Metal"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Generic Exterior Wall",
+      "name": "Generic Exterior Wall",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Brick",
+          "Generic LW Concrete",
+          "Generic 50mm Insulation",
+          "Generic Wall Air Gap",
+          "Generic Gypsum Board"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 50.0
+      }
+    },
+    {
+      "id": "Generic Ground Slab",
+      "name": "Generic Ground Slab",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic 50mm Insulation",
+          "Generic HW Concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 20.0
+      }
+    },
+    {
+      "id": "Generic Interior Ceiling",
+      "name": "Generic Interior Ceiling",
+      "type": "roof",
+      "properties": {
+        "layers": [
+          "Generic LW Concrete",
+          "Generic Ceiling Air Gap",
+          "Generic Acoustic Tile"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Generic Interior Door",
+      "name": "Generic Interior Door",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic 25mm Wood"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "Generic Interior Floor",
+      "name": "Generic Interior Floor",
+      "type": "floor",
+      "properties": {
+        "layers": [
+          "Generic Acoustic Tile",
+          "Generic Ceiling Air Gap",
+          "Generic LW Concrete"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Generic Interior Wall",
+      "name": "Generic Interior Wall",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Gypsum Board",
+          "Generic Wall Air Gap",
+          "Generic Gypsum Board"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Generic Roof",
+      "name": "Generic Roof",
+      "type": "roof",
+      "properties": {
+        "layers": [
+          "Generic Roof Membrane",
+          "Generic 50mm Insulation",
+          "Generic LW Concrete",
+          "Generic Ceiling Air Gap",
+          "Generic Acoustic Tile"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 50.0
+      }
+    },
+    {
+      "id": "Generic Shade",
+      "name": "Generic Shade",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Material 1"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "Generic Single Pane",
+      "name": "Generic Single Pane",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic Clear Glass"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "Generic Underground Roof",
+      "name": "Generic Underground Roof",
+      "type": "roof",
+      "properties": {
+        "layers": [
+          "Generic 50mm Insulation",
+          "Generic HW Concrete",
+          "Generic Ceiling Air Gap",
+          "Generic Acoustic Tile"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 40.0
+      }
+    },
+    {
+      "id": "Generic Underground Wall",
+      "name": "Generic Underground Wall",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Generic 50mm Insulation",
+          "Generic HW Concrete",
+          "Generic Wall Air Gap",
+          "Generic Gypsum Board"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 40.0
+      }
+    },
+    {
+      "id": "RISN-TG013-2012_200_U2.30_SHGC0.4959",
+      "name": "RISN-TG013-2012_200_U2.30_SHGC0.4959",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "RISN-TG013-2012_200_U2.30_SHGC0.4959"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "Typical Insulated Basement Mass Wall",
+      "name": "Typical Insulated Basement Mass Wall",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Typical Insulation",
+          "8 in. Concrete Block Basement Wall"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 20.0
+      }
+    },
+    {
+      "id": "Typical Insulated Carpeted 6in Slab Floor",
+      "name": "Typical Insulated Carpeted 6in Slab Floor",
+      "type": "floor",
+      "properties": {
+        "layers": [
+          "Typical Insulation",
+          "6 in. Normalweight Concrete Floor",
+          "Typical Carpet Pad"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "Typical Insulated Metal Door-R2",
+      "name": "Typical Insulated Metal Door-R2",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "F08 Metal surface",
+          "Typical Insulation-R2"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 20.0
+      }
+    },
+    {
+      "id": "Typical Overhead Door-R1",
+      "name": "Typical Overhead Door-R1",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "Typical Insulation-R1"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "U 0.57 SHGC 0.39 Dbl Ref-D Clr 6mm/6mm Air",
+      "name": "U 0.57 SHGC 0.39 Dbl Ref-D Clr 6mm/6mm Air",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "REF D CLEAR 6MM",
+          "AIR 6MM",
+          "CLEAR 6MM"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "U 0.57 SHGC 0.49 Dbl Blue 6mm/6mm Air",
+      "name": "U 0.57 SHGC 0.49 Dbl Blue 6mm/6mm Air",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "BLUE 6MM",
+          "AIR 6MM",
+          "CLEAR 6MM"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 30.0
+      }
+    },
+    {
+      "id": "U 1.17 SHGC 0.49 Simple Glazing Skylight",
+      "name": "U 1.17 SHGC 0.49 Simple Glazing Skylight",
+      "type": "window",
+      "properties": {
+        "layers": [
+          "U 1.17 SHGC 0.49 Simple Glazing"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    },
+    {
+      "id": "!- Category\n    0",
+      "name": "!- Category\n    0",
+      "type": "wall",
+      "properties": {
+        "layers": [
+          "ServicePeriod"
+        ],
+        "surfaceCount": 0,
+        "totalArea": 10.0
+      }
+    }
+  ],
+  "zones": [
+    {
+      "id": "Flr1_Jttestensgatan_3_19_Floor2_Room1",
+      "name": "Flr1_Jttestensgatan_3_19_Floor2_Room1",
+      "type": "Zone",
+      "properties": {
+        "area": 10.0,
+        "volume": 30.0,
+        "ceilingHeight": 3.0
+      }
+    },
+    {
+      "id": "Jttestensgatan_3_19_Floor1_Room1",
+      "name": "Jttestensgatan_3_19_Floor1_Room1",
+      "type": "Zone",
+      "properties": {
+        "area": 10.0,
+        "volume": 30.0,
+        "ceilingHeight": 3.0
+      }
+    },
+    {
+      "id": "Jttestensgatan_3_19_Floor2_Room1",
+      "name": "Jttestensgatan_3_19_Floor2_Room1",
+      "type": "Zone",
+      "properties": {
+        "area": 10.0,
+        "volume": 30.0,
+        "ceilingHeight": 3.0
+      }
+    },
+    {
+      "id": "Jttestensgatan_3_19_Floor4_Room1",
+      "name": "Jttestensgatan_3_19_Floor4_Room1",
+      "type": "Zone",
+      "properties": {
+        "area": 10.0,
+        "volume": 30.0,
+        "ceilingHeight": 3.0
+      }
+    }
+  ],
+  "element_quantities": {}
+}

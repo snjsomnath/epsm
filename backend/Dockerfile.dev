@@ -57,5 +57,6 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 # Set entrypoint
 ENTRYPOINT ["docker-entrypoint.sh"]
 
-# Run Daphne ASGI server for WebSocket support
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+# Run Django runserver for auto-reload in development (supports both ASGI/WSGI)
+# Note: For production, use Daphne or Gunicorn with Uvicorn workers
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
