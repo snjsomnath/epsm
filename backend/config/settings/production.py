@@ -75,22 +75,22 @@ SAML_CONFIG = {
     'key_file': '/app/saml_certs/sp_private_key.pem',
     'cert_file': '/app/saml_certs/sp_certificate.pem',
     
-    # Security: Force stronger algorithms at the global level
+    # Security: Force SHA256 algorithms (CRITICAL: Must be set at config root level for pysaml2)
+    # These settings control what algorithm is used when signing outgoing SAML requests
     'signing_algorithm': 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
     'digest_algorithm': 'http://www.w3.org/2001/04/xmlenc#sha256',
+    
+    # CRITICAL: Explicitly configure xmlsec1 encryption and signature algorithms
+    # This ensures pysaml2 passes the correct algorithm parameters to xmlsec1
+    'encryption_keypairs': [{
+        'key_file': '/app/saml_certs/sp_private_key.pem',
+        'cert_file': '/app/saml_certs/sp_certificate.pem',
+    }],
     
     # Additional security settings to enforce strong algorithms
     'preferred_binding': {
         'single_sign_on_service': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',
         'single_logout_service': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-REDIRECT',
-    },
-    
-    # Force the signing and digest algorithms
-    'policy': {
-        'default': {
-            'sign_alg': 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
-            'digest_alg': 'http://www.w3.org/2001/04/xmlenc#sha256',
-        }
     },
     
     'service': {

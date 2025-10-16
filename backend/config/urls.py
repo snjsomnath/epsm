@@ -170,6 +170,7 @@ urlpatterns = [
 if not settings.DEBUG:
     from simulation.saml_metadata_view import custom_metadata
     from djangosaml2 import views as saml2_views
+    from config.saml_views import LoginView as CustomLoginView, LogoutInitView as CustomLogoutInitView
     
     # Custom SAML URLs with our metadata view override
     saml_urlpatterns = [
@@ -179,10 +180,10 @@ if not settings.DEBUG:
         path('saml/acs/', saml2_views.AssertionConsumerServiceView.as_view(), name='saml2_acs'),
         # SLS (Single Logout Service)  
         path('saml/sls/', saml2_views.LogoutView.as_view(), name='saml2_ls'),
-        # Login
-        path('saml/login/', saml2_views.LoginView.as_view(), name='saml2_login'),
-        # Logout
-        path('saml/logout/', saml2_views.LogoutInitView.as_view(), name='saml2_logout'),
+        # Login - CUSTOM VIEW to enforce SHA256 signature algorithm
+        path('saml/login/', CustomLoginView.as_view(), name='saml2_login'),
+        # Logout - CUSTOM VIEW to enforce SHA256 signature algorithm
+        path('saml/logout/', CustomLogoutInitView.as_view(), name='saml2_logout'),
     ]
     
     urlpatterns += saml_urlpatterns
