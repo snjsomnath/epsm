@@ -29,6 +29,12 @@ SECURE_HSTS_PRELOAD = True
 # Proxy/SSL Headers (nginx sets X-Forwarded-Proto)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# CSRF Settings - Trust own domain for SAML POST requests
+CSRF_TRUSTED_ORIGINS = [
+    'https://epsm.chalmers.se',
+    'https://epsm.ita.chalmers.se',
+]
+
 # CORS Settings
 CORS_ALLOWED_ORIGINS = [
     "https://epsm.chalmers.se",
