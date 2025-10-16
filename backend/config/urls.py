@@ -168,6 +168,7 @@ urlpatterns = [
 
 # Add SAML SSO endpoints in production
 if not settings.DEBUG:
+    from django.views.decorators.csrf import csrf_exempt
     from simulation.saml_metadata_view import custom_metadata
     from djangosaml2 import views as saml2_views
     from config.saml_views import LoginView as CustomLoginView, LogoutInitView as CustomLogoutInitView
@@ -176,8 +177,8 @@ if not settings.DEBUG:
     saml_urlpatterns = [
         # Custom metadata endpoint (must be BEFORE include to override)
         path('saml/metadata/', custom_metadata, name='saml2_metadata'),
-        # ACS (Assertion Consumer Service)
-        path('saml/acs/', saml2_views.AssertionConsumerServiceView.as_view(), name='saml2_acs'),
+        # ACS (Assertion Consumer Service) - CSRF exempt (SAML POST from IdP)
+        path('saml/acs/', csrf_exempt(saml2_views.AssertionConsumerServiceView.as_view()), name='saml2_acs'),
         # SLS (Single Logout Service)  
         path('saml/sls/', saml2_views.LogoutView.as_view(), name='saml2_ls'),
         # Login - CUSTOM VIEW to enforce SHA256 signature algorithm

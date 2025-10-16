@@ -225,6 +225,11 @@ SESSION_COOKIE_AGE = 3600 * 8  # 8 hours
 SESSION_SAVE_EVERY_REQUEST = True
 SESSION_COOKIE_SAMESITE = 'Lax'
 
+# SAML Security - djangosaml2 handles CSRF protection internally
+# ACS endpoint must be exempt from Django's CSRF middleware
+SAML_IGNORE_LOGOUT_ERRORS = True
+SAML_CREATE_UNKNOWN_USER = True
+
 # Logging
 LOGGING = {
     'version': 1,
