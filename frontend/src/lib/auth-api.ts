@@ -136,7 +136,8 @@ export const getCurrentUser = async (): Promise<{ data: AuthUser | null; error: 
 
     const data = await response.json();
     
-    if (!data.user) {
+    // Check if authenticated - backend returns authenticated: true/false
+    if (!data.authenticated) {
       return {
         data: null,
         error: null
@@ -145,14 +146,14 @@ export const getCurrentUser = async (): Promise<{ data: AuthUser | null; error: 
 
     return {
       data: {
-        id: data.user.id.toString(),
-        email: data.user.email,
-        first_name: data.user.first_name,
-        last_name: data.user.last_name,
-        is_active: data.user.is_active,
-        is_staff: data.user.is_staff,
-        is_superuser: data.user.is_superuser,
-        date_joined: data.user.date_joined
+        id: data.id?.toString() || '0',
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        is_active: data.is_active ?? true,
+        is_staff: data.is_staff,
+        is_superuser: data.is_superuser,
+        date_joined: data.date_joined
       },
       error: null
     };
