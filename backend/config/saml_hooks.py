@@ -33,18 +33,19 @@ def custom_update_user(user, attributes, attribute_mapping):
     updated = False
     
     # Extract unique identifier for username
-    # Priority: eduPersonPrincipalName > samlSubjectID > uid (for backward compatibility)
+    # Priority: eduPersonPrincipalName > subject-id > uid (for backward compatibility)
     username = None
     if 'eduPersonPrincipalName' in attributes and attributes['eduPersonPrincipalName']:
         # Format: ssanjay@chalmers.se -> extract 'ssanjay'
         eppn = attributes['eduPersonPrincipalName'][0]
         username = eppn.split('@')[0] if '@' in eppn else eppn
         logger.debug(f"Using eduPersonPrincipalName: {eppn} -> username: {username}")
-    elif 'samlSubjectID' in attributes and attributes['samlSubjectID']:
+    elif 'subject-id' in attributes and attributes['subject-id']:
+        # FIXED: Chalmers IdP sends 'subject-id' (hyphenated), not 'samlSubjectID' (camelCase)
         # Format: ssanjay@chalmers.se -> extract 'ssanjay'
-        subject_id = attributes['samlSubjectID'][0]
+        subject_id = attributes['subject-id'][0]
         username = subject_id.split('@')[0] if '@' in subject_id else subject_id
-        logger.debug(f"Using samlSubjectID: {subject_id} -> username: {username}")
+        logger.debug(f"Using subject-id: {subject_id} -> username: {username}")
     elif 'uid' in attributes and attributes['uid']:
         # Fallback for backward compatibility
         username = attributes['uid'][0]
