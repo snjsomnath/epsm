@@ -112,4 +112,20 @@ class DTCCService:
             raise ImportError("dtcc library is required. Install with: pip install dtcc")
         except Exception as e:
             logger.error(f"Error downloading city data: {e}")
-            raise
+            import traceback
+            logger.debug(traceback.format_exc())
+            
+            # Provide more specific error messages based on error type
+            error_msg = str(e)
+            if "Connection" in error_msg or "timeout" in error_msg.lower():
+                raise ConnectionError(
+                    "Unable to connect to DTCC service. The service may be temporarily unavailable. "
+                    "Please try again later or contact support if the issue persists."
+                )
+            elif "NoneType" in error_msg:
+                raise ValueError(
+                    "Failed to process building data. The DTCC service may be down or "
+                    "there may be no data available for this area."
+                )
+            else:
+                raise Exception(f"Error downloading building data: {error_msg}")

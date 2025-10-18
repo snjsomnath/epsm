@@ -732,7 +732,11 @@ const SelectAreaPage = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(errorData.error || `Server returned ${response.status}: ${response.statusText}`);
+          // Combine error and details for a more informative message
+          const errorMessage = errorData.details 
+            ? `${errorData.error}\n\n${errorData.details}`
+            : (errorData.error || `Server returned ${response.status}: ${response.statusText}`);
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();

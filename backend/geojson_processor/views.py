@@ -139,11 +139,40 @@ def process_geojson(request):
                 north=north_3006,
                 epsg=3006
             )
+        except ConnectionError as e:
+            logger.error(f"DTCC connection failed: {e}")
+            return JsonResponse({
+                'error': 'Unable to connect to DTCC building data service',
+                'details': (
+                    'The DTCC service at compute.dtcc.chalmers.se is currently unavailable. '
+                    'This could be due to network issues, server maintenance, or high load. '
+                    'Please try again in a few minutes. If the problem persists, contact support.'
+                ),
+                'technical_details': str(e)
+            }, status=503)  # Service Unavailable
+        except ValueError as e:
+            logger.error(f"DTCC data processing failed: {e}")
+            return JsonResponse({
+                'error': 'Failed to process building data',
+                'details': (
+                    'The building data could not be processed. This may be because: '
+                    '1) The DTCC service is temporarily down, or '
+                    '2) There is no building data available for this area. '
+                    'Please try a different area or contact support if the issue persists.'
+                ),
+                'technical_details': str(e)
+            }, status=500)
         except Exception as e:
             logger.error(f"DTCC download failed: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return JsonResponse({
-                'error': f'Failed to download city data: {str(e)}',
-                'details': 'DTCC service may be unavailable or the area may not have data'
+                'error': 'Failed to download building data',
+                'details': (
+                    'An unexpected error occurred while downloading building data from DTCC. '
+                    'Please try again or contact support if the problem persists.'
+                ),
+                'technical_details': str(e)
             }, status=500)
         
         # Step 3: Convert GeoJSON to IDF
