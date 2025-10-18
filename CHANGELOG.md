@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2025-10-18
+
+### Added
+- **SAML SSO Authentication**
+  - Complete SAML authentication implementation for Chalmers University
+  - Enhanced LoginPage with SAML support and collapsible admin login
+  - Custom SAML views to enforce SHA256 signature algorithm
+  - CSRF exemption and trusted origins for SAML ACS endpoint
+- **Deployment**
+  - docker-compose.prebuilt.yml for instant deployment with pre-built images
+- **Release Management**
+  - Automated release workflow with GitHub Actions
+  - Version management and release automation
+
+### Changed
+- **Documentation**
+  - Simplified README with updated badges and cleaner structure
+
+### Fixed
+- **SAML Configuration**
+  - Return user object from custom_update_user callback
+  - Updated saml_hooks to use 'subject-id' attribute
+  - Corrected attribute mapping for Chalmers IdP
+  - Allow unsigned responses from Chalmers IdP
+  - Fixed SAML SHA256 implementation to use settings.SAML_CONFIG
+  - Added explicit CSRF exemption for SAML ACS endpoint
+  - Added CSRF_TRUSTED_ORIGINS for SAML ACS endpoint
+
+---
+
 ## [0.2.7] - 2025-10-13
 
 ### Added
