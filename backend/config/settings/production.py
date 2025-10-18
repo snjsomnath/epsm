@@ -133,7 +133,7 @@ SAML_CONFIG = {
                 'eduPersonScopedAffiliation',
                 'schacHomeOrganization',
                 'eduPersonAssurance',
-                'samlSubjectID',
+                'subject-id',  # FIXED: Chalmers IdP sends 'subject-id' (hyphenated), not 'samlSubjectID' (camelCase)
             ],
             
             # Allow unsolicited responses (IdP-initiated login)
@@ -208,7 +208,7 @@ SAML_ATTRIBUTE_MAPPING = {
 # Automatically create user account on first SSO login
 SAML_CREATE_UNKNOWN_USER = True
 
-# Use eduPersonPrincipalName/samlSubjectID as the username (extracted by custom hook)
+# Use eduPersonPrincipalName/subject-id as the username (extracted by custom hook)
 SAML_DJANGO_USER_MAIN_ATTRIBUTE = 'username'
 SAML_USE_NAME_ID_AS_USERNAME = False
 
