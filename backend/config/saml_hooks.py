@@ -13,7 +13,7 @@ def custom_update_user(user, attributes, attribute_mapping):
     Implements REFEDS Personalized Access Entity Category attribute mapping
     
     REFEDS Personalized Access attributes from Chalmers IdP:
-    - samlSubjectID or eduPersonPrincipalName: Unique persistent identifier
+    - subject-id or eduPersonPrincipalName: Unique persistent identifier
     - mail: Email address (urn:oid:0.9.2342.19200300.100.1.3)
     - displayName: Full name (urn:oid:2.16.840.1.113730.3.1.241)
     - givenName: First name (urn:oid:2.5.4.42)
@@ -28,7 +28,7 @@ def custom_update_user(user, attributes, attribute_mapping):
         attribute_mapping: Django field mapping configuration
     
     Returns:
-        bool: True if user was updated
+        User: Updated Django User instance (required by Django SAML)
     """
     updated = False
     
@@ -130,4 +130,4 @@ def custom_update_user(user, attributes, attribute_mapping):
         user.save()
         logger.info(f"Updated user: {user.username} ({user.email})")
     
-    return updated
+    return user  # FIXED: Return user object, not boolean (required by Django SAML)
