@@ -61,7 +61,7 @@ MIDDLEWARE += [
 
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',  # Fallback for local superuser
-    'djangosaml2.backends.Saml2Backend',  # Primary: Chalmers SSO
+    'config.backends.CustomSaml2Backend',  # Primary: SAML with callback
 ]
 
 # SAML Settings for Chalmers Identity Provider
@@ -218,7 +218,8 @@ SAML_ATTRIBUTE_MAPPING_CALLBACK = 'config.saml_hooks.custom_update_user'
 # Session configuration for SAML
 SESSION_COOKIE_AGE = 3600 * 8  # 8 hours
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'None'  # Required for cross-origin SAML redirect flow
+SESSION_COOKIE_SECURE = True  # Required when SameSite=None
 
 # Logging
 LOGGING = {
