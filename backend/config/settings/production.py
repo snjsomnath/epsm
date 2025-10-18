@@ -104,11 +104,12 @@ SAML_CONFIG = {
             'name': 'EPSM - Energy Performance Simulation Manager',
             'name_id_format': 'urn:oasis:names:tc:SAML:2.0:nameid-format:persistent',
             
-            # Security: Enable signing and encryption
-            'want_assertions_signed': True,
-            'want_response_signed': True,
-            'authn_requests_signed': True,
-            'logout_requests_signed': True,
+            # Security: Enable signing for outgoing requests but allow unsigned responses from IdP
+            # Updated Oct 2025: Chalmers IdP sends unsigned responses, so we must allow them
+            'want_assertions_signed': False,  # Allow unsigned assertions from Chalmers IdP
+            'want_response_signed': False,    # Allow unsigned responses from Chalmers IdP
+            'authn_requests_signed': True,    # Still sign our outgoing requests
+            'logout_requests_signed': True,   # Still sign our logout requests
             
             # Certificate configuration: No 'use' attribute so cert can be used for both signing and encryption
             # Björn's feedback: "If you can remove 'use="signing"' it will be used for both signing and encryption"
