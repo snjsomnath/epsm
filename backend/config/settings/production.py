@@ -191,7 +191,7 @@ SAML_ATTRIBUTE_MAPPING = {
     # Primary unique identifier (REFEDS standard)
     # urn:oasis:names:tc:SAML:attribute:subject-id or eduPersonPrincipalName
     'eduPersonPrincipalName': ('username',),  # ssanjay@chalmers.se -> ssanjay
-    'samlSubjectID': ('username',),  # Alternative persistent identifier
+    'subject-id': ('username',),  # FIXED: Chalmers IdP sends 'subject-id' (hyphenated), not 'samlSubjectID'
     
     # Email address (urn:oid:0.9.2342.19200300.100.1.3)
     'mail': ('email',),
