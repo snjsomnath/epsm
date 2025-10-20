@@ -12,7 +12,8 @@ import {
   Divider,
   Dialog,
   DialogTitle,
-  DialogContent
+  DialogContent,
+  IconButton
 } from '@mui/material';
 import { 
   MapIcon, 
@@ -23,7 +24,10 @@ import {
   Database, 
   Settings, 
   Box as BoxIcon, 
-  Palette
+  Palette,
+  ChevronDown,
+  ChevronUp,
+  History
 } from 'lucide-react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import { FeatureGroup as LeafletFeatureGroup } from 'leaflet';
@@ -96,6 +100,8 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import '@geoman-io/leaflet-geoman-free';
 import { authenticatedFetch } from '../../lib/auth-api';
 import ModelViewer3D from './ModelViewer3D';
+import RecentModels from './RecentModels';
+import { saveRecentModel, generateModelName, getRecentModels, type RecentModel } from '../../utils/recentModels';
 
 // Fix Leaflet default marker icon issue
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -123,11 +129,6 @@ interface DrawnArea {
   };
   area?: number;
   layer?: L.Layer;
-}
-
-interface AreaSelection {
-  downloadArea: DrawnArea | null;  // Outer box - area to download from DTCC
-  simulationArea: DrawnArea | null;  // Inner box - area to simulate
 }
 
 // Basemap configurations (all free, no API keys needed)
@@ -235,7 +236,6 @@ const SelectAreaPage = () => {
   const [basemapType, setBasemapType] = useState<BasemapType>('osm');
   const [downloadArea, setDownloadArea] = useState<DrawnArea | null>(null);
   const [simulationArea, setSimulationArea] = useState<DrawnArea | null>(null);
-  const [currentDrawingMode, setCurrentDrawingMode] = useState<'download' | 'simulation'>('download');
   const [processing, setProcessing] = useState(false);
   const [processComplete, setProcessComplete] = useState(false);
   const [processingStep, setProcessingStep] = useState<number>(0);
@@ -250,6 +250,8 @@ const SelectAreaPage = () => {
   const [terrainUrl, setTerrainUrl] = useState<string | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [currentModelId, setCurrentModelId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const featureGroupRef = useRef<LeafletFeatureGroup>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
 
@@ -314,6 +316,18 @@ const SelectAreaPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [downloadArea, simulationArea]); // Re-run whenever areas change
 
+  // On component mount, check if there's a recent model to restore on refresh
+  React.useEffect(() => {
+    console.log('🎨 SelectAreaPage mounted, checking for recent models...');
+    const recentModels = getRecentModels();
+    console.log('📂 Found', recentModels.length, 'recent models in localStorage');
+    if (recentModels.length > 0 && !downloadArea && !simulationArea && !modelUrl) {
+      console.log('📱 Page loaded without state, but recent models available');
+      // Don't auto-load, just let user choose from recent models
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
   // Processing steps for animation
   const processingSteps = [
     { 
@@ -361,26 +375,6 @@ const SelectAreaPage = () => {
     }
   };
 
-  // Helper function for point-in-polygon check (no longer used but kept for reference)
-  const isPolygonInsidePolygon = (inner: [number, number][], outer: [number, number][]): boolean => {
-    // Simple point-in-polygon check for all inner points
-    const pointInPolygon = (point: [number, number], polygon: [number, number][]): boolean => {
-      let inside = false;
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i][1], yi = polygon[i][0];  // [lat, lon] -> use lon for x
-        const xj = polygon[j][1], yj = polygon[j][0];
-        const x = point[1], y = point[0];  // point is [lat, lon]
-        
-        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    };
-    
-    // Check if all points of inner polygon are inside outer polygon
-    return inner.every(point => pointInPolygon(point, outer));
-  };
-
   const handleDrawCreated = (layer: L.Layer, type: string) => {
     // Check if we already have 2 areas drawn
     if (downloadArea && simulationArea) {
@@ -390,6 +384,16 @@ const SelectAreaPage = () => {
       }
       setValidationErrors(['Maximum 2 areas allowed. Please clear existing areas first if you want to redraw.']);
       return;
+    }
+
+    // Clear any existing model when starting new drawing
+    if (!downloadArea && !simulationArea) {
+      setShowViewer(false);
+      setModelUrl(null);
+      setTerrainUrl(null);
+      setIdfUrl(null);
+      setGeojsonUrl(null);
+      setCurrentModelId(null);
     }
 
     let coordinates: [number, number][] = [];
@@ -442,7 +446,6 @@ const SelectAreaPage = () => {
       });
       
       setDownloadArea(drawnAreaData);
-      setCurrentDrawingMode('simulation');
       console.log('✅ Download area set (orange)', `Area: ${(area / 1_000_000).toFixed(3)} km²`);
     } else if (!simulationArea) {
       // Second drawing - set as simulation area (green)
@@ -496,7 +499,6 @@ const SelectAreaPage = () => {
       // If no specific layer info, clear everything
       setDownloadArea(null);
       setSimulationArea(null);
-      setCurrentDrawingMode('download');
       setValidationErrors([]);
       return;
     }
@@ -512,7 +514,6 @@ const SelectAreaPage = () => {
         featureGroupRef.current.removeLayer(simulationArea.layer);
       }
       setSimulationArea(null);
-      setCurrentDrawingMode('download');
     } else if (simulationArea?.layer === deletedLayer) {
       console.log('🗑️ Simulation area deleted');
       setSimulationArea(null);
@@ -634,8 +635,15 @@ const SelectAreaPage = () => {
     }
     setDownloadArea(null);
     setSimulationArea(null);
-    setCurrentDrawingMode('download');
     setValidationErrors([]);
+    
+    // Clear current model and viewer
+    setShowViewer(false);
+    setModelUrl(null);
+    setTerrainUrl(null);
+    setIdfUrl(null);
+    setGeojsonUrl(null);
+    setCurrentModelId(null);
   };
 
   const handleFetchArea = async () => {
@@ -807,6 +815,53 @@ const SelectAreaPage = () => {
             setModelUrl(fullModelUrl);
             setShowViewer(true);
             
+            // Save to recent models
+            try {
+              if (downloadArea.bounds) {  // Type guard
+                const modelName = generateModelName(
+                  {
+                    type: downloadArea.type,
+                    coordinates: downloadArea.coordinates,
+                    bounds: downloadArea.bounds,
+                    area: downloadArea.area || 0
+                  }, 
+                  simulationArea?.bounds ? {
+                    type: simulationArea.type,
+                    coordinates: simulationArea.coordinates,
+                    bounds: simulationArea.bounds,
+                    area: simulationArea.area || 0
+                  } : undefined
+                );
+                
+                const recentModel = saveRecentModel({
+                  name: modelName,
+                  modelUrl: fullModelUrl,
+                  terrainUrl: data.terrain_url ? (data.terrain_url.startsWith('http') ? data.terrain_url : `${backendUrl}${data.terrain_url}`) : undefined,
+                  idfUrl: data.idf_url || undefined,
+                  geojsonUrl: data.geojson_url || undefined,
+                  downloadArea: {
+                    type: downloadArea.type,
+                    coordinates: downloadArea.coordinates,
+                    bounds: downloadArea.bounds,
+                    area: downloadArea.area || 0
+                  },
+                  simulationArea: simulationArea?.bounds ? {
+                    type: simulationArea.type,
+                    coordinates: simulationArea.coordinates,
+                    bounds: simulationArea.bounds,
+                    area: simulationArea.area || 0
+                  } : undefined,
+                  buildingsCount: data.buildings_count
+                });
+                
+                setCurrentModelId(recentModel.id);
+                console.log('✅ Model saved to recent models:', modelName);
+              }
+            } catch (error) {
+              console.warn('⚠️ Failed to save model to recent models:', error);
+              // Don't block the main flow if this fails
+            }
+            
             // Smooth scroll to viewer after dialog closes
             setTimeout(() => {
               viewerRef.current?.scrollIntoView({ 
@@ -944,6 +999,106 @@ const SelectAreaPage = () => {
     }, 500);
   };
 
+  // Handle selecting a recent model
+  const handleSelectRecentModel = (model: RecentModel) => {
+    try {
+      console.log('🎨 Loading recent model:', model.name);
+      
+      // Set all the URLs and state
+      setModelUrl(model.modelUrl);
+      setTerrainUrl(model.terrainUrl || null);
+      setIdfUrl(model.idfUrl || null);
+      setGeojsonUrl(model.geojsonUrl || null);
+      setCurrentModelId(model.id);
+      
+      // Restore the areas on the map
+      if (featureGroupRef.current) {
+        featureGroupRef.current.clearLayers();
+      }
+      
+      // Recreate download area layer
+      const downloadBounds = L.latLngBounds(
+        [model.downloadArea.bounds.south, model.downloadArea.bounds.west],
+        [model.downloadArea.bounds.north, model.downloadArea.bounds.east]
+      );
+      
+      const downloadLayer = model.downloadArea.type === 'rectangle' 
+        ? L.rectangle(downloadBounds, { 
+            color: '#ff6b35', 
+            fillColor: '#ff6b35', 
+            fillOpacity: 0.2, 
+            weight: 3 
+          })
+        : L.polygon(model.downloadArea.coordinates, { 
+            color: '#ff6b35', 
+            fillColor: '#ff6b35', 
+            fillOpacity: 0.2, 
+            weight: 3 
+          });
+      
+      if (featureGroupRef.current) {
+        featureGroupRef.current.addLayer(downloadLayer);
+      }
+      
+      // Set download area state
+      setDownloadArea({
+        ...model.downloadArea,
+        layer: downloadLayer
+      });
+      
+      // Recreate simulation area layer if it exists
+      if (model.simulationArea) {
+        const simulationBounds = L.latLngBounds(
+          [model.simulationArea.bounds.south, model.simulationArea.bounds.west],
+          [model.simulationArea.bounds.north, model.simulationArea.bounds.east]
+        );
+        
+        const simulationLayer = model.simulationArea.type === 'rectangle'
+          ? L.rectangle(simulationBounds, { 
+              color: '#4caf50', 
+              fillColor: '#4caf50', 
+              fillOpacity: 0.3, 
+              weight: 3 
+            })
+          : L.polygon(model.simulationArea.coordinates, { 
+              color: '#4caf50', 
+              fillColor: '#4caf50', 
+              fillOpacity: 0.3, 
+              weight: 3 
+            });
+        
+        if (featureGroupRef.current) {
+          featureGroupRef.current.addLayer(simulationLayer);
+        }
+        
+        // Set simulation area state
+        setSimulationArea({
+          ...model.simulationArea,
+          layer: simulationLayer
+        });
+      } else {
+        setSimulationArea(null);
+      }
+      
+      // Show the viewer
+      setShowViewer(true);
+      setValidationErrors([]);
+      
+      // Scroll to viewer
+      setTimeout(() => {
+        viewerRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+      }, 100);
+      
+      console.log('✅ Recent model loaded successfully');
+    } catch (error) {
+      console.error('❌ Failed to load recent model:', error);
+      setError('Failed to load the selected model. It may no longer be available.');
+    }
+  };
+
   const formatArea = (area: number) => {
     // Always display in km² with comma separators
     const areaKm2 = area / 1_000_000;
@@ -951,8 +1106,21 @@ const SelectAreaPage = () => {
   };
 
   return (
-    <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Processing Dialog with Fun Animated Steps - Similar to EPSM Loading Animation */}
+    <Box sx={{ 
+      height: 'calc(100vh - 120px)', 
+      display: 'flex', 
+      flexDirection: 'row', 
+      gap: 2 
+    }}>
+      {/* Main Content - Left Side */}
+      <Box sx={{ 
+        flexGrow: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: 2,
+        minWidth: 0 // Prevents flex item from overflowing
+      }}>
+        {/* Processing Dialog with Fun Animated Steps - Similar to EPSM Loading Animation */}
       <Dialog 
         open={processing || processComplete} 
         maxWidth="md" 
@@ -1312,14 +1480,14 @@ const SelectAreaPage = () => {
         </Alert>
       )}
 
-      {/* Success Alert */}
-      {successMessage && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
-          ✅ {successMessage}
-        </Alert>
-      )}
+        {/* Success Alert */}
+        {successMessage && (
+          <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+            ✅ {successMessage}
+          </Alert>
+        )}
 
-      <Paper sx={{ p: 2, mb: 2 }}>
+        <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
           <Typography variant="h6" sx={{ flexGrow: 1, minWidth: 200 }}>
             Select Area
@@ -1546,45 +1714,94 @@ const SelectAreaPage = () => {
           </Box>
         ) : null}
 
-      {/* Map - takes remaining space or full space if no viewer */}
-      <Paper
-        sx={{
-          flexGrow: showViewer ? 0 : 1,
-          height: showViewer ? 450 : 'auto',
-          minHeight: showViewer ? 450 : 600,
-          position: 'relative',
-          overflow: 'hidden',
-          borderRadius: 2,
-          transition: 'all 0.3s ease-in-out',
-          '& .leaflet-container': {
-            height: '100%',
-            width: '100%',
-            zIndex: 1
-          }
-        }}
-      >
-        <MapContainer
-          center={swedenCenter}
-          zoom={defaultZoom}
-          style={{ height: '100%', width: '100%' }}
-          zoomControl={true}
+        {/* Map - takes remaining space or full space if no viewer */}
+        <Paper
+          sx={{
+            flexGrow: showViewer ? 0 : 1,
+            height: showViewer ? 450 : 'auto',
+            minHeight: showViewer ? 450 : 600,
+            position: 'relative',
+            overflow: 'hidden',
+            borderRadius: 2,
+            transition: 'all 0.3s ease-in-out',
+            '& .leaflet-container': {
+              height: '100%',
+              width: '100%',
+              zIndex: 1
+            }
+          }}
         >
-          <TileLayer
-            key={basemapType}
-            url={basemapConfigs[basemapType].url}
-            attribution={basemapConfigs[basemapType].attribution}
-            maxZoom={19}
-          />
-          <FeatureGroup ref={featureGroupRef}>
-            <DrawingControls
-              onDrawCreated={handleDrawCreated}
-              onDrawDeleted={handleDrawDeleted}
-              onDrawEdited={handleDrawEdited}
-              featureGroupRef={featureGroupRef}
+          <MapContainer
+            center={swedenCenter}
+            zoom={defaultZoom}
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={true}
+          >
+            <TileLayer
+              key={basemapType}
+              url={basemapConfigs[basemapType].url}
+              attribution={basemapConfigs[basemapType].attribution}
+              maxZoom={19}
             />
-          </FeatureGroup>
-        </MapContainer>
-      </Paper>
+            <FeatureGroup ref={featureGroupRef}>
+              <DrawingControls
+                onDrawCreated={handleDrawCreated}
+                onDrawDeleted={handleDrawDeleted}
+                onDrawEdited={handleDrawEdited}
+                featureGroupRef={featureGroupRef}
+              />
+            </FeatureGroup>
+          </MapContainer>
+        </Paper>
+      </Box>
+
+      {/* Right Sidebar - Recent Models */}
+      <Box sx={{ 
+        width: sidebarCollapsed ? 60 : 350, 
+        display: 'flex', 
+        flexDirection: 'column',
+        flexShrink: 0, // Prevents sidebar from shrinking
+        transition: 'width 0.3s ease-in-out',
+        position: 'relative'
+      }}>
+        {/* Sidebar Toggle Button */}
+        <IconButton
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          sx={{
+            position: 'absolute',
+            top: 10,
+            left: sidebarCollapsed ? 10 : -15,
+            zIndex: 1000,
+            bgcolor: 'background.paper',
+            border: 1,
+            borderColor: 'divider',
+            boxShadow: 2,
+            '&:hover': {
+              bgcolor: 'action.hover'
+            },
+            transition: 'left 0.3s ease-in-out'
+          }}
+          size="small"
+        >
+          {sidebarCollapsed ? <ChevronDown size={16} style={{ transform: 'rotate(-90deg)' }} /> : <ChevronUp size={16} style={{ transform: 'rotate(90deg)' }} />}
+        </IconButton>
+
+        {!sidebarCollapsed && (
+          <RecentModels 
+            onSelectModel={handleSelectRecentModel}
+            currentModelId={currentModelId || undefined}
+          />
+        )}
+        
+        {sidebarCollapsed && (
+          <Paper sx={{ p: 1, mt: 6, textAlign: 'center' }}>
+            <History size={20} color="#666" />
+            <Typography variant="caption" display="block" color="text.secondary">
+              Recent
+            </Typography>
+          </Paper>
+        )}
+      </Box>
     </Box>
   );
 };
