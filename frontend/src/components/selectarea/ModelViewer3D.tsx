@@ -48,6 +48,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const terrainRef = useRef<THREE.Object3D | null>(null);
+  const groundRef = useRef<THREE.Object3D | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const composerRef = useRef<EffectComposer | null>(null);
 
@@ -64,8 +65,9 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     floors: true,
     windows: true,
     doors: true,
-    ceilings: true,
+    ceilings: false,    // ceilings hidden by default
     terrain: true,
+    ground: false,      // ground plane hidden by default
     other: true
   });
   const [showLayerControls, setShowLayerControls] = useState(false);
@@ -104,6 +106,11 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     if (terrainRef.current) {
       terrainRef.current.visible = layerVisibility.terrain;
     }
+    
+    // Handle ground plane visibility separately
+    if (groundRef.current) {
+      groundRef.current.visible = layerVisibility.ground;
+    }
   }, [layerVisibility]);
 
   const handleLayerToggle = (layer: keyof typeof layerVisibility) => {
@@ -125,6 +132,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       doors: newVisibility,
       ceilings: newVisibility,
       terrain: newVisibility,
+      ground: newVisibility,
       other: newVisibility
     });
   };
@@ -132,29 +140,15 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // Initialize scene with enhanced background and environment
+    // Initialize scene with neutral background
     const scene = new THREE.Scene();
     
-    // Create a gradient background for better visual appeal
-    const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
-    const context = canvas.getContext('2d')!;
+    // Replace gradient background with neutral clear color
+    scene.background = null;
     
-    // Create sky gradient: light blue to white
-    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#87CEEB'); // Sky blue at top
-    gradient.addColorStop(0.7, '#E0F6FF'); // Light blue
-    gradient.addColorStop(1, '#F0F8FF'); // Alice blue at bottom
+    // Fog should match the clear color and be subtle
+    scene.fog = new THREE.Fog(0xf4f6f8, 1200, 3000);
     
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    scene.background = texture;
-    
-    // Enhanced fog for depth perception
-    scene.fog = new THREE.Fog(0xE0F6FF, 800, 2000);
     sceneRef.current = scene;
 
     // Initialize camera
@@ -180,13 +174,30 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
     
-    // Improved rendering quality
+    // Improved rendering quality with enhanced tone mapping
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 0.75;        // balanced exposure to prevent wall washout
+    THREE.ColorManagement.enabled = true;       // ensure correct color space (r152+)
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
+    // Replace gradient background with neutral clear color
+    renderer.setClearColor(0xf4f6f8, 1);        // light neutral gray
     
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // Setup simple environment for subtle reflections
+    const setupEnvironment = () => {
+      try {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envRT = pmrem.fromScene(new THREE.Scene());
+        scene.environment = envRT.texture;
+        pmrem.dispose();
+      } catch (error) {
+        console.warn('Failed to setup environment:', error);
+      }
+    };
+    setupEnvironment();
 
     // Setup post-processing for enhanced visual quality
     const composer = new EffectComposer(renderer);
@@ -197,10 +208,16 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     
     // Add SSAO (Screen Space Ambient Occlusion) for better depth perception
     const ssaoPass = new SSAOPass(scene, camera, mountRef.current.clientWidth, mountRef.current.clientHeight);
-    ssaoPass.kernelRadius = 16;
-    ssaoPass.minDistance = 0.005;
-    ssaoPass.maxDistance = 0.1;
+    ssaoPass.kernelRadius = 12;
+    ssaoPass.minDistance = 0.0015;
+    ssaoPass.maxDistance = 0.04;
+    ssaoPass.output = 0; // default, keep it subtle
     composer.addPass(ssaoPass);
+    
+    // OPTIONAL anti-aliasing (if available in your bundle)
+    // import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+    // const smaa = new SMAAPass(mountRef.current.clientWidth, mountRef.current.clientHeight);
+    // composer.addPass(smaa);
     
     // Output pass for proper color space conversion
     const outputPass = new OutputPass();
@@ -218,64 +235,48 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     controls.maxPolarAngle = Math.PI / 2;
     controlsRef.current = controls;
 
-    // Enhanced lighting setup for better visual quality
+    // Enhanced lighting setup for vibrant, high-contrast scene
+    const sun = new THREE.DirectionalLight(0xfff8e1, 5);  // slightly reduced intensity to prevent washout
+    sun.position.set(600, 300, 500);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(4096, 4096);  // higher resolution shadows
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 1000;
+    sun.shadow.camera.left = -500;
+    sun.shadow.camera.right = 500;
+    sun.shadow.camera.top = 500;
+    sun.shadow.camera.bottom = -500;
+    sun.shadow.normalBias = 0.05;   // optimized for sharp, contrasted shadows
+    sun.shadow.bias = -0.0008;      // balanced bias for clean shadows
     
-    // 1. Hemisphere light for natural sky-ground lighting
-    const hemiLight = new THREE.HemisphereLight(
-      0x87CEEB, // Sky color (sky blue)
-      0x8B7355, // Ground color (warm brown)
-      0.4       // Intensity
-    );
-    hemiLight.position.set(0, 50, 0);
-    scene.add(hemiLight);
+    // Enhanced shadow settings for high contrast
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    scene.add(sun);
 
-    // 2. Main directional light (Sun simulation)
-    const sunLight = new THREE.DirectionalLight(0xFFFFE0, 1.2); // Warm white
-    sunLight.position.set(150, 300, 100);
-    sunLight.castShadow = true;
+    const ambient = new THREE.AmbientLight(0xe8f4fd, 0.8);  // minimal ambient for almost black shadows
+    scene.add(ambient);
     
-    // Enhanced shadow settings for better quality
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.left = -300;
-    sunLight.shadow.camera.right = 300;
-    sunLight.shadow.camera.top = 300;
-    sunLight.shadow.camera.bottom = -300;
-    sunLight.shadow.camera.near = 0.1;
-    sunLight.shadow.camera.far = 1000;
-    sunLight.shadow.bias = -0.0001;
-    sunLight.shadow.radius = 4; // Soft shadows
-    scene.add(sunLight);
+    // Set darker shadow color by adjusting renderer shadow settings
+    if (renderer.shadowMap) {
+      // Force darker shadows by reducing the shadow intensity multiplier
+      (renderer as any).shadowMap.autoUpdate = true;
+    }
 
-    // 3. Fill light from opposite direction for softer shadows
-    const fillLight = new THREE.DirectionalLight(0xB0E0E6, 0.3); // Light blue
-    fillLight.position.set(-100, 150, -50);
-    fillLight.castShadow = false; // No shadows for fill light
-    scene.add(fillLight);
-
-    // 4. Rim light for better edge definition
-    const rimLight = new THREE.DirectionalLight(0xFFE4B5, 0.5); // Warm highlight
-    rimLight.position.set(0, 100, -200);
-    rimLight.castShadow = false;
-    scene.add(rimLight);
-
-    // 5. Ambient light for overall illumination (reduced intensity)
-    const ambientLight = new THREE.AmbientLight(0xF0F8FF, 0.25); // Very light blue
-    scene.add(ambientLight);
-
-    // Enhanced ground plane with better materials
+    // Enhanced ground plane with intense shadow catching properties
     const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0xE8E8E8,      // Light gray
-      roughness: 0.9,       // Matte finish
+      color: 0xe8e8e8,      // lighter base for maximum shadow contrast
+      roughness: 1.0,       // maximum roughness for deep shadow absorption
       metalness: 0.0,       // Non-metallic
-      envMapIntensity: 0.1   // Subtle environment reflection
+      envMapIntensity: 0.0   // no environment reflection to avoid shadow interference
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     ground.name = 'ground';
     scene.add(ground);
+    groundRef.current = ground;
 
     // Enhanced grid helper with better styling
     const gridHelper = new THREE.GridHelper(2000, 100, 0xBBBBBB, 0xDDDDDD);
@@ -420,31 +421,34 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
           
           // Apply enhanced building material if not already set or if it's a basic material
           if (!child.material || (child.material as THREE.Material).type === 'MeshBasicMaterial') {
-            // Create enhanced material based on object name
+            // Create enhanced material based on object name - more vibrant colors
             const objectName = child.name.toLowerCase();
             let materialProps: any = {
-              color: 0x88ccff,
-              roughness: 0.6,
-              metalness: 0.1,
-              envMapIntensity: 0.2
+              color: 0x64b5f6,      // more vibrant blue
+              roughness: 0.4,       // smoother for better light interaction
+              metalness: 0.05,      // slight metallic sheen
+              envMapIntensity: 0.4   // increased environment reflection
             };
             
-            // Adjust material properties based on object type
+            // Adjust material properties based on object type - enhanced vibrancy
             if (objectName.includes('window') || objectName.includes('glass')) {
               materialProps = {
-                color: 0x88CCFF,
+                color: 0x42a5f5,      // more vibrant blue glass
                 metalness: 0.0,
-                roughness: 0.1,
-                transmission: 0.7,
+                roughness: 0.05,       // more reflective
+                transmission: 0.8,     // increased transparency
                 transparent: true,
-                opacity: 0.8,
-                ior: 1.5
+                opacity: 0.9,
+                ior: 1.52,
+                clearcoat: 1.0,        // enhanced reflections
+                clearcoatRoughness: 0.05
               };
               child.material = new THREE.MeshPhysicalMaterial(materialProps);
             } else if (objectName.includes('roof')) {
-              materialProps.color = 0x8B4513; // Brown roof
-              materialProps.roughness = 0.7;
+              materialProps.color = 0xd84315;  // vibrant terracotta roof
+              materialProps.roughness = 0.5;   // more reflective
               materialProps.metalness = 0.1;
+              materialProps.envMapIntensity = 0.5;
               child.material = new THREE.MeshStandardMaterial(materialProps);
             } else {
               child.material = new THREE.MeshStandardMaterial(materialProps);
@@ -556,7 +560,40 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         positionAttribute.setXYZ(i, x, z, y);
       }
       
-      // Recalculate normals and bounding box after transformation
+      // Flip terrain normals by reversing triangle winding order
+      const indices = geometry.getIndex();
+      if (indices) {
+        // Flip every triangle by swapping the second and third vertices
+        for (let i = 0; i < indices.count; i += 3) {
+          const temp = indices.getX(i + 1);
+          indices.setX(i + 1, indices.getX(i + 2));
+          indices.setX(i + 2, temp);
+        }
+        indices.needsUpdate = true;
+      } else {
+        // If no indices, flip the position attribute directly
+        const position = geometry.getAttribute('position');
+        const tempArray = new Float32Array(3);
+        for (let i = 0; i < position.count; i += 3) {
+          // Save second vertex
+          tempArray[0] = position.getX(i + 1);
+          tempArray[1] = position.getY(i + 1);
+          tempArray[2] = position.getZ(i + 1);
+          
+          // Move third to second
+          position.setXYZ(i + 1, 
+            position.getX(i + 2), 
+            position.getY(i + 2), 
+            position.getZ(i + 2)
+          );
+          
+          // Move saved second to third
+          position.setXYZ(i + 2, tempArray[0], tempArray[1], tempArray[2]);
+        }
+        position.needsUpdate = true;
+      }
+      
+      // Recalculate normals and bounding box after transformation and normal flipping
       geometry.computeVertexNormals();
       geometry.computeBoundingBox();
       const newBbox = geometry.boundingBox!;
@@ -575,11 +612,11 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       
       // Create enhanced terrain material with better lighting interaction
       const material = new THREE.MeshStandardMaterial({
-        color: 0xF5F5DC,      // Beige terrain for natural appearance
-        roughness: 0.9,       // Very rough for natural terrain
+        color: 0xdddddd,      // White terrain for natural appearance
+        roughness: 1,       // Very rough for natural terrain
         metalness: 0.0,       // Non-metallic
-        envMapIntensity: 0.1, // Subtle environment reflection
-        flatShading: false,   // Smooth shading for better appearance
+        envMapIntensity: 0.0, // Subtle environment reflection
+        flatShading: true,   // Smooth shading for better appearance
         side: THREE.DoubleSide // Make visible from both sides
       });
       
@@ -866,9 +903,12 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         // Different material properties based on surface type
         switch (type) {
           case 'wall':
-            materialProps.roughness = 0.8;
+            // Flip wall normal for correct lighting
+            
+            materialProps.color = new THREE.Color(0xedc67e);  // warm beige color
+            materialProps.roughness = 0.9;
             materialProps.metalness = 0.0;
-            materialProps.envMapIntensity = 0.1;
+            materialProps.envMapIntensity = 0.9;
             break;
           case 'roof':
             materialProps.roughness = 0.7;
@@ -918,13 +958,31 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       
       // Triangulate the polygon using earcut for proper handling of non-convex shapes
       const indices: number[] = [];
+      const shouldFlipNormals = surface.type === 'wall' || 
+                               surface.type === 'roof' || 
+                               surface.type === 'roofceiling' || 
+                               surface.type === 'ceiling' ||
+                               surface.type === 'shade';
+      
+      // Debug: Log surface types to understand what we're working with
+      if (surface.type && (surface.type.includes('roof') || surface.type.includes('ceiling') || surface.type.includes('shade'))) {
+        console.log(`🔧 Processing surface type: "${surface.type}", flipping normals: ${shouldFlipNormals}`);
+      }
       
       if (surface.vertices.length === 3) {
-        // Triangle - no triangulation needed
-        indices.push(0, 1, 2);
+        // Triangle - flip winding order for walls and roofs to reverse normals
+        if (shouldFlipNormals) {
+          indices.push(0, 2, 1);  // flipped for walls and roofs
+        } else {
+          indices.push(0, 1, 2);
+        }
       } else if (surface.vertices.length === 4) {
-        // Quad - simple triangulation (two triangles)
-        indices.push(0, 1, 2, 0, 2, 3);
+        // Quad - flip winding order for walls and roofs to reverse normals
+        if (shouldFlipNormals) {
+          indices.push(0, 2, 1, 0, 3, 2);  // flipped for walls and roofs
+        } else {
+          indices.push(0, 1, 2, 0, 2, 3);
+        }
       } else {
         // Complex polygon - use earcut for proper triangulation
         const v0 = new THREE.Vector3(surface.vertices[0][0], surface.vertices[0][1], surface.vertices[0][2]);
@@ -959,12 +1017,23 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         
         try {
           const triangles = earcut(coords2D);
-          indices.push(...triangles);
+          if (shouldFlipNormals) {
+            // Flip triangle winding order for walls and roofs to reverse normals
+            for (let i = 0; i < triangles.length; i += 3) {
+              indices.push(triangles[i], triangles[i + 2], triangles[i + 1]);
+            }
+          } else {
+            indices.push(...triangles);
+          }
         } catch (error) {
           console.warn(`Earcut triangulation failed for surface, using fallback`, error);
           // Fallback: fan triangulation from first vertex
           for (let i = 1; i < surface.vertices.length - 1; i++) {
-            indices.push(0, i, i + 1);
+            if (shouldFlipNormals) {
+              indices.push(0, i + 1, i);  // flipped for walls and roofs
+            } else {
+              indices.push(0, i, i + 1);
+            }
           }
         }
       }
@@ -1209,6 +1278,16 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
                       />
                     }
                     label={<Typography variant="body2">Terrain</Typography>}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={layerVisibility.ground}
+                        onChange={() => handleLayerToggle('ground')}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Ground Plane</Typography>}
                   />
                   <FormControlLabel
                     control={
