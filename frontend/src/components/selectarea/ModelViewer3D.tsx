@@ -20,6 +20,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import earcut from 'earcut';
 
 interface ModelViewer3DProps {
@@ -45,6 +49,7 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const modelRef = useRef<THREE.Object3D | null>(null);
   const terrainRef = useRef<THREE.Object3D | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const composerRef = useRef<EffectComposer | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,10 +132,29 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   useEffect(() => {
     if (!mountRef.current) return;
 
-    // Initialize scene
+    // Initialize scene with enhanced background and environment
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f0f0);
-    scene.fog = new THREE.Fog(0xf0f0f0, 500, 10000);
+    
+    // Create a gradient background for better visual appeal
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const context = canvas.getContext('2d')!;
+    
+    // Create sky gradient: light blue to white
+    const gradient = context.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#87CEEB'); // Sky blue at top
+    gradient.addColorStop(0.7, '#E0F6FF'); // Light blue
+    gradient.addColorStop(1, '#F0F8FF'); // Alice blue at bottom
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    scene.background = texture;
+    
+    // Enhanced fog for depth perception
+    scene.fog = new THREE.Fog(0xE0F6FF, 800, 2000);
     sceneRef.current = scene;
 
     // Initialize camera
@@ -143,14 +167,46 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     camera.position.set(100, 100, 100);
     cameraRef.current = camera;
 
-    // Initialize renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Initialize renderer with enhanced settings
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance"
+    });
     renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit to 2x for performance
+    
+    // Enhanced shadow settings
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+    
+    // Improved rendering quality
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+
+    // Setup post-processing for enhanced visual quality
+    const composer = new EffectComposer(renderer);
+    
+    // Main render pass
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // Add SSAO (Screen Space Ambient Occlusion) for better depth perception
+    const ssaoPass = new SSAOPass(scene, camera, mountRef.current.clientWidth, mountRef.current.clientHeight);
+    ssaoPass.kernelRadius = 16;
+    ssaoPass.minDistance = 0.005;
+    ssaoPass.maxDistance = 0.1;
+    composer.addPass(ssaoPass);
+    
+    // Output pass for proper color space conversion
+    const outputPass = new OutputPass();
+    composer.addPass(outputPass);
+    
+    composerRef.current = composer;
 
     // Initialize controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -162,35 +218,71 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     controls.maxPolarAngle = Math.PI / 2;
     controlsRef.current = controls;
 
-    // Add lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    // Enhanced lighting setup for better visual quality
+    
+    // 1. Hemisphere light for natural sky-ground lighting
+    const hemiLight = new THREE.HemisphereLight(
+      0x87CEEB, // Sky color (sky blue)
+      0x8B7355, // Ground color (warm brown)
+      0.4       // Intensity
+    );
+    hemiLight.position.set(0, 50, 0);
+    scene.add(hemiLight);
+
+    // 2. Main directional light (Sun simulation)
+    const sunLight = new THREE.DirectionalLight(0xFFFFE0, 1.2); // Warm white
+    sunLight.position.set(150, 300, 100);
+    sunLight.castShadow = true;
+    
+    // Enhanced shadow settings for better quality
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.left = -300;
+    sunLight.shadow.camera.right = 300;
+    sunLight.shadow.camera.top = 300;
+    sunLight.shadow.camera.bottom = -300;
+    sunLight.shadow.camera.near = 0.1;
+    sunLight.shadow.camera.far = 1000;
+    sunLight.shadow.bias = -0.0001;
+    sunLight.shadow.radius = 4; // Soft shadows
+    scene.add(sunLight);
+
+    // 3. Fill light from opposite direction for softer shadows
+    const fillLight = new THREE.DirectionalLight(0xB0E0E6, 0.3); // Light blue
+    fillLight.position.set(-100, 150, -50);
+    fillLight.castShadow = false; // No shadows for fill light
+    scene.add(fillLight);
+
+    // 4. Rim light for better edge definition
+    const rimLight = new THREE.DirectionalLight(0xFFE4B5, 0.5); // Warm highlight
+    rimLight.position.set(0, 100, -200);
+    rimLight.castShadow = false;
+    scene.add(rimLight);
+
+    // 5. Ambient light for overall illumination (reduced intensity)
+    const ambientLight = new THREE.AmbientLight(0xF0F8FF, 0.25); // Very light blue
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(100, 200, 100);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.camera.left = -200;
-    directionalLight.shadow.camera.right = 200;
-    directionalLight.shadow.camera.top = 200;
-    directionalLight.shadow.camera.bottom = -200;
-    scene.add(directionalLight);
-
-    // Add ground plane
+    // Enhanced ground plane with better materials
     const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x808080,
-      roughness: 0.8,
-      metalness: 0.2
+      color: 0xE8E8E8,      // Light gray
+      roughness: 0.9,       // Matte finish
+      metalness: 0.0,       // Non-metallic
+      envMapIntensity: 0.1   // Subtle environment reflection
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    ground.name = 'ground';
     scene.add(ground);
 
-    // Add grid helper
-    const gridHelper = new THREE.GridHelper(2000, 50, 0x000000, 0x000000);
-    (gridHelper.material as THREE.Material).opacity = 0.2;
-    (gridHelper.material as THREE.Material).transparent = true;
+    // Enhanced grid helper with better styling
+    const gridHelper = new THREE.GridHelper(2000, 100, 0xBBBBBB, 0xDDDDDD);
+    const gridMaterial = gridHelper.material as THREE.LineBasicMaterial;
+    gridMaterial.opacity = 0.3;
+    gridMaterial.transparent = true;
+    gridMaterial.vertexColors = false;
     scene.add(gridHelper);
 
     // Add axes helper
@@ -200,20 +292,35 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     // Load model
     loadModel(modelUrl, modelType, scene, camera, controls);
 
-    // Animation loop
+    // Enhanced animation loop with post-processing
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
       controls.update();
-      renderer.render(scene, camera);
+      
+      // Use composer for enhanced rendering if available, otherwise fallback to basic renderer
+      if (composerRef.current) {
+        composerRef.current.render();
+      } else {
+        renderer.render(scene, camera);
+      }
     };
     animate();
 
-    // Handle window resize
+    // Handle window resize with composer support
     const handleResize = () => {
       if (!mountRef.current || !camera || !renderer) return;
-      camera.aspect = mountRef.current.clientWidth / mountRef.current.clientHeight;
+      
+      const width = mountRef.current.clientWidth;
+      const height = mountRef.current.clientHeight;
+      
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(mountRef.current.clientWidth, mountRef.current.clientHeight);
+      renderer.setSize(width, height);
+      
+      // Update composer size if available
+      if (composerRef.current) {
+        composerRef.current.setSize(width, height);
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -226,6 +333,12 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       if (mountRef.current && renderer.domElement) {
         mountRef.current.removeChild(renderer.domElement);
       }
+      
+      // Clean up post-processing
+      if (composerRef.current) {
+        composerRef.current.dispose();
+      }
+      
       renderer.dispose();
       controls.dispose();
     };
@@ -299,19 +412,49 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         throw new Error('Unsupported model type');
       }
 
-      // Apply materials to model
+      // Apply enhanced materials to model
       model.traverse((child: THREE.Object3D) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = true;
           child.receiveShadow = true;
           
-          // Apply building material if not already set
+          // Apply enhanced building material if not already set or if it's a basic material
           if (!child.material || (child.material as THREE.Material).type === 'MeshBasicMaterial') {
-            child.material = new THREE.MeshStandardMaterial({
+            // Create enhanced material based on object name
+            const objectName = child.name.toLowerCase();
+            let materialProps: any = {
               color: 0x88ccff,
-              roughness: 0.5,
-              metalness: 0.3
-            });
+              roughness: 0.6,
+              metalness: 0.1,
+              envMapIntensity: 0.2
+            };
+            
+            // Adjust material properties based on object type
+            if (objectName.includes('window') || objectName.includes('glass')) {
+              materialProps = {
+                color: 0x88CCFF,
+                metalness: 0.0,
+                roughness: 0.1,
+                transmission: 0.7,
+                transparent: true,
+                opacity: 0.8,
+                ior: 1.5
+              };
+              child.material = new THREE.MeshPhysicalMaterial(materialProps);
+            } else if (objectName.includes('roof')) {
+              materialProps.color = 0x8B4513; // Brown roof
+              materialProps.roughness = 0.7;
+              materialProps.metalness = 0.1;
+              child.material = new THREE.MeshStandardMaterial(materialProps);
+            } else {
+              child.material = new THREE.MeshStandardMaterial(materialProps);
+            }
+          }
+          
+          // Ensure material has proper settings for lighting
+          if (child.material instanceof THREE.MeshStandardMaterial || 
+              child.material instanceof THREE.MeshPhysicalMaterial) {
+            child.material.needsUpdate = true;
           }
         }
       });
@@ -430,12 +573,13 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         max: { x: finalBbox.max.x, y: finalBbox.max.y, z: finalBbox.max.z }
       });
       
-      // Create terrain material with clean white appearance
+      // Create enhanced terrain material with better lighting interaction
       const material = new THREE.MeshStandardMaterial({
-        color: 0xFFFFFF, // White terrain for clean visualization
-        roughness: 0.8,   // Slightly rough for realistic light interaction
-        metalness: 0.0,   // Non-metallic
-        flatShading: false,
+        color: 0xF5F5DC,      // Beige terrain for natural appearance
+        roughness: 0.9,       // Very rough for natural terrain
+        metalness: 0.0,       // Non-metallic
+        envMapIntensity: 0.1, // Subtle environment reflection
+        flatShading: false,   // Smooth shading for better appearance
         side: THREE.DoubleSide // Make visible from both sides
       });
       
@@ -692,19 +836,68 @@ const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       return mergedMeshes;
     }
     
-    // Helper function to create material for a surface type
+    // Helper function to create material for a surface type with enhanced visual quality
     function createMaterialForType(type: string): THREE.Material {
       const color = data.metadata?.colors?.[type] || '#88ccff';
       const isWindow = type === 'window' || type === 'glassdoor';
       
-      return new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        roughness: isWindow ? 0.3 : 0.7,       // Windows slightly smoother than other surfaces
-        metalness: isWindow ? 0.0 : 0.0,       // No metallic properties
-        transparent: false,                     // No transparency - solid colors
-        opacity: 1.0,                           // Full opacity for all surfaces
-        side: THREE.DoubleSide
-      });
+      if (isWindow) {
+        // Enhanced glass material for windows
+        return new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(0x88CCFF),
+          metalness: 0.0,
+          roughness: 0.1,
+          transmission: 0.7,        // Glass transparency
+          transparent: true,
+          opacity: 0.8,
+          thickness: 0.5,           // Glass thickness for realistic refraction
+          ior: 1.5,                 // Index of refraction for glass
+          clearcoat: 1.0,           // Clear coat for glossy finish
+          clearcoatRoughness: 0.1,
+          side: THREE.DoubleSide
+        });
+      } else {
+        // Enhanced materials for building surfaces
+        const materialProps: any = {
+          color: new THREE.Color(color),
+          side: THREE.DoubleSide
+        };
+        
+        // Different material properties based on surface type
+        switch (type) {
+          case 'wall':
+            materialProps.roughness = 0.8;
+            materialProps.metalness = 0.0;
+            materialProps.envMapIntensity = 0.1;
+            break;
+          case 'roof':
+            materialProps.roughness = 0.7;
+            materialProps.metalness = 0.1;
+            materialProps.envMapIntensity = 0.2;
+            break;
+          case 'floor':
+            materialProps.roughness = 0.9;
+            materialProps.metalness = 0.0;
+            materialProps.envMapIntensity = 0.05;
+            break;
+          case 'ceiling':
+            materialProps.roughness = 0.6;
+            materialProps.metalness = 0.0;
+            materialProps.envMapIntensity = 0.1;
+            break;
+          case 'door':
+            materialProps.roughness = 0.4;
+            materialProps.metalness = 0.2;
+            materialProps.envMapIntensity = 0.3;
+            break;
+          default:
+            materialProps.roughness = 0.7;
+            materialProps.metalness = 0.0;
+            materialProps.envMapIntensity = 0.1;
+        }
+        
+        return new THREE.MeshStandardMaterial(materialProps);
+      }
     }
     
     // Helper function to create geometry from a surface (without material)
