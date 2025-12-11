@@ -164,6 +164,7 @@ sample_*.epw
 simulation_results/
 output/
 results/
+backend/notebooks/dtcc_results/
 !frontend/src/components/results/
 
 # ==============================================
