@@ -444,7 +444,8 @@ class GeoJSONToIDFConverter:
         do_zone_sizing: bool = False,
         do_system_sizing: bool = False,
         winter_design_temp: float = -10,
-        summer_design_temp: float = 30
+        summer_design_temp: float = 30,
+        all_polygons_to_buildings: bool = True
     ) -> Tuple[Path, Optional[Path]]:
         """
         Convert enriched GeoJSON to IDF and GBXML formats.
@@ -457,6 +458,7 @@ class GeoJSONToIDFConverter:
             do_system_sizing: Whether to do system sizing calculations (default: False for speed)
             winter_design_temp: Winter design temperature in °C (default: -10)
             summer_design_temp: Summer design temperature in °C (default: 30)
+            all_polygons_to_buildings: Whether to treat all polygons as buildings (default: True)
             
         Returns:
             Tuple of (idf_path, gbxml_path)
@@ -522,7 +524,7 @@ class GeoJSONToIDFConverter:
                 str(geojson_path),
                 location=location_obj,
                 point=Point2D(0, 0),  # Place at origin (0,0) in 3D scene
-                all_polygons_to_buildings=False,
+                all_polygons_to_buildings=True,
                 existing_to_context=True,
                 units='Meters',
                 tolerance=None,

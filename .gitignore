@@ -26,6 +26,15 @@ build/
 # BACKEND (Python/Django)
 # ==============================================
 
+# Backend directory - ignore everything except specific files
+backend/*
+!backend/notebooks/
+backend/notebooks/*
+!backend/notebooks/*.ipynb
+!backend/geojson_processor/
+backend/geojson_processor/*
+!backend/geojson_processor/geojson_to_idf.py
+
 # Virtual environments
 .venv/
 venv/
@@ -166,6 +175,15 @@ output/
 results/
 backend/notebooks/dtcc_results/
 !frontend/src/components/results/
+
+# Notebook outputs (generated data)
+backend/notebooks/dtcc_output/
+backend/notebooks/idf_output/
+backend/notebooks/*.geojson
+backend/notebooks/*.idf
+backend/notebooks/*.dfjson
+backend/notebooks/*.hbjson
+backend/notebooks/*.pkl
 
 # ==============================================
 # LEGACY & MIGRATION FILES
