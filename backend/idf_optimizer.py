@@ -28,7 +28,7 @@ Usage:
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from eppy.modeleditor import IDF
+from eppy.modeleditor import IDF, IDDAlreadySetError
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,12 @@ class IDFOptimizer:
             idd_path: Path to Energy+.idd file
         """
         self.idd_path = idd_path
-        IDF.setiddname(idd_path)
+        # Only set IDD if not already set
+        try:
+            IDF.setiddname(idd_path)
+        except IDDAlreadySetError:
+            # IDD already set, which is fine - just use the existing one
+            pass
     
     def get_optimization_profile(self, idf_path: str) -> Dict[str, Any]:
         """

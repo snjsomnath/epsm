@@ -635,6 +635,22 @@ class GeoJSONToIDFConverter:
             if HAS_OPTIMIZER:
                 logger.info("Applying post-generation optimization...")
                 try:
+                    # Set IDD path for eppy before using IDFOptimizer
+                    from eppy.modeleditor import IDF, IDDAlreadySetError
+                    
+                    idd_file = Path(__file__).parent.parent / "Energy+.idd"
+                    if idd_file.exists():
+                        try:
+                            IDF.setiddname(str(idd_file))
+                            logger.info(f"✓ IDD set for optimizer: {idd_file}")
+                        except IDDAlreadySetError:
+                            # IDD already set, which is fine
+                            logger.info(f"✓ IDD already configured: {IDF.iddname}")
+                    else:
+                        logger.warning(f"⚠️  Energy+.idd not found at: {idd_file}")
+                        logger.warning("Skipping post-generation optimization")
+                        return idf_path, gbxml_path
+        
                     optimizer = IDFOptimizer()
                     
                     # Create optimization profile from parameters
