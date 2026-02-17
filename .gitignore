@@ -124,8 +124,12 @@ secrets-*.txt
 coverage/
 *.cover
 .coverage
+.coverage.*
 .pytest_cache/
 htmlcov/
+.vitest/
+coverage-final.json
+lcov.info
 
 # Jupyter Notebook
 .ipynb_checkpoints
