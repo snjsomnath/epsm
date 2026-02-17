@@ -1,0 +1,27 @@
+# Test dependencies for EPSM backend
+# Install with: pip install -r requirements-test.txt
+
+# Testing frameworks
+pytest==8.0.0
+pytest-django==4.8.0
+pytest-cov==4.1.0
+pytest-asyncio==0.23.5
+pytest-xdist==3.5.0  # Parallel test execution
+
+# Test utilities
+factory-boy==3.3.0  # Test fixtures and data factories
+faker==24.0.0  # Generate fake data for tests
+freezegun==1.4.0  # Mock datetime for time-based tests
+responses==0.25.0  # Mock HTTP requests
+pytest-mock==3.12.0  # Enhanced mocking
+
+# Code quality and coverage
+coverage[toml]==7.4.3
+pytest-testmon==2.1.1  # Run only affected tests
+
+# Django testing tools
+model-bakery==1.17.0  # Alternative fixture factory for Django models
+
+# WebSocket and async testing
+pytest-asyncio==0.23.5
+channels-testing==0.1.0
