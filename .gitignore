@@ -180,8 +180,12 @@ api-server.mjs
 api-simple.mjs
 test_*.mjs
 test-*.mjs
-test_*.py
-test_*.sh
+
+# BUT keep actual test files in test directories
+!backend/*/test_*.py
+!backend/tests/
+!frontend/src/**/*.test.*
+!frontend/src/**/*.spec.*
 
 # Database exports and migrations
 database_exports/
